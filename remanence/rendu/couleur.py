@@ -43,14 +43,36 @@ def _plans(image: av.VideoFrame) -> list[np.ndarray]:
     return plans
 
 
-def vers_rvba(image: av.VideoFrame, couleur: Couleur) -> np.ndarray:
-    """Image décodée vers un tableau H×L×4 float32, alpha prémultiplié, valeurs 0 à 1."""
+NOMS_SWSCALE = {1: "ITU709", 5: "ITU601", 6: "SMPTE170M", 7: "SMPTE240M"}
+
+
+def vers_rvba(image: av.VideoFrame, couleur: Couleur, apercu: bool = False) -> np.ndarray:
+    """Image décodée vers un tableau H×L×4 float32, alpha prémultiplié, valeurs 0 à 1.
+
+    En aperçu, swscale fait la conversion vingt fois plus vite, avec la même matrice et la
+    même plage, mais il écrête les surblancs : l'export garde le calcul exact ci-dessous.
+    """
     fmt = image.format
     h, l = image.height, image.width
     if not _est_yuv(fmt) or len(image.planes) < 3:
         brut = image.reformat(format="rgba64le").to_ndarray().astype(np.float32) / 65535.0
         brut[..., :3] *= brut[..., 3:4]
         return brut
+    matrice = couleur.matrice if couleur.matrice in COEFFICIENTS else (1 if h >= 720 else 6)
+    if apercu and matrice in NOMS_SWSCALE:
+        alpha = any(c.is_alpha for c in fmt.components)
+        brut = image.reformat(format="rgba64le" if alpha else "rgb48le",
+                              src_colorspace=NOMS_SWSCALE[matrice],
+                              src_color_range="JPEG" if _plage_complete(fmt, couleur) else "MPEG",
+                              dst_color_range="JPEG").to_ndarray()
+        sortie = np.empty((h, l, 4), np.float32)
+        np.multiply(brut[..., :3], 1 / 65535.0, out=sortie[..., :3], dtype=np.float32)
+        if alpha:
+            sortie[..., 3] = brut[..., 3] / 65535.0
+            sortie[..., :3] *= sortie[..., 3:4]
+        else:
+            sortie[..., 3] = 1.0
+        return sortie
     bits = max(c.bits for c in fmt.components)
     y, u, v = (p.astype(np.float32) for p in _plans(image)[:3])
     echelle = float(1 << (bits - 8))
@@ -81,6 +103,23 @@ def vers_rvba(image: av.VideoFrame, couleur: Couleur) -> np.ndarray:
     else:
         sortie[..., 3] = 1.0
     return sortie
+
+
+def vers_rvb16_apercu(image: av.VideoFrame, couleur: Couleur, largeur: int,
+                      hauteur: int) -> np.ndarray | None:
+    """Aperçu d'une image seule : RVB 16 bits entiers, redimensionné et converti en un seul
+    passage swscale. La carte graphique le normalise ensuite sans calcul côté processeur."""
+    fmt = image.format
+    options = {}
+    if _est_yuv(fmt):
+        matrice = couleur.matrice if couleur.matrice in COEFFICIENTS else             (1 if image.height >= 720 else 6)
+        if matrice not in NOMS_SWSCALE:
+            return None
+        options = {"src_colorspace": NOMS_SWSCALE[matrice],
+                   "src_color_range": "JPEG" if _plage_complete(fmt, couleur) else "MPEG",
+                   "dst_color_range": "JPEG"}
+    return image.reformat(width=largeur, height=hauteur, format="rgb48le",
+                          interpolation="BILINEAR", **options).to_ndarray()
 
 
 def depuis_rvba(rvba: np.ndarray, pix_fmt: str, couleur: Couleur) -> av.VideoFrame:

@@ -17,7 +17,7 @@ from remanence.media.lecteur import FREQUENCE_MIXAGE, LecteurVideo, Pool
 from remanence.media.proxy import chemin_audio, chemin_proxy
 from remanence.media.sonde import analyser
 from remanence.projet.modele import Clip, Media, Projet, Sequence
-from remanence.rendu.couleur import vers_rvba
+from remanence.rendu.couleur import vers_rvb16_apercu, vers_rvba
 
 
 @dataclass
@@ -63,9 +63,10 @@ def identite(pile: list[Couche]) -> Couche | None:
 class Compositeur:
     """Un compositeur par fil d'exécution : il garde ses propres décodeurs ouverts."""
 
-    def __init__(self, projet: Projet):
+    def __init__(self, projet: Projet, apercu: bool = False):
         self.projet = projet
         self.pool = Pool()
+        self.apercu = apercu
 
     def fermer(self):
         self.pool.fermer()
@@ -102,16 +103,32 @@ class Compositeur:
             sortie = rvba + sortie * (1.0 - rvba[..., 3:4])
         return sortie
 
+    def image_apercu(self, seq: Sequence, f: int, echelle: float, proxy: bool) -> np.ndarray:
+        """Image pour la visionneuse : RVB uint16 si un seul clip opaque remplit l'écran,
+        sinon RVB float16 issu de la composition complète."""
+        largeur = max(2, round(seq.largeur * echelle))
+        hauteur = max(2, round(seq.hauteur * echelle))
+        pile = couches(self.projet, seq, f)
+        if len(pile) == 1 and pile[0].opacite >= 1.0:
+            v = pile[0].media.infos.video
+            if not v.alpha and (v.largeur, v.hauteur) == (seq.largeur, seq.hauteur):
+                image = self.lecteur(pile[0].media, proxy).image(pile[0].image_source)
+                rapide = vers_rvb16_apercu(image, v.couleur, largeur, hauteur)
+                if rapide is not None:
+                    return rapide
+        rvba = self.image(seq, f, echelle, proxy)
+        return np.ascontiguousarray(rvba[..., :3].astype(np.float16))
+
     def _image_couche(self, couche: Couche, largeur: int, hauteur: int, proxy: bool) -> np.ndarray:
         v = couche.media.infos.video
         image = self.lecteur(couche.media, proxy).image(couche.image_source)
         if (image.width, image.height) == (largeur, hauteur):
-            return vers_rvba(image, v.couleur)
+            return vers_rvba(image, v.couleur, self.apercu)
         # Adapter à la séquence sans déformer : l'image tient entière, centrée.
         s = min(largeur / v.largeur, hauteur / v.hauteur)
         lp, hp = max(2, round(v.largeur * s)), max(2, round(v.hauteur * s))
         reduite = image.reformat(width=lp, height=hp, interpolation="BICUBIC")
-        rvba = vers_rvba(reduite, v.couleur)
+        rvba = vers_rvba(reduite, v.couleur, self.apercu)
         toile = np.zeros((hauteur, largeur, 4), np.float32)
         y0, x0 = (hauteur - hp) // 2, (largeur - lp) // 2
         toile[y0:y0 + hp, x0:x0 + lp] = rvba[:hauteur - y0, :largeur - x0]

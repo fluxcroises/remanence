@@ -84,10 +84,11 @@ def creer_intermediaire(infos: InfosMedia, progression=None, annule=None) -> Pat
 
 
 def _encoder(fs, sortie, image, k, base_temps, pix, plage, v):
-    trame = image.reformat(format=pix, src_color_range=plage, dst_color_range=plage)
+    # ProRes ne connaît que la plage vidéo : une source en plage complète y est ramenée.
+    trame = image.reformat(format=pix, src_color_range=plage, dst_color_range=1)
     trame.pts = k
     trame.time_base = base_temps
-    appliquer_couleur(trame, v.couleur, plage)
+    appliquer_couleur(trame, v.couleur, 1)
     for p in fs.encode(trame):
         sortie.mux(p)
 
