@@ -1,6 +1,6 @@
-"""Moteur de lecture : calcule les images dans un fil séparé et joue le son.
+"""Moteur de lecture : calcule les images dans un fil séparé et joue le son.
 
-À vitesse normale, l'horloge est celle de la carte son : l'image suit le son.
+À vitesse normale, l'horloge est celle de la carte son : l'image suit le son.
 En lecture rapide ou arrière (J, L répétés), l'horloge est celle du système et le son est coupé.
 """
 
@@ -48,11 +48,18 @@ class MoteurLecture(QObject):
         self._fil = threading.Thread(target=self._boucle, name="rendu-lecture", daemon=True)
         self._fil.start()
         self._compo_audio = None
+        self._cretes = None
+        self._boucle: tuple[int, int] | None = None
 
     # Côté interface
 
+    def definir_boucle(self, plage: tuple[int, int] | None):
+        """Lecture en boucle entre deux images (fin exclue), ou None."""
+        with self._verrou:
+            self._boucle = plage if plage and plage[1] > plage[0] else None
+
     def definir_projet(self, projet: Projet):
-        """Le moteur travaille sur une copie : l'interface peut modifier l'original sans risque."""
+        """Le moteur travaille sur une copie : l'interface peut modifier l'original sans risque."""
         copie = Projet.depuis_dict(projet.vers_dict())
         for m in copie.medias.values():
             m.hors_ligne = projet.medias[m.id].hors_ligne
@@ -152,10 +159,16 @@ class MoteurLecture(QObject):
         if self._compo_audio is None or self._compo_audio.projet is not projet:
             self._compo_audio = Compositeur(projet)
         try:
-            sortie[:] = np.clip(self._compo_audio.audio(projet.sequence, self._echantillon, n), -1, 1)
+            bloc = self._compo_audio.audio(projet.sequence, self._echantillon, n)
+            self._cretes = tuple(float(v) for v in np.abs(bloc).max(axis=0)) if n else None
+            sortie[:] = np.clip(bloc, -1, 1)
         except Exception:
             sortie.fill(0)
         self._echantillon += n
+
+    def cretes(self) -> tuple[float, float] | None:
+        """Crêtes du dernier bloc de son joué, pour les vumètres ; None à l'arrêt."""
+        return self._cretes if self._flux is not None else None
 
     def _image_horloge(self) -> int:
         if self._flux is not None:
@@ -181,6 +194,10 @@ class MoteurLecture(QObject):
                 if self._vitesse:
                     cible = self._image_horloge()
                     fin = projet.sequence.duree() if projet else 0
+                    if self._boucle and self._vitesse > 0 and cible >= self._boucle[1]:
+                        self._position = self._boucle[0]
+                        self._redemarrer_horloge()
+                        cible = self._boucle[0]
                     if cible >= fin or cible <= 0 and self._vitesse < 0:
                         cible = max(0, min(cible, fin - 1)) if fin else 0
                         self._vitesse = 0.0

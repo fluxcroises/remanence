@@ -1,4 +1,4 @@
-"""Fenêtres d'export : réglages avant, rapport de conformité après."""
+"""Fenêtres d'export : réglages avant, rapport de conformité après."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ class DialogueExport(QDialog):
         self.format = QComboBox()
         if ref is not None:
             fmt, _ = format_source(ref.infos.video)
-            self.format.addItem(f"Comme la source : {fmt.nom}", "source")
+            self.format.addItem(f"Comme la source : {fmt.nom}", "source")
         for cle, f in FORMATS.items():
             self.format.addItem(f.nom, cle)
         self.format.setToolTip("« Comme la source » reprend le codec, le profil et la profondeur "
@@ -51,7 +51,7 @@ class DialogueExport(QDialog):
         ligne.addWidget(parcourir)
 
         cad = seq.fraction_cadence
-        resume = QLabel(f"{seq.largeur} × {seq.hauteur}, {float(cad):.3f} i/s, départ "
+        resume = QLabel(f"{seq.largeur} × {seq.hauteur}, {float(cad):.3f} i/s, départ "
                         f"{images_vers_tc(seq.tc_debut, cad, seq.tc_drop)}".replace(".", ",", 1))
         resume.setProperty("role", "secondaire")
 
@@ -118,7 +118,7 @@ class DialogueRapport(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Export terminé")
         lay = QVBoxLayout(self)
-        titre = QLabel(("Le fichier est conforme : il peut remplacer la source sans recalage."
+        titre = QLabel(("Le fichier est conforme : il peut remplacer la source sans recalage."
                         if rapport.conforme else
                         "Le fichier a été écrit, mais il diffère de la source sur les points "
                         "marqués « Écart »."))
@@ -140,8 +140,8 @@ class DialogueRapport(QDialog):
         table.horizontalHeader().setStretchLastSection(True)
         table.verticalHeader().setVisible(False)
         lay.addWidget(table)
-        details = (f"{rapport.images_recopiees} image(s) recopiée(s) sans réencodage, "
-                   f"{rapport.images_calculees} image(s) calculée(s). Son : {rapport.audio}.")
+        details = (f"{rapport.images_recopiees} image(s) recopiée(s) sans réencodage, "
+                   f"{rapport.images_calculees} image(s) calculée(s). Son : {rapport.audio}.")
         d = QLabel(details)
         d.setWordWrap(True)
         lay.addWidget(d)

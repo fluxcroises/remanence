@@ -1,4 +1,4 @@
-"""Modèle de données d'un projet : médias, séquences, pistes et clips.
+"""Modèle de données d'un projet : médias, séquences, pistes et clips.
 
 Toutes les positions et durées sont en images de la séquence.
 """
@@ -30,7 +30,7 @@ class Media:
         return self.infos.nom
 
     def nb_images(self, cadence: Fraction) -> int:
-        """Longueur du média en images ; un média audio seul est mesuré à la cadence donnée."""
+        """Longueur du média en images ; un média audio seul est mesuré à la cadence donnée."""
         if self.infos.video:
             return self.infos.video.nb_images
         return max(1, round(self.infos.duree_s * float(cadence)))
@@ -78,7 +78,7 @@ class Clip:
 
 
 def valeur_enveloppe(points: list[list[float]], decalage: float) -> float:
-    """Interpolation linéaire entre les points [décalage, valeur] ; 1 sans point."""
+    """Interpolation linéaire entre les points [décalage, valeur] ; 1 sans point."""
     if not points:
         return 1.0
     if decalage <= points[0][0]:
@@ -99,6 +99,8 @@ class Piste:
     masquee: bool = False
     muette: bool = False
     verrouillee: bool = False
+    solo: bool = False
+    niveau: float = 1.0
     clips: list[Clip] = field(default_factory=list)
 
     def clip_a(self, f: int) -> Clip | None:
@@ -115,7 +117,7 @@ class Piste:
 class Marqueur:
     position: int
     nom: str = ""
-    couleur: str = "#3df2ff"
+    couleur: str = "accent-2"  # nom d'un token de la charte
 
 
 @dataclass
@@ -145,6 +147,13 @@ class Sequence:
     @property
     def pistes_audio(self) -> list[Piste]:
         return [p for p in self.pistes if p.type == "audio"]
+
+    def pistes_entendues(self, type_: str) -> list[Piste]:
+        """Pistes qui participent au rendu : ni masquées ni muettes, et seulement les pistes
+        en solo s'il y en a une."""
+        pistes = [p for p in self.pistes if p.type == type_ and not (p.masquee or p.muette)]
+        solos = [p for p in pistes if p.solo]
+        return solos or pistes
 
     def duree(self) -> int:
         return max((c.fin for p in self.pistes for c in p.clips), default=0)

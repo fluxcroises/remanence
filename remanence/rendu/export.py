@@ -1,7 +1,7 @@
 """Export d'une séquence, avec recopie des images que rien ne modifie.
 
 Une image de la timeline qui n'est que l'image d'origine d'un média (clip
-opaque, sans fondu ni effet) n'est pas réencodée : son paquet compressé est
+opaque, sans fondu ni effet) n'est pas réencodée : son paquet compressé est
 recopié tel quel, donc ses pixels restent identiques à la source. Pour les
 codecs à groupes d'images (H.264, HEVC), cette recopie n'est possible que si
 l'export reprend le média entier sans modification.
@@ -63,7 +63,7 @@ FORMATS = {f.cle: f for f in [
                  {"profile": "dnxhr_444"}),
     FormatExport("h264", "H.264 (MP4)", "libx264", "yuv420p", ".mp4", "h264", "",
                  {"crf": "12", "preset": "slow"}),
-    FormatExport("hevc10", "H.265 10 bits (MP4)", "libx265", "yuv420p10le", ".mp4", "hevc", "",
+    FormatExport("hevc10", "H.265 10 bits (MP4)", "libx265", "yuv420p10le", ".mp4", "hevc", "",
                  {"crf": "12", "preset": "slow", "x265-params": "log-level=error"}),
 ]}
 
@@ -106,7 +106,7 @@ def format_source(v: InfosVideo) -> tuple[FormatExport, str | None]:
         base = FORMATS["h264" if v.codec == "h264" else "hevc10"]
         return FormatExport(**{**base.__dict__, "pix_fmt": v.pix_fmt}), None
     return FORMATS["prores_hq"], (f"Le codec de la source ({v.codec_long}) ne peut pas être "
-                                  "réencodé à l'identique : export en ProRes 422 HQ.")
+                                  "réencodé à l'identique : export en ProRes 422 HQ.")
 
 
 def _compatible(v: InfosVideo, fmt: FormatExport, seq: Sequence) -> bool:
@@ -137,12 +137,12 @@ def media_reference(projet: Projet, seq: Sequence, debut: int, fin: int) -> Medi
 
 def _plan_audio(projet: Projet, seq: Sequence, debut: int, fin: int):
     """('copie', media) si l'audio d'un média est repris entier et inchangé, sinon ('mix'|None)."""
-    clips = [c for p in seq.pistes_audio if not p.muette for c in p.clips
+    clips = [(p, c) for p in seq.pistes_entendues("audio") for c in p.clips
              if c.fin > debut and c.debut < fin]
     if not clips:
         return None, None
-    if len(clips) == 1:
-        c = clips[0]
+    if len(clips) == 1 and clips[0][0].niveau == 1.0:
+        c = clips[0][1]
         m = projet.medias.get(c.media_id)
         if m and m.infos.video and c.debut <= debut and c.fin >= fin \
                 and c.entree + (debut - c.debut) == 0 and fin - debut == m.infos.video.nb_images \
@@ -159,7 +159,7 @@ def exporter(projet: Projet, seq: Sequence, chemin: Path, cle_format: str = "sou
     fin = fin if fin is not None else (seq.point_sortie if seq.point_sortie is not None
                                        else seq.duree())
     if fin <= debut:
-        raise ValueError("La plage à exporter est vide : posez des clips sur la timeline ou "
+        raise ValueError("La plage à exporter est vide : posez des clips sur la timeline ou "
                          "vérifiez les points d'entrée et de sortie.")
     avertissements: list[str] = []
     ref = media_reference(projet, seq, debut, fin)

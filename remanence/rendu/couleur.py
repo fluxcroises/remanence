@@ -1,7 +1,7 @@
 """Passage explicite entre les plans YUV d'un fichier et une image RVBA flottante.
 
 La conversion utilise la matrice et la plage lues dans le fichier, et l'opération
-inverse les réapplique à l'identique. Aucune courbe de transfert n'est touchée :
+inverse les réapplique à l'identique. Aucune courbe de transfert n'est touchée :
 une image en log reste en log.
 """
 
@@ -50,7 +50,7 @@ def vers_rvba(image: av.VideoFrame, couleur: Couleur, apercu: bool = False) -> n
     """Image décodée vers un tableau H×L×4 float32, alpha prémultiplié, valeurs 0 à 1.
 
     En aperçu, swscale fait la conversion vingt fois plus vite, avec la même matrice et la
-    même plage, mais il écrête les surblancs : l'export garde le calcul exact ci-dessous.
+    même plage, mais il écrête les surblancs : l'export garde le calcul exact ci-dessous.
     """
     fmt = image.format
     h, l = image.height, image.width
@@ -107,7 +107,7 @@ def vers_rvba(image: av.VideoFrame, couleur: Couleur, apercu: bool = False) -> n
 
 def vers_rvb16_apercu(image: av.VideoFrame, couleur: Couleur, largeur: int,
                       hauteur: int) -> np.ndarray | None:
-    """Aperçu d'une image seule : RVB 16 bits entiers, redimensionné et converti en un seul
+    """Aperçu d'une image seule : RVB 16 bits entiers, redimensionné et converti en un seul
     passage swscale. La carte graphique le normalise ensuite sans calcul côté processeur."""
     fmt = image.format
     options = {}

@@ -1,4 +1,4 @@
-"""Analyse d'un fichier média : fiche technique et index des images."""
+"""Analyse d'un fichier média : fiche technique et index des images."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ CODECS_INTRA = {"prores", "dnxhd", "mjpeg", "png", "dpx", "tiff", "exr", "rawvid
 NOMS_PRIMAIRES = {1: "BT.709", 4: "BT.470M", 5: "BT.470BG", 6: "SMPTE 170M", 7: "SMPTE 240M",
                   9: "BT.2020", 11: "DCI-P3", 12: "Display P3", 2: "non précisé"}
 NOMS_TRANSFERT = {1: "BT.709", 4: "Gamma 2.2", 5: "Gamma 2.8", 6: "SMPTE 170M", 8: "linéaire",
-                  13: "sRGB", 14: "BT.2020 10 bits", 15: "BT.2020 12 bits", 16: "PQ (ST 2084)",
+                  13: "sRGB", 14: "BT.2020 10 bits", 15: "BT.2020 12 bits", 16: "PQ (ST 2084)",
                   18: "HLG", 2: "non précisé"}
 NOMS_MATRICE = {0: "RVB", 1: "BT.709", 5: "BT.470BG", 6: "SMPTE 170M", 7: "SMPTE 240M",
                 9: "BT.2020 NCL", 10: "BT.2020 CL", 2: "non précisée"}
@@ -131,7 +131,7 @@ class InfosMedia:
     def fiche(self) -> list[tuple[str, str]]:
         """Lignes de la fiche technique, prêtes à afficher."""
         lignes = [("Fichier", self.nom), ("Conteneur", self.conteneur),
-                  ("Durée", f"{self.duree_s:.3f} s".replace(".", ","))]
+                  ("Durée", f"{self.duree_s:.3f} s".replace(".", ","))]
         v = self.video
         if v:
             cad = float(v.fraction_cadence)
@@ -139,9 +139,9 @@ class InfosMedia:
                 ("Codec vidéo", f"{v.codec_long} ({v.codec})"),
                 ("Profil", v.profil or "non indiqué"),
                 ("Image", f"{v.largeur} × {v.hauteur}, pixels {v.rapport_pixel}"),
-                ("Profondeur", f"{v.bits} bits, {v.echantillonnage}{', avec alpha' if v.alpha else ''}"),
+                ("Profondeur", f"{v.bits} bits, {v.echantillonnage}{', avec alpha' if v.alpha else ''}"),
                 ("Format de pixel", v.pix_fmt),
-                ("Cadence", f"{cad:.3f} i/s ({v.cadence})".replace(".", ",", 1)
+                ("Cadence", f"{cad:.3f} i/s ({v.cadence})".replace(".", ",", 1)
                  + (", variable" if v.cadence_variable else "")),
                 ("Images", str(v.nb_images)),
                 ("Timecode", v.tc_texte or "absent"),
@@ -153,8 +153,8 @@ class InfosMedia:
             lignes.append(("Vidéo", "aucune"))
         if self.audio:
             for i, a in enumerate(self.audio, 1):
-                lignes.append((f"Audio {i}", f"{a.codec}, {a.frequence} Hz, {a.canaux} canal(aux) "
-                                             f"{a.disposition}, {a.bits} bits"))
+                lignes.append((f"Audio {i}", f"{a.codec}, {a.frequence} Hz, {a.canaux} canal(aux) "
+                                             f"{a.disposition}, {a.bits} bits"))
         else:
             lignes.append(("Audio", "aucun"))
         for av_ in self.avertissements:
@@ -306,7 +306,7 @@ def _analyser(p: Path, st: os.stat_result, seq: dict | None, cadence_sequence: s
                 try:
                     tc_debut, tc_drop = tcmod.tc_vers_images(tc_txt, cadence)
                 except ValueError:
-                    avert.append(f"Timecode illisible : {tc_txt}")
+                    avert.append(f"Timecode illisible : {tc_txt}")
             index = construire_index(c, v)
             c.seek(0)
             entrelace, haute = False, True
@@ -316,10 +316,10 @@ def _analyser(p: Path, st: os.stat_result, seq: dict | None, cadence_sequence: s
                 break
             vfr = _cadence_variable(index, cadence)
             if vfr:
-                avert.append("Cadence variable : Remanence créera un intermédiaire à cadence fixe "
+                avert.append("Cadence variable : Remanence créera un intermédiaire à cadence fixe "
                              "avant tout montage. La source ne sera pas modifiée.")
             if entrelace:
-                avert.append("Vidéo entrelacée : elle sera traitée telle quelle. Le désentrelacement "
+                avert.append("Vidéo entrelacée : elle sera traitée telle quelle. Le désentrelacement "
                              "sera proposé à l'étape des effets.")
             sar = v.sample_aspect_ratio or cc.sample_aspect_ratio
             infos.video = InfosVideo(

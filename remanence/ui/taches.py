@@ -47,7 +47,7 @@ class Tache(QRunnable):
 
 
 class GestionnaireTaches(QWidget):
-    """Zone de la barre d'état : tâche en cours, progression, bouton Annuler."""
+    """Zone de la barre d'état : tâche en cours, progression, bouton Annuler."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -93,7 +93,7 @@ class GestionnaireTaches(QWidget):
     def _annuler_courante(self):
         if self._taches:
             self._taches[0].annule.set()
-            self._libelle.setText(f"Annulation : {self._taches[0].libelle}")
+            self._libelle.setText(f"Annulation : {self._taches[0].libelle}")
 
     def _terminer(self, tache: Tache):
         if tache in self._taches:

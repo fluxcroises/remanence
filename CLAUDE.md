@@ -20,8 +20,8 @@ Logiciel Windows de montage vidéo orienté datamosh et glitch art, dans l'espri
 
 ## État d'avancement
 
-- Étape 1 (socle et visionneuse) : codée, 46 tests au vert. Pas encore validée : Lewis a annoncé des retours, et l'interface doit d'abord passer à la charte graphique.
-- Intégration de la charte (31 octobre 2026) : écarts listés et plan proposé ; attendre la validation de Lewis avant de modifier l'interface. L'interface actuelle utilise encore l'ancienne palette (rose et cyan, Segoe UI) dans `remanence/ui/theme.py`.
+- Étape 1 (socle et visionneuse) : codée, avec la charte graphique intégrée (31 octobre 2026), 102 tests au vert. En attente de la validation de Lewis.
+- Captures de référence de l'état actuel : `UI/captures/`.
 - Étapes 2 à 6 : non commencées. Ne pas passer à l'étape suivante sans validation explicite.
 
 ## Commandes
@@ -51,8 +51,13 @@ Logiciel Windows de montage vidéo orienté datamosh et glitch art, dans l'espri
 
 - Design Read : logiciel de montage Windows pour monteurs, outil de postproduction sombre et neutre, dial ENERGY 1 / RHYTHM 1 / MOTION 1.
 - La direction visuelle est la charte de `UI/charte/` (mauve pour l'action, la sélection et la tête de lecture ; turquoise pour l'animation et le focus ; IBM Plex). Vérifier les contrastes avec `contrast-check.py` avant d'utiliser une paire de couleurs.
-- Écarts de la maquette à ne pas reproduire sans accord : `ink-faint` utilisé pour du texte à lire (3,7:1, sous le seuil de 4,5:1), couleurs hors tokens (`#4a3220`, `#5a7bb8`, `#4f8f72`).
-- Pas d'onglet Effets tant que les effets n'existent pas (étape 2).
+- `remanence/ui/charte.py` lit `tokens.json`, génère la feuille de style des deux thèmes (`MODELE_QSS`), charge les polices de `remanence/ressources/polices` et teinte les icônes Lucide de `remanence/ressources/icones`. Les widgets dessinés à la main lisent `charte.actuelle()` à chaque dessin. `tests/test_charte.py` refuse toute couleur écrite ailleurs et vérifie les contrastes des paires utilisées.
+- QtSvg ignore les `clipPath` : le symbole du logo est dessiné par `rendre_symbole`, qui relit la géométrie du fichier SVG.
+- La feuille de style Qt ne sait pas mettre en capitales : le style `caption` passe par `etiquette(..., "section")` qui pose la police.
+- Décisions validées par Lewis le 31 octobre 2026 : texte lisible en `ink-muted` (jamais `ink-faint`, 3,7:1), couleurs de `tokens.json` à la place des couleurs hors charte de la maquette (`#4a3220`, `#5a7bb8`, `#4f8f72`), étoile du bouton Effets remplacée par l'icône `layers` (antislop R-04), titre de l'écran de démarrage à 40 px comme la maquette, espaces de travail limités à Médias et Montage tant que les autres n'existent pas.
+- Défaut de la charte signalé : `success` en thème clair donne 4,499:1 sur `surface`. Il n'est posé que sur `surface-raised`.
+- Les éléments de la maquette qui dépendent des étapes suivantes (onglets Effets, Transitions, Scripts ; onglets Masque, Fusion, Modulateurs ; images clés ; badges fx ; Avant/Après ; Ripple et Slip ; espaces Glitch et Export) ne sont pas affichés tant qu'ils ne fonctionnent pas.
+- Typographie : espace insécable avant « : ; ? ! % » et entre un nombre et son unité, dans tous les textes.
 
 <!-- antislop:start -->
 ## antislop

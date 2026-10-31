@@ -1,4 +1,4 @@
-"""Vérification d'un fichier exporté : il doit pouvoir remplacer la source sans recalage."""
+"""Vérification d'un fichier exporté : il doit pouvoir remplacer la source sans recalage."""
 
 from __future__ import annotations
 

@@ -21,7 +21,7 @@ def journaliser(detail: str):
 
 def afficher_erreur(parent, titre: str, message: str, detail: str | None = None):
     detail = detail or traceback.format_exc()
-    journaliser(f"{titre} : {message}\n{detail}")
+    journaliser(f"{titre} : {message}\n{detail}")
     d = QDialog(parent)
     d.setWindowTitle(titre)
     lay = QVBoxLayout(d)

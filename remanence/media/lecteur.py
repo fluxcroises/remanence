@@ -124,7 +124,7 @@ class LecteurPaquets:
 
 
 class AudioCache:
-    """Audio d'un média décodé en flottant 32 bits stéréo à 48 kHz, lu par projection mémoire."""
+    """Audio d'un média décodé en flottant 32 bits stéréo à 48 kHz, lu par projection mémoire."""
 
     def __init__(self, fichier: Path):
         meta = json.loads(fichier.with_suffix(".json").read_text(encoding="utf-8"))
@@ -134,7 +134,7 @@ class AudioCache:
                          if self.nb else np.zeros((0, 2), np.float32))
 
     def lire(self, debut: int, n: int) -> np.ndarray:
-        """Échantillons [debut, debut+n) ; les zones hors média sont du silence."""
+        """Échantillons [debut, debut+n) ; les zones hors média sont du silence."""
         sortie = np.zeros((n, 2), np.float32)
         a, b = max(debut, 0), min(debut + n, self.nb)
         if b > a:

@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 def dossier_donnees() -> Path:
-    """%APPDATA%\\Remanence : préréglages, sauvegardes automatiques, journal."""
+    """%APPDATA%\\Remanence : préréglages, sauvegardes automatiques, journal."""
     base = os.environ.get("APPDATA") or str(Path.home() / ".config")
     d = Path(base) / "Remanence"
     d.mkdir(parents=True, exist_ok=True)
@@ -16,7 +16,7 @@ def dossier_donnees() -> Path:
 
 
 def dossier_cache() -> Path:
-    """%LOCALAPPDATA%\\Remanence\\cache : proxies et audio décodé, recalculables à tout moment."""
+    """%LOCALAPPDATA%\\Remanence\\cache : proxies et audio décodé, recalculables à tout moment."""
     base = os.environ.get("REMANENCE_CACHE") or os.environ.get("LOCALAPPDATA") \
         or str(Path.home() / ".cache")
     d = Path(base) / "Remanence" / "cache"

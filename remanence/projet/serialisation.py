@@ -55,11 +55,11 @@ def enregistrer_auto(projet: Projet, chemin: Path | None) -> Path:
 
 
 def ouvrir(chemin: Path) -> Projet:
-    """Charge un projet et réanalyse ses médias ; les fichiers absents passent hors ligne."""
+    """Charge un projet et réanalyse ses médias ; les fichiers absents passent hors ligne."""
     try:
         donnees = json.loads(Path(chemin).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as e:
-        raise ValueError(f"Impossible de lire « {Path(chemin).name} » : {e}") from e
+        raise ValueError(f"Impossible de lire « {Path(chemin).name} » : {e}") from e
     projet = Projet.depuis_dict(donnees)
     for media in projet.medias.values():
         try:

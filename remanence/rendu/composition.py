@@ -1,8 +1,8 @@
 """Calcul d'une image et d'un bloc de son de la séquence.
 
-Les pistes vidéo sont fusionnées de bas en haut en flottant 32 bits, alpha
+Les pistes vidéo sont fusionnées de bas en haut en flottant 32 bits, alpha
 prémultiplié. Quand une seule image source suffit à produire le résultat
-(clip opaque, sans fondu ni piste visible dessous), `identite` le signale :
+(clip opaque, sans fondu ni piste visible dessous), `identite` le signale :
 l'export recopie alors l'image d'origine sans la recalculer.
 """
 
@@ -31,16 +31,14 @@ class Couche:
 def couches(projet: Projet, seq: Sequence, f: int) -> list[Couche]:
     """Clips visibles à l'image f, de la piste la plus basse à la plus haute."""
     resultat = []
-    for piste in reversed(seq.pistes_video):
-        if piste.masquee:
-            continue
+    for piste in reversed(seq.pistes_entendues("video")):
         c = piste.clip_a(f)
         if c is None:
             continue
         media = projet.medias.get(c.media_id)
         if media is None or media.hors_ligne or media.infos.video is None:
             continue
-        opacite = c.facteur(f)
+        opacite = c.facteur(f) * piste.niveau
         if opacite <= 0.0:
             continue
         n = min(c.entree + (f - c.debut), media.infos.video.nb_images - 1)
@@ -61,7 +59,7 @@ def identite(pile: list[Couche]) -> Couche | None:
 
 
 class Compositeur:
-    """Un compositeur par fil d'exécution : il garde ses propres décodeurs ouverts."""
+    """Un compositeur par fil d'exécution : il garde ses propres décodeurs ouverts."""
 
     def __init__(self, projet: Projet, apercu: bool = False):
         self.projet = projet
@@ -104,7 +102,7 @@ class Compositeur:
         return sortie
 
     def image_apercu(self, seq: Sequence, f: int, echelle: float, proxy: bool) -> np.ndarray:
-        """Image pour la visionneuse : RVB uint16 si un seul clip opaque remplit l'écran,
+        """Image pour la visionneuse : RVB uint16 si un seul clip opaque remplit l'écran,
         sinon RVB float16 issu de la composition complète."""
         largeur = max(2, round(seq.largeur * echelle))
         hauteur = max(2, round(seq.hauteur * echelle))
@@ -139,9 +137,7 @@ class Compositeur:
         sortie = np.zeros((n, 2), np.float32)
         cadence = seq.fraction_cadence
         par_image = FREQUENCE_MIXAGE / float(cadence)
-        for piste in seq.pistes_audio:
-            if piste.muette:
-                continue
+        for piste in seq.pistes_entendues("audio"):
             for c in piste.clips:
                 e0 = round(c.debut * par_image)
                 e1 = round(c.fin * par_image)
@@ -159,8 +155,8 @@ class Compositeur:
                 bloc = cache.lire(source0 + (a - e0), b - a)
                 positions = (np.arange(a, b) - e0) / par_image
                 images = np.arange(int(positions[0]), int(positions[-1]) + 2)
-                gains = np.array([c.facteur(c.debut + min(int(k), c.duree - 1)) for k in images],
-                                 np.float32)
+                gains = np.array([c.facteur(c.debut + min(int(k), c.duree - 1)) * piste.niveau
+                                  for k in images], np.float32)
                 bloc *= np.interp(positions, images, gains).astype(np.float32)[:, None]
                 sortie[a - debut:b - debut] += bloc
         return sortie

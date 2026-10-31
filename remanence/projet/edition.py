@@ -2,7 +2,7 @@
 
 Chaque fonction modifie le modèle sur place. L'appelant enregistre ensuite
 l'état dans l'historique. Le placement suit la logique d'écrasement des
-logiciels de montage : un clip posé sur un autre remplace la partie recouverte.
+logiciels de montage : un clip posé sur un autre remplace la partie recouverte.
 """
 
 from __future__ import annotations

@@ -161,12 +161,14 @@ def test_boutons_de_piste_et_zoom(fenetre, medias):
     assert _attendre(lambda: len(w.projet.medias) == 1)
     w.poser_medias(list(w.projet.medias), 0, "")
     entete = w.timeline._entetes[0]
-    boutons = {b.text(): b for b in entete.findChildren(QToolButton)}
-    boutons["Masquée"].click()
+    {b.text(): b for b in entete.findChildren(QToolButton)}["M"].click()
     assert w.projet.sequence.pistes_video[0].masquee
+    _attendre(lambda: w.timeline._entetes and w.timeline._entetes[0] is not entete, 2)
     entete = w.timeline._entetes[0]
-    {b.text(): b for b in entete.findChildren(QToolButton)}["Verrou"].click()
-    assert w.projet.sequence.pistes_video[0].verrouillee
+    verrou = next(b for b in entete.findChildren(QToolButton)
+                  if b.accessibleName().startswith("Verrouiller"))
+    verrou.click()
+    assert _attendre(lambda: w.projet.sequence.pistes_video[0].verrouillee, 2)
     avant = w.timeline.vue.px_par_image
     w.timeline.zoomer(0.5)
     assert w.timeline.vue.px_par_image == avant / 2

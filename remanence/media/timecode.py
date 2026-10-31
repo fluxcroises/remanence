@@ -1,4 +1,4 @@
-"""Timecode SMPTE : conversion entre numéro d'image et texte HH:MM:SS:FF."""
+"""Timecode SMPTE : conversion entre numéro d'image et texte HH:MM:SS:FF."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ def tc_vers_images(texte: str, cadence: Fraction) -> tuple[int, bool]:
     drop = ";" in t or "." in t[-3:]
     morceaux = t.replace(";", ":").replace(".", ":").split(":")
     if len(morceaux) != 4:
-        raise ValueError(f"Timecode illisible : « {texte} »")
+        raise ValueError(f"Timecode illisible : « {texte} »")
     hh, mm, ss, ff = (int(m) for m in morceaux)
     nominal = cadence_nominale(cadence)
     n = ((hh * 60 + mm) * 60 + ss) * nominal + ff

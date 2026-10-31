@@ -1,13 +1,17 @@
-"""Panneau Médias : liste des médias du projet, import par bouton ou glisser-déposer."""
+"""Panneau Médias : liste des médias du projet, import par bouton ou glisser-déposer."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import QMimeData, QSize, Qt, Signal
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtCore import QMimeData, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (QAbstractItemView, QHBoxLayout, QLabel, QListWidget,
-                               QListWidgetItem, QPushButton, QStackedLayout, QVBoxLayout, QWidget)
+                               QListWidgetItem, QPushButton, QStackedLayout, QStyle,
+                               QStyledItemDelegate, QVBoxLayout, QWidget)
 
 from remanence.projet.modele import Media, Projet
+from remanence.ui import charte
+
+ROLE_NOM, ROLE_RESUME = Qt.UserRole + 1, Qt.UserRole + 2
 
 MIME_MEDIA = "application/x-remanence-media"
 
@@ -18,13 +22,52 @@ def resume(media: Media) -> str:
     morceaux = []
     if v:
         cad = f"{float(v.fraction_cadence):.3f}".rstrip("0").rstrip(".").replace(".", ",")
-        morceaux.append(f"{v.largeur}×{v.hauteur} · {cad} i/s · {v.codec_long.split(' (')[0]}")
+        morceaux.append(f"{v.largeur}×{v.hauteur} · {cad} i/s · {v.codec_long.split(' (')[0]}")
     elif infos.audio:
-        morceaux.append(f"Audio seul · {infos.audio[0].frequence} Hz")
-    morceaux.append(f"{infos.duree_s:.1f} s".replace(".", ","))
+        morceaux.append(f"Audio seul · {infos.audio[0].frequence} Hz")
+    morceaux.append(f"{infos.duree_s:.1f} s".replace(".", ","))
     if media.hors_ligne:
         morceaux.append("hors ligne")
     return " · ".join(morceaux)
+
+
+class DelegueMedia(QStyledItemDelegate):
+    """Vignette, nom du média en ink, détails techniques en ink-muted."""
+
+    def sizeHint(self, option, index):
+        return QSize(option.rect.width(), 64)
+
+    def paint(self, p: QPainter, option, index):
+        c = charte.actuelle()
+        r = option.rect.adjusted(2, 2, -2, -2)
+        p.save()
+        p.setRenderHint(QPainter.Antialiasing)
+        if option.state & QStyle.State_Selected:
+            p.fillRect(r, c.c("accent-soft"))
+        elif option.state & QStyle.State_MouseOver:
+            p.fillRect(r, c.c("surface-hover"))
+        icone = index.data(Qt.DecorationRole)
+        vignette = QRectF(r.left() + 6, r.top() + 6, 85, r.height() - 12)
+        p.fillRect(vignette, c.c("viewer-bg"))
+        if icone:
+            pm = icone.pixmap(QSize(170, 96))
+            p.drawPixmap(vignette, pm, QRectF(pm.rect()))
+        texte = QRectF(vignette.right() + 10, r.top() + 8, r.width() - 110, 20)
+        p.setPen(c.c("ink"))
+        p.setFont(c.police("body"))
+        p.drawText(texte, Qt.AlignLeft | Qt.AlignVCenter,
+                   p.fontMetrics().elidedText(index.data(ROLE_NOM), Qt.ElideMiddle,
+                                              int(texte.width())))
+        p.setPen(c.c("ink-muted"))
+        p.setFont(c.police("label"))
+        bas = texte.translated(0, 22)
+        p.drawText(bas, Qt.AlignLeft | Qt.AlignVCenter,
+                   p.fontMetrics().elidedText(index.data(ROLE_RESUME), Qt.ElideRight,
+                                              int(bas.width())))
+        if option.state & QStyle.State_HasFocus:
+            p.setPen(QPen(c.c("focus"), 2))
+            p.drawRect(r.adjusted(1, 1, -1, -1))
+        p.restore()
 
 
 class ListeMedias(QListWidget):
@@ -37,7 +80,9 @@ class ListeMedias(QListWidget):
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
         self.setDragDropMode(QAbstractItemView.DragDrop)
-        self.setSpacing(2)
+        self.setSpacing(0)
+        self.setMouseTracking(True)
+        self.setItemDelegate(DelegueMedia(self))
 
     def mimeData(self, items):
         d = QMimeData()
@@ -138,9 +183,11 @@ class PanneauMedias(QWidget):
         self.liste.blockSignals(True)
         self.liste.clear()
         for m in projet.medias.values():
-            item = QListWidgetItem(f"{m.nom}\n{resume(m)}")
+            item = QListWidgetItem(m.nom)
             item.setData(Qt.UserRole, m.id)
-            item.setToolTip("\n".join(f"{k} : {v}" for k, v in m.infos.fiche()))
+            item.setData(ROLE_NOM, m.nom)
+            item.setData(ROLE_RESUME, resume(m))
+            item.setToolTip("\n".join(f"{k} : {v}" for k, v in m.infos.fiche()))
             if m.id in self._vignettes:
                 item.setIcon(QIcon(self._vignettes[m.id]))
             self.liste.addItem(item)

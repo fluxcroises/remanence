@@ -1,13 +1,14 @@
-"""Inspecteur : réglages du clip sélectionné, ou fiche technique du média choisi."""
+"""Inspecteur : réglages du clip sélectionné, ou fiche technique du média choisi."""
 
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (QDoubleSpinBox, QFormLayout, QLabel, QPushButton, QSpinBox,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QPushButton, QScrollArea, QVBoxLayout,
+                               QWidget)
 
 from remanence.media.timecode import images_vers_tc
 from remanence.projet.modele import Media, Projet
+from remanence.ui.composants import LigneParametre, etiquette
 
 
 def _effacer(layout):
@@ -19,50 +20,108 @@ def _effacer(layout):
             _effacer(item.layout())
 
 
+def nom_court_piste(seq, piste) -> str:
+    """V1 est la piste vidéo du bas, comme dans Resolve ; A1 la première piste audio."""
+    if piste.type == "video":
+        pistes = seq.pistes_video
+        return f"V{len(pistes) - pistes.index(piste)}"
+    return f"A{seq.pistes_audio.index(piste) + 1}"
+
+
 class Inspecteur(QWidget):
     # (clip_id, champ, valeur) ; la fenêtre applique et enregistre dans l'historique.
     reglage = Signal(str, str, object)
+    # Texte du badge de l'en-tête (« Clip vidéo », « Média »), vide sans sélection.
+    badge = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._lay = QVBoxLayout(self)
-        self._lay.setContentsMargins(8, 8, 8, 8)
+        racine = QVBoxLayout(self)
+        racine.setContentsMargins(0, 0, 0, 0)
+        racine.setSpacing(0)
+        defil = QScrollArea()
+        defil.setWidgetResizable(True)
+        defil.setFrameShape(QScrollArea.NoFrame)
+        contenu = QWidget()
+        contenu.setProperty("role", "panneau")
+        contenu.setAttribute(Qt.WA_StyledBackground, True)
+        self._lay = QVBoxLayout(contenu)
+        self._lay.setContentsMargins(14, 12, 14, 12)
+        self._lay.setSpacing(12)
         self._lay.setAlignment(Qt.AlignTop)
+        defil.setWidget(contenu)
+        racine.addWidget(defil, 1)
+        self._pied = QWidget()
+        self._pied.setProperty("role", "pied")
+        self._pied.setAttribute(Qt.WA_StyledBackground, True)
+        self._lay_pied = QHBoxLayout(self._pied)
+        self._lay_pied.setContentsMargins(14, 12, 14, 12)
+        racine.addWidget(self._pied)
         self.vide()
 
-    def _titre(self, texte):
-        t = QLabel(texte)
-        t.setStyleSheet("font-size: 11pt; font-weight: 600;")
+    def _titre(self, titre: str, sous_titre: str = ""):
+        bloc = QVBoxLayout()
+        bloc.setSpacing(2)
+        t = etiquette(titre, "titre")
         t.setWordWrap(True)
-        self._lay.addWidget(t)
+        bloc.addWidget(t)
+        if sous_titre:
+            s = etiquette(sous_titre, "libelle")
+            s.setWordWrap(True)
+            bloc.addWidget(s)
+        self._lay.addLayout(bloc)
 
-    def _note(self, texte):
-        n = QLabel(texte)
+    def _section(self, nom: str):
+        self._lay.addWidget(etiquette(nom, "section"))
+
+    def _lignes(self, lignes: list[tuple[str, str]]):
+        grille = QGridLayout()
+        grille.setHorizontalSpacing(12)
+        grille.setVerticalSpacing(6)
+        for i, (cle, valeur) in enumerate(lignes):
+            e = etiquette(cle, "libelle")
+            e.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+            # Chasse fixe pour les nombres seulement : ils ne tremblent pas quand ils changent.
+            v = etiquette(valeur, "valeur" if valeur[:1].isdigit() else "")
+            v.setWordWrap(True)
+            v.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            grille.addWidget(e, i, 0)
+            grille.addWidget(v, i, 1)
+        grille.setColumnStretch(1, 1)
+        self._lay.addLayout(grille)
+
+    def _note(self, texte: str):
+        n = etiquette(texte, "secondaire")
         n.setWordWrap(True)
-        n.setProperty("role", "secondaire")
         self._lay.addWidget(n)
 
-    def vide(self):
+    def _vider(self):
         _effacer(self._lay)
+        _effacer(self._lay_pied)
+        self._pied.hide()
+
+    def vide(self):
+        self._vider()
+        self.badge.emit("")
         self._titre("Aucune sélection")
-        self._note("Cliquez sur un clip de la timeline pour régler ses fondus et son niveau, "
+        self._note("Cliquez sur un clip de la timeline pour régler son niveau et ses fondus, "
                    "ou sur un média pour lire sa fiche technique.")
 
     def fiche_media(self, media: Media):
-        _effacer(self._lay)
-        self._titre(media.nom)
-        form = QFormLayout()
-        form.setLabelAlignment(Qt.AlignRight)
-        for cle, valeur in media.infos.fiche():
-            v = QLabel(valeur)
-            v.setWordWrap(True)
-            v.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            etiquette = QLabel(cle)
-            etiquette.setProperty("role", "secondaire")
-            form.addRow(etiquette, v)
-        self._lay.addLayout(form)
-        if media.hors_ligne:
-            self._note(f"Fichier introuvable : {media.chemin}")
+        self._vider()
+        self.badge.emit("Média")
+        self._titre(media.nom, "Fichier hors ligne : " + media.chemin if media.hors_ligne
+                    else media.infos.conteneur)
+        self._section("Fiche technique")
+        lignes = [(k, v) for k, v in media.infos.fiche() if k not in ("Fichier", "Attention")]
+        self._lignes(lignes)
+        alertes = [v for k, v in media.infos.fiche() if k == "Attention"]
+        if alertes:
+            self._section("Attention")
+            for a in alertes:
+                n = etiquette(f"Avertissement : {a}", "avertissement")
+                n.setWordWrap(True)
+                self._lay.addWidget(n)
 
     def clip(self, projet: Projet, clip_id: str):
         seq = projet.sequence
@@ -70,58 +129,46 @@ class Inspecteur(QWidget):
         if c is None:
             self.vide()
             return
-        _effacer(self._lay)
+        self._vider()
         media = projet.medias.get(c.media_id)
         video = piste.type == "video"
         cad = seq.fraction_cadence
-        self._titre(media.nom if media else "Média manquant")
-        form = QFormLayout()
-        form.setLabelAlignment(Qt.AlignRight)
+        self.badge.emit("Clip vidéo" if video else "Clip audio")
+        debut = images_vers_tc(seq.tc_debut + c.debut, cad, seq.tc_drop)
+        fin = images_vers_tc(seq.tc_debut + c.fin, cad, seq.tc_drop)
+        self._titre(media.nom if media else "Média manquant",
+                    f"Piste {nom_court_piste(seq, piste)} · {debut} à {fin}")
 
-        def ligne(nom, valeur):
-            e = QLabel(nom)
-            e.setProperty("role", "secondaire")
-            v = QLabel(valeur)
-            v.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            form.addRow(e, v)
-
-        ligne("Piste", piste.nom)
-        ligne("Position", images_vers_tc(seq.tc_debut + c.debut, cad, seq.tc_drop))
-        ligne("Durée", f"{images_vers_tc(c.duree, cad)} ({c.duree} images)")
+        self._section("Clip")
         if media and media.infos.video and media.infos.video.tc_debut is not None:
             v = media.infos.video
-            ligne("Entrée source", images_vers_tc(v.tc_debut + c.entree, v.fraction_cadence,
-                                                  v.tc_drop))
+            entree = images_vers_tc(v.tc_debut + c.entree, v.fraction_cadence, v.tc_drop)
         else:
-            ligne("Entrée source", f"image {c.entree}")
-        ligne("Liaison", "liée au son ou à l'image" if c.lien else "indépendante")
+            entree = f"image {c.entree}"
+        self._lignes([("Durée", f"{images_vers_tc(c.duree, cad)} · {c.duree} images"),
+                      ("Entrée source", entree),
+                      ("Liaison", "liée au son ou à l'image" if c.lien else "indépendante")])
 
-        niveau = QDoubleSpinBox()
-        niveau.setRange(0, 100)
-        niveau.setDecimals(1)
-        niveau.setSuffix(" %")
-        niveau.setValue(c.gain * 100)
-        niveau.setToolTip("Opacité du clip vidéo." if video else "Volume du clip audio.")
-        niveau.editingFinished.connect(
-            lambda: self.reglage.emit(c.id, "gain", niveau.value() / 100))
-        form.addRow(QLabel("Opacité" if video else "Volume"), niveau)
-
+        self._section("Niveau et fondus")
+        niveau = LigneParametre("Opacité" if video else "Volume", 0, 100, c.gain * 100, "%",
+                                100, 1, "Opacité du clip vidéo." if video
+                                else "Volume du clip audio.")
+        niveau.valeur_finale.connect(lambda v: self.reglage.emit(c.id, "gain", v / 100))
+        self._lay.addWidget(niveau)
         for champ, nom in (("fondu_entree", "Fondu d'entrée"), ("fondu_sortie", "Fondu de sortie")):
-            s = QSpinBox()
-            s.setRange(0, c.duree)
-            s.setSuffix(" images")
-            s.setValue(getattr(c, champ))
-            s.setToolTip("Se règle aussi en tirant la poignée au coin supérieur du clip.")
-            s.editingFinished.connect(lambda s=s, champ=champ: self.reglage.emit(c.id, champ,
-                                                                                 s.value()))
-            form.addRow(QLabel(nom), s)
-        self._lay.addLayout(form)
-
+            ligne = LigneParametre(nom, 0, c.duree, getattr(c, champ), "images", 0, 0,
+                                   "Se règle aussi en tirant la poignée au coin supérieur du clip.")
+            ligne.champ.setFixedWidth(96)
+            ligne.valeur_finale.connect(lambda v, champ=champ: self.reglage.emit(c.id, champ,
+                                                                                 round(v)))
+            self._lay.addWidget(ligne)
+        self._note("Double-cliquez sur le clip pour ajouter un point d'enveloppe, puis tirez-le. "
+                   "Clic droit sur un point pour le retirer.")
         if c.enveloppe:
             b = QPushButton("Effacer l'enveloppe")
             b.setToolTip(f"Retire les {len(c.enveloppe)} points de l'enveloppe "
                          f"{'d’opacité' if video else 'de volume'} de ce clip.")
             b.clicked.connect(lambda: self.reglage.emit(c.id, "enveloppe", []))
-            self._lay.addWidget(b)
-        self._note("Double-cliquez sur le clip pour ajouter un point d'enveloppe, puis tirez-le. "
-                   "Clic droit sur un point pour le retirer.")
+            self._lay_pied.addWidget(b)
+            self._lay_pied.addStretch(1)
+            self._pied.show()

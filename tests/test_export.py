@@ -126,3 +126,24 @@ def test_couleur_aller_retour():
         a = np.frombuffer(p, np.uint16).reshape(p.height, -1)[:, :64].astype(int)
         b = np.frombuffer(q, np.uint16).reshape(q.height, -1)[:, :64].astype(int)
         assert np.abs(a - b).max() <= 1
+
+
+def test_niveau_et_solo_de_piste(medias, tmp_path):
+    """Une piste à 50 % est recalculée ; une piste en solo masque les autres."""
+    projet, fond = _projet(medias, "prores_hq")
+    seq = projet.sequence
+    seq.pistes_video[0].niveau = 0.5
+    sortie = tmp_path / "niveau.mov"
+    rapport = exporter(projet, seq, sortie)
+    assert rapport.conforme and rapport.images_calculees == 30
+    seq.pistes_video[0].niveau = 1.0
+    infos, _ = analyser(str(medias["prores_4444"]))
+    dessus = Media(nouvel_id(), str(medias["prores_4444"]), infos)
+    projet.medias[dessus.id] = dessus
+    edition.ajouter_piste(seq, "video")
+    edition.ajouter_media(projet, seq, dessus, 5, piste=seq.pistes_video[0])
+    seq.pistes_video[1].solo = True
+    sortie = tmp_path / "solo.mov"
+    rapport = exporter(projet, seq, sortie)
+    assert rapport.images_calculees == 0
+    assert empreintes_images(str(sortie)) == empreintes_images(str(medias["prores_hq"]))

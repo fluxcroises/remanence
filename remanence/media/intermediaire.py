@@ -25,7 +25,7 @@ def chemin_intermediaire(infos: InfosMedia) -> Path:
 
 
 def creer_intermediaire(infos: InfosMedia, progression=None, annule=None) -> Path:
-    """Réechantillonne la vidéo à cadence fixe en ProRes 422 HQ ; l'audio est recopié tel quel.
+    """Réechantillonne la vidéo à cadence fixe en ProRes 422 HQ ; l'audio est recopié tel quel.
 
     Chaque image de sortie reprend l'image source affichée à cet instant, comme un lecteur.
     """
