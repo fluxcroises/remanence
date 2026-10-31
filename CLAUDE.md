@@ -1,10 +1,27 @@
 # Remanence
 
-Logiciel de montage vidéo pour Windows orienté datamosh et glitch art. Le cahier des charges complet est dans `CAHIER_DES_CHARGES.md` (section 7 : étapes ; celui de `prototype/` concerne le prototype Bavure). L'utilisateur ne programme pas : interface, messages, documentation et commentaires en français, jamais de tiret cadratin.
+Logiciel Windows de montage vidéo orienté datamosh et glitch art, dans l'esprit de Vegas Pro (Python, PySide6, PyAV, OpenGL, FFglitch).
+
+## À lire avant tout
+
+- `CAHIER_DES_CHARGES.md` : le besoin complet. La section 7 fixe l'ordre de développement, en six étapes. (Celui de `prototype/` concerne le prototype Bavure.)
+- `UI/charte/README.md` et `UI/charte/tokens.json` : la charte graphique (couleurs des thèmes sombre et clair, typographie IBM Plex, espacements, arrondis). Les fiches de `UI/charte/components/` décrivent chaque composant d'interface ; les fichiers `preview.html` sont des références visuelles, à reproduire en widgets Qt. Les logos sont dans `UI/charte/assets/Logos/`.
+- `UI/maquettes/` : maquettes validées de l'écran principal et de l'écran de démarrage (à lire comme références visuelles, couleur d'accent : mauve). L'interface s'inspire de Vegas Pro (en-têtes de pistes, enveloppes sous les pistes, badge fx sur les clips) et de DaVinci Resolve (interface plate, vue d'ensemble de la séquence, inspecteur à droite, espaces de travail en bas).
+- `prototype/` : le prototype Bavure (tkinter). Ses algorithmes de datamosh (`moteur_mosh.py`) et ses effets (`effets.py`) sont validés et réutilisables ; son interface ne l'est pas.
+
+## Règles de travail
+
+- L'utilisateur, Lewis, ne programme pas. Explique simplement ce que tu fais et comment tester, sans jargon.
+- Une étape à la fois : à la fin de chaque étape, démonstration, tests au vert, puis attendre la validation de Lewis avant la suivante.
+- Tout en français : interface, messages, commentaires du code, commits. Dans les textes français, jamais de tiret cadratin : utiliser deux-points, virgule, parenthèses ou une nouvelle phrase.
+- Les couleurs, polices et tailles de l'interface viennent de `UI/charte/tokens.json`, générées en feuille de style Qt (QSS) ; aucune couleur codée en dur ailleurs.
+- Chaque bibliothèque ajoutée est inscrite avec sa licence dans `LICENCES.md`.
+- Tiens ce fichier à jour : décisions prises, état d'avancement, commandes utiles.
 
 ## État d'avancement
 
-- Étape 1 (socle et visionneuse) : codée, 46 tests au vert, en attente de validation par l'utilisateur.
+- Étape 1 (socle et visionneuse) : codée, 46 tests au vert. Pas encore validée : Lewis a annoncé des retours, et l'interface doit d'abord passer à la charte graphique.
+- Intégration de la charte (31 octobre 2026) : écarts listés et plan proposé ; attendre la validation de Lewis avant de modifier l'interface. L'interface actuelle utilise encore l'ancienne palette (rose et cyan, Segoe UI) dans `remanence/ui/theme.py`.
 - Étapes 2 à 6 : non commencées. Ne pas passer à l'étape suivante sans validation explicite.
 
 ## Commandes
@@ -33,9 +50,8 @@ Logiciel de montage vidéo pour Windows orienté datamosh et glitch art. Le cahi
 ## Interface (antislop, mode « pendant »)
 
 - Design Read : logiciel de montage Windows pour monteurs, outil de postproduction sombre et neutre, dial ENERGY 1 / RHYTHM 1 / MOTION 1.
-- Gris neutres (aucune teinte, pour juger les couleurs), rose `#ff3d7f` réservé à la sélection, cyan `#3df2ff` aux états actifs (tête de lecture, focus clavier, bouton enclenché). Le rose n'est jamais une couleur de texte (4,49:1 sur fond sombre).
-- Contrastes vérifiés avec `contrast-check.py` ; couleurs dans `remanence/ui/theme.py`.
-- Police Segoe UI (cahier des charges) ; Consolas pour le timecode, pour que les chiffres ne bougent pas pendant la lecture.
+- La direction visuelle est la charte de `UI/charte/` (mauve pour l'action, la sélection et la tête de lecture ; turquoise pour l'animation et le focus ; IBM Plex). Vérifier les contrastes avec `contrast-check.py` avant d'utiliser une paire de couleurs.
+- Écarts de la maquette à ne pas reproduire sans accord : `ink-faint` utilisé pour du texte à lire (3,7:1, sous le seuil de 4,5:1), couleurs hors tokens (`#4a3220`, `#5a7bb8`, `#4f8f72`).
 - Pas d'onglet Effets tant que les effets n'existent pas (étape 2).
 
 <!-- antislop:start -->

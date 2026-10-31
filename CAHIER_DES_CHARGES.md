@@ -1,6 +1,6 @@
 # Remanence : cahier des charges
 
-Oct 31, 2026 · @Lewis
+31 octobre 2026 · Lewis
 
 ## 1. Présentation
 
@@ -43,7 +43,18 @@ Ces règles priment sur toute fonctionnalité : une appli qui abîme les pixels 
 
 Remanence est une application Python 3.12 avec une interface Qt, un rendu sur carte graphique en OpenGL, et trois moteurs d'effets qui convergent vers une même étape de recomposition.
 
-&#91;embedded content: architecture · 3 moteurs, 1 recomposition\]
+```
+                    Projet et timeline (Qt)
+              zones, masques, images clés, modulateurs
+                 |  réglages animés        |  masques
+                 v                         v
+Clips des   +--> Effets temps réel --+
+pistes      |    (shaders GLSL)       |
+(tous    ---+--> Flux optique -------+--> Recomposition --+--> Visionneuse (proxy)
+formats,    |    (OpenCV, 16 bits)    |    masques, zones,  |
+PyAV,       +--> Moteur codec -------+    fusion, opacité  +--> Export (comme la source)
+16 bits)         (FFglitch, en cache)
+```
 
 Quel que soit le moteur, son résultat passe par la recomposition : c'est elle qui garantit que l'image reste intacte hors des zones et des masques ciblés.
 
@@ -278,7 +289,7 @@ L'interface reprend les codes de Vegas Pro et des logiciels de montage courants 
 
 Tous les panneaux sont ancrables, redimensionnables et détachables. La disposition est mémorisée, avec un bouton pour revenir à la disposition par défaut.
 
-**Apparence.** Thème sombre neutre, adapté au travail de l'image (gris proches du neutre, aucun fond coloré qui fausserait la perception des couleurs). Accent rose `#ff3d7f` et cyan `#3df2ff`, repris du prototype, réservés à la sélection et aux états actifs. Police Segoe UI, adaptation aux écrans haute densité.
+**Apparence.** Thème sombre neutre, adapté au travail de l'image (gris proches du neutre, aucun fond coloré qui fausserait la perception des couleurs). Deux accents désaturés, comme dans les logiciels de montage professionnels : mauve `#b07cc6` pour l'action, la sélection et la tête de lecture, turquoise `#5fb4c0` pour l'animation et le focus. Polices IBM Plex Sans et IBM Plex Mono, embarquées dans l'application ; adaptation aux écrans haute densité. Logo : le symbole Tranches. Tout le détail (couleurs des deux thèmes, typographie, composants, fichiers du logo) est dans la charte graphique Remanence.
 
 **Aide intégrée.** Chaque effet a une info-bulle qui explique en une phrase ce qu'il fait. Un panneau « Premiers pas » guide un premier projet de bout en bout. Les messages d'erreur disent quoi faire, en français, avec un bouton « Copier le détail » pour le diagnostic.
 
@@ -347,9 +358,7 @@ Remanence est prêt pour la production quand ces critères sont tenus sur un PC 
 
 ### Message d'amorce pour Claude Code
 
-Exporter ce document en Markdown sous le nom `CAHIER_DES_CHARGES.md`, le placer dans un dossier vide avec le prototype Bavure dans `prototype/`, ouvrir ce dossier dans Claude Code et envoyer :
-
-> Lis CAHIER\_DES\_CHARGES.md en entier. Tu développes Remanence étape par étape, en suivant la section 7. Commence par me présenter ton plan pour l'étape 1 et les questions qui te bloquent, puis code-la. À la fin de chaque étape, montre-moi le résultat et attends ma validation avant de passer à la suivante. Je ne programme pas : explique-moi simplement comment tester.
+Ce dossier contient tout le nécessaire : ce cahier des charges, la charte graphique dans `charte/` (couleurs, typographie, composants, logos) et le prototype Bavure dans `prototype/`. Ouvrir le dossier dans Claude Code et envoyer le message indiqué dans `LISEZ-MOI.txt`.
 
 ### Inspirations
 
