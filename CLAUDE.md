@@ -29,7 +29,8 @@ Logiciel Windows de montage vidéo orienté datamosh et glitch art, dans l'espri
 - Lancer l'appli : double-clic sur `Remanence.bat`, ou `.venv\Scripts\python.exe -m remanence`
 - Tests : `.venv\Scripts\python.exe -m pytest -q` (le jeu de test se génère dans `tests/medias/` au premier lancement)
 - Installer sur une autre machine : `Installer.bat` (uv, Python 3.12 privé dans `.venv`)
-- `uv` est dans `%APPDATA%\Python\Python314\Scripts\uv.exe`. `uv venv --python 3.12` échoue sur cette machine (lien de version mineure) : passer le chemin donné par `uv python find 3.12`.
+- Python 3.12 est installé DANS le projet (`.python/`, ignoré par git), et `.venv` est créé à partir de lui. Raison : les commandes de Claude Code tournent dans un bac à sable, et ce qu'elles écrivent dans `%APPDATA%` n'est pas visible depuis la session Windows de Lewis (erreur « No Python » au double-clic, 31 octobre 2026). Ne jamais faire dépendre l'appli d'un fichier hors du dossier du projet.
+- `uv` (pour Claude Code) : `%APPDATA%\Python\Python314\Scripts\uv.exe`. Réinstaller Python : `UV_PYTHON_INSTALL_DIR=<projet>\.python uv python install 3.12`, puis `uv venv --python <projet>\.python\cpython-3.12.16-windows-x86_64-none\python.exe .venv` et `uv pip install --python .venv\Scripts\python.exe -r requirements.txt`.
 
 ## Décisions
 
