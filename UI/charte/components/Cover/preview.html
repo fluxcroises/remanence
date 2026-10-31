@@ -1,0 +1,59 @@
+<!-- @dsCard height=288 -->
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Remanence</title>
+<style>
+  html, body { margin:0; height:100%; }
+  body { background:var(--surface); color:var(--ink); font-family:var(--font-sans); overflow:hidden; }
+  .cover { position:relative; height:288px; overflow:hidden; }
+  .art { position:absolute; top:0; left:480px; width:480px; height:288px; overflow:hidden; }
+  .art svg { display:block; width:480px; height:288px; }
+  .ink { fill:var(--ink); }
+  .mauve { fill:var(--accent); }
+  .teal { fill:var(--accent-2); }
+  .muted { fill:var(--ink-muted); }
+  .blk { rx:var(--radius-sm); }
+  .words { position:absolute; left:var(--space-6); bottom:var(--space-6); max-width:440px; }
+  .name { margin:0; font-size:80px; line-height:.92; font-weight:600; letter-spacing:-.02em; color:var(--ink); }
+  .tag { margin:var(--space-2) 0 0 4px; font-size:14px; line-height:20px; color:var(--ink-muted); }
+</style>
+</head>
+<body>
+<div class="cover">
+<div class="art" aria-hidden="true">
+<svg viewBox="0 0 480 288" width="480" height="288">
+<!--
+  blocks      ink: the logo's disc at r 120 (the system's mark, oversized) · accent one band of it · accent-2 96×56 and ink-muted 56×56 as satellites on the left, ≈ 20 % of 960×288
+  arrangement one large sliced disc on the right, two small blocks stacked at the left on the space-6 bottom line
+  pattern     slices, from the README's "le logo, un disque découpé en tranches décalées, porte seul la part de glitch": seven bands (28 tall, 6 apart) shifted sideways
+  scales      band pitch 34 (space-8 + 2); offsets in space-1 multiples; blocks radius-sm, sides space-6 and space-8 multiples
+-->
+<defs>
+<clipPath id="cv1"><rect x="0" y="30" width="480" height="28"/></clipPath>
+<clipPath id="cv2"><rect x="0" y="64" width="480" height="28"/></clipPath>
+<clipPath id="cv3"><rect x="0" y="98" width="480" height="28"/></clipPath>
+<clipPath id="cv4"><rect x="0" y="132" width="480" height="28"/></clipPath>
+<clipPath id="cv5"><rect x="0" y="166" width="480" height="28"/></clipPath>
+<clipPath id="cv6"><rect x="0" y="200" width="480" height="28"/></clipPath>
+<clipPath id="cv7"><rect x="0" y="234" width="480" height="36"/></clipPath>
+</defs>
+<circle class="ink" cx="312" cy="150" r="120" clip-path="url(#cv1)"/>
+<circle class="ink" cx="328" cy="150" r="120" clip-path="url(#cv2)"/>
+<circle class="ink" cx="300" cy="150" r="120" clip-path="url(#cv3)"/>
+<circle class="mauve" cx="336" cy="150" r="120" clip-path="url(#cv4)"/>
+<circle class="ink" cx="306" cy="150" r="120" clip-path="url(#cv5)"/>
+<circle class="ink" cx="320" cy="150" r="120" clip-path="url(#cv6)"/>
+<circle class="ink" cx="308" cy="150" r="120" clip-path="url(#cv7)"/>
+<rect class="muted blk" x="24" y="144" width="56" height="56" rx="4"/>
+<rect class="teal blk" x="24" y="208" width="96" height="56" rx="4"/>
+</svg>
+</div>
+<div class="words">
+<h1 class="name">Remanence</h1>
+<p class="tag">Le montage qui laisse des traces.</p>
+</div>
+</div>
+</body>
+</html>

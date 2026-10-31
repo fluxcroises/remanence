@@ -1,0 +1,27 @@
+REMANENCE : DOSSIER DE DÉMARRAGE POUR CLAUDE CODE
+==================================================
+
+Contenu du dossier
+------------------
+- CAHIER_DES_CHARGES.md : le besoin complet et les six étapes de développement.
+- CLAUDE.md : les règles que Claude Code lit automatiquement à chaque session.
+- charte/ : la charte graphique (couleurs, polices, composants, logos).
+- maquettes/ : les maquettes de l'écran principal et de l'écran de démarrage.
+- prototype/ : le prototype Bavure, dont Claude Code réutilisera les algorithmes.
+
+Comment démarrer
+----------------
+1. Décompresse ce dossier à l'endroit où tu veux que le projet vive
+   (par exemple Documents\Remanence).
+2. Ouvre ce dossier dans Claude Code.
+3. Copie-colle le message ci-dessous, puis laisse Claude Code te présenter son plan.
+
+Message à envoyer à Claude Code
+-------------------------------
+Lis CLAUDE.md, CAHIER_DES_CHARGES.md et charte/README.md en entier. Tu développes Remanence étape par étape, en suivant la section 7 du cahier des charges. Commence par me présenter ton plan pour l'étape 1 et les questions qui te bloquent, puis code-la. À la fin de chaque étape, montre-moi le résultat, explique-moi simplement comment le tester, et attends ma validation avant de passer à la suivante. Je ne programme pas.
+
+Conseils
+--------
+- Valide chaque étape en testant toi-même avec de vrais fichiers (un ProRes, une vidéo de téléphone).
+- Si une session est coupée, demande simplement : « Relis CLAUDE.md et reprends où on en était. »
+- Garde ce dossier sous Git (Claude Code s'en occupe) : on peut revenir en arrière à tout moment.

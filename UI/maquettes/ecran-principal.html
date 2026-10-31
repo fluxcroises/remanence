@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Remanence, écran principal</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;background:#0e0e10}
+button{font:inherit}
+</style>
+</helmet>
+<div style="width: 100%; min-width: 1280px; height: 1000px; display: flex; flex-direction: column; background: #0e0e10; color: #ececef; font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif; font-size: 13px; line-height: 18px; overflow: hidden;">
+
+<!-- Barre du haut -->
+<div style="height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 12px; border-bottom: 1px solid #2c2c31;">
+<div style="display: flex; align-items: center; gap: 8px;">
+<svg viewBox="0 0 100 100" width="18" height="18" aria-hidden="true"><defs><clipPath id="lg1"><rect x="0" y="14" width="100" height="22"></rect></clipPath><clipPath id="lg2"><rect x="0" y="39" width="100" height="22"></rect></clipPath><clipPath id="lg3"><rect x="0" y="64" width="100" height="22"></rect></clipPath></defs><circle cx="50" cy="50" r="36" fill="#ececef" clip-path="url(#lg1)"></circle><circle cx="58" cy="50" r="36" fill="{{accent}}" clip-path="url(#lg2)"></circle><circle cx="46" cy="50" r="36" fill="#ececef" clip-path="url(#lg3)"></circle></svg>
+<span style="font-weight: 600;">Remanence</span>
+</div>
+<nav style="display: flex; gap: 14px; color: #a1a1aa;"><span>Fichier</span><span>Édition</span><span>Affichage</span><span>Clip</span><span>Effets</span><span>Fenêtre</span><span>Aide</span></nav>
+<div style="flex: 1; text-align: center;"><span style="font-weight: 600;">Court-métrage · Séquence 03</span><span style="color: #71717a; margin-left: 8px;">Modifié</span></div>
+<div style="display: flex; gap: 4px;">
+<button style="height: 28px; padding: 0 10px; border-radius: 4px; border: 0; background: #1f1f22; color: #ececef; display: flex; align-items: center; gap: 6px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 9h18"></path></svg>Médias</button>
+<button style="height: 28px; padding: 0 10px; border-radius: 4px; border: 0; background: #1f1f22; color: #ececef; display: flex; align-items: center; gap: 6px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 3l2.5 5.5L20 11l-5.5 2.5L12 19l-2.5-5.5L4 11l5.5-2.5z"></path></svg>Effets</button>
+<button style="height: 28px; padding: 0 10px; border-radius: 4px; border: 0; background: #1f1f22; color: #ececef; display: flex; align-items: center; gap: 6px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 6h10M4 12h16M4 18h7"></path><circle cx="17" cy="6" r="2"></circle><circle cx="14" cy="18" r="2"></circle></svg>Inspecteur</button>
+<button style="height: 28px; padding: 0 10px; border-radius: 4px; border: 0; background: transparent; color: #a1a1aa; display: flex; align-items: center; gap: 6px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M6 4v16M12 4v16M18 4v16"></path><rect x="4" y="13" width="4" height="3" rx="1"></rect><rect x="10" y="7" width="4" height="3" rx="1"></rect><rect x="16" y="11" width="4" height="3" rx="1"></rect></svg>Mixage</button>
+</div>
+<button style="height: 28px; padding: 0 14px; border-radius: 4px; border: 1px solid {{accent}}; background: {{accent}}; color: #141416; font-weight: 600;">Exporter</button>
+</div>
+
+<!-- Zone haute : bibliothèque, visionneuse, inspecteur, vumètres -->
+<div style="height: 520px; flex-shrink: 0; display: grid; grid-template-columns: 340px minmax(0, 1fr) 340px 56px; gap: 1px; background: #2c2c31; border-bottom: 1px solid #2c2c31;">
+
+<!-- Bibliothèque d'effets -->
+<div style="background: #161618; display: flex; flex-direction: column; min-width: 0;">
+<div style="display: flex; gap: 18px; padding: 0 14px; height: 36px; align-items: flex-end; border-bottom: 1px solid #2c2c31; color: #a1a1aa;">
+<span style="padding-bottom: 8px;">Médias</span>
+<span style="padding-bottom: 6px; color: #ececef; font-weight: 500; border-bottom: 2px solid {{accent}};">Effets</span>
+<span style="padding-bottom: 8px;">Transitions</span>
+<span style="padding-bottom: 8px;">Scripts</span>
+</div>
+<div style="padding: 12px 14px 8px; display: flex; flex-direction: column; gap: 10px;">
+<label style="display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border-radius: 4px; background: #1f1f22; border: 1px solid #717179; color: #a1a1aa;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg><input placeholder="Rechercher un effet" style="flex: 1; min-width: 0; background: transparent; border: 0; color: #ececef; font: inherit; outline: none;"></label>
+<div style="display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px;">
+<span style="padding: 2px 8px; border-radius: 2px; background: #2a2a2e; color: #a1a1aa;">Tous</span>
+<span style="padding: 2px 8px; border-radius: 2px; background: {{accentSoft}}; color: {{accent}}; font-weight: 500;">Datamosh</span>
+<span style="padding: 2px 8px; border-radius: 2px; background: #2a2a2e; color: #a1a1aa;">Corruption</span>
+<span style="padding: 2px 8px; border-radius: 2px; background: #2a2a2e; color: #a1a1aa;">Couleur</span>
+<span style="padding: 2px 8px; border-radius: 2px; background: #2a2a2e; color: #a1a1aa;">Pixels</span>
+<span style="padding: 2px 8px; border-radius: 2px; background: #2a2a2e; color: #a1a1aa;">Signal</span>
+</div>
+</div>
+<div style="flex: 1; overflow: hidden; padding: 4px 14px 14px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-content: start;">
+<div style="border-radius: 6px; background: #1f1f22; border: 1px solid {{accent}}; overflow: hidden;"><div style="height: 72px; background: #2f3d5c; position: relative; overflow: hidden;"><div style="position: absolute; left: 12px; top: 12px; width: 44px; height: 40px; background: #5fb4c0;"></div><div style="position: absolute; left: 18px; top: 18px; width: 44px; height: 40px; background: {{accent}};"></div><div style="position: absolute; left: 62px; top: 24px; width: 60px; height: 6px; background: {{accent}};"></div><div style="position: absolute; left: 62px; top: 36px; width: 40px; height: 6px; background: {{accent}};"></div></div><div style="padding: 6px 8px 8px;"><div style="font-weight: 600;">Fonte lente</div><div style="font-size: 12px; color: #a1a1aa;">Bloom · codec</div></div></div>
+<div style="border-radius: 6px; background: #1f1f22; border: 1px solid #2c2c31; overflow: hidden;"><div style="height: 72px; background: #0e0e10; position: relative; overflow: hidden;"><div style="position: absolute; left: 0; top: 0; width: 60%; height: 100%; background: #2f3d5c;"></div><div style="position: absolute; left: 60%; top: 10px; width: 30%; height: 8px; background: #2f3d5c;"></div><div style="position: absolute; left: 60%; top: 26px; width: 18%; height: 8px; background: #2f3d5c;"></div><div style="position: absolute; left: 60%; top: 42px; width: 36%; height: 8px; background: #2f3d5c;"></div><div style="position: absolute; left: 60%; top: 58px; width: 12%; height: 8px; background: #2f3d5c;"></div></div><div style="padding: 6px 8px 8px;"><div style="font-weight: 600;">Bavure de raccord</div><div style="font-size: 12px; color: #a1a1aa;">Images clés · codec</div></div></div>
+<div style="border-radius: 6px; background: #1f1f22; border: 1px solid #2c2c31; overflow: hidden;"><div style="height: 72px; background: #2c4a3e; position: relative; overflow: hidden;"><div style="position: absolute; left: 20px; top: 14px; width: 40px; height: 40px; border-radius: 9999px; background: #ececef;"></div><div style="position: absolute; left: 34px; top: 20px; width: 40px; height: 40px; border-radius: 9999px; background: #ececef; opacity: 0.4;"></div><div style="position: absolute; left: 48px; top: 26px; width: 40px; height: 40px; border-radius: 9999px; background: #ececef; opacity: 0.2;"></div></div><div style="padding: 6px 8px 8px;"><div style="font-weight: 600;">Traînées</div><div style="font-size: 12px; color: #a1a1aa;">Persistance · flux</div></div></div>
+<div style="border-radius: 6px; background: #1f1f22; border: 1px solid #2c2c31; overflow: hidden;"><div style="height: 72px; background: #4a3220; position: relative; overflow: hidden;"><div style="position: absolute; left: 0; right: 0; top: 14px; height: 10px; background: #ececef; transform: translateX(14px);"></div><div style="position: absolute; left: 0; right: 0; top: 30px; height: 10px; background: #ececef; transform: translateX(-10px);"></div><div style="position: absolute; left: 0; right: 0; top: 46px; height: 10px; background: #5fb4c0; transform: translateX(22px);"></div></div><div style="padding: 6px 8px 8px;"><div style="font-weight: 600;">Glissement</div><div style="font-size: 12px; color: #a1a1aa;">Vecteurs · codec</div></div></div>
+<div style="border-radius: 6px; background: #1f1f22; border: 1px solid #2c2c31; overflow: hidden;"><div style="height: 72px; background: #133c42; position: relative; overflow: hidden;"><div style="position: absolute; left: 14px; top: 12px; width: 32px; height: 24px; background: #2f3d5c;"></div><div style="position: absolute; left: 54px; top: 20px; width: 48px; height: 32px; background: #2f3d5c;"></div><div style="position: absolute; left: 30px; top: 42px; width: 24px; height: 18px; background: #2f3d5c;"></div><div style="position: absolute; left: 110px; top: 14px; width: 20px; height: 44px; background: #2f3d5c;"></div></div><div style="padding: 6px 8px 8px;"><div style="font-weight: 600;">Transfert</div><div style="font-size: 12px; color: #a1a1aa;">Mouvement · codec</div></div></div>
+<div style="border-radius: 6px; background: #1f1f22; border: 1px solid #2c2c31; overflow: hidden;"><div style="height: 72px; background: #1f1f22; position: relative; overflow: hidden;"><div style="position: absolute; left: 10px; top: 10px; width: 24px; height: 24px; background: #2f3d5c;"></div><div style="position: absolute; left: 34px; top: 10px; width: 24px; height: 24px; background: #4a3220;"></div><div style="position: absolute; left: 58px; top: 34px; width: 24px; height: 24px; background: #2f3d5c;"></div><div style="position: absolute; left: 82px; top: 10px; width: 48px; height: 24px; background: #2c4a3e;"></div><div style="position: absolute; left: 10px; top: 34px; width: 48px; height: 24px; background: #133c42;"></div></div><div style="padding: 6px 8px 8px;"><div style="font-weight: 600;">Macroblocs</div><div style="font-size: 12px; color: #a1a1aa;">Corruption · codec</div></div></div>
+</div>
+</div>
+
+<!-- Visionneuse -->
+<div style="background: #161618; display: flex; flex-direction: column; min-width: 0;">
+<div style="height: 36px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-bottom: 1px solid #2c2c31;">
+<span style="font-weight: 500;">Programme</span>
+<span style="color: #71717a;">Séquence 03</span>
+<div style="flex: 1;"></div>
+<span style="font-size: 12px; color: #a1a1aa; padding: 2px 8px; border-radius: 4px; background: #1f1f22;">Ajusté</span>
+<span style="font-size: 12px; color: #a1a1aa; padding: 2px 8px; border-radius: 4px; background: #1f1f22;">Proxy 1/2</span>
+<div style="display: flex; border-radius: 4px; overflow: hidden; font-size: 12px; border: 1px solid #2c2c31;"><span style="padding: 1px 8px; color: #a1a1aa;">Avant</span><span style="padding: 1px 8px; background: #2a2a2e; color: #ececef;">Après</span></div>
+</div>
+<div style="flex: 1; background: #000000; display: flex; align-items: center; justify-content: center; min-height: 0; padding: 16px;">
+<div style="height: 100%; aspect-ratio: 16 / 9; max-width: 100%; position: relative; overflow: hidden; background: #1b2436;">
+<div style="position: absolute; left: 0; right: 0; bottom: 0; height: 38%; background: #232d40;"></div>
+<div style="position: absolute; left: 22%; top: 18%; width: 18%; height: 64%; background: #0f141f; border-radius: 40% 40% 4px 4px;"></div>
+<div style="position: absolute; left: 58%; top: 26%; width: 14%; height: 56%; background: #121a28; border-radius: 40% 40% 4px 4px;"></div>
+<div style="position: absolute; left: 41%; top: 30%; width: 26%; height: 7%; background: #0f141f; transform: translateX(14%);"></div>
+<div style="position: absolute; left: 39%; top: 40%; width: 34%; height: 7%; background: #121a28; transform: translateX(-6%);"></div>
+<div style="position: absolute; left: 44%; top: 50%; width: 22%; height: 7%; background: #0f141f; transform: translateX(20%);"></div>
+<div style="position: absolute; left: 36%; top: 60%; width: 30%; height: 7%; background: #121a28;"></div>
+<div style="position: absolute; left: 34%; top: 22%; width: 40%; height: 60%; border: 1.5px dashed #5fb4c0; border-radius: 50%;"></div>
+<div style="position: absolute; left: calc(34% + 20%); top: 22%; width: 8px; height: 8px; margin: -4px 0 0 -4px; background: #5fb4c0;"></div>
+<div style="position: absolute; left: 12px; top: 10px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #a1a1aa;">Masque 1 · Ellipse</div>
+</div>
+</div>
+<div style="height: 48px; display: flex; align-items: center; padding: 0 12px; gap: 12px; border-top: 1px solid #2c2c31;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #a1a1aa; width: 160px;">E 01:02:10:00 · S 01:02:19:12</span>
+<div style="flex: 1; display: flex; justify-content: center; align-items: center; gap: 6px;">
+<button aria-label="Début" style="width: 32px; height: 28px; border: 0; border-radius: 4px; background: transparent; color: #a1a1aa; display: flex; align-items: center; justify-content: center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M6 5v14M18 6l-8 6 8 6z"></path></svg></button>
+<button aria-label="Image précédente" style="width: 32px; height: 28px; border: 0; border-radius: 4px; background: transparent; color: #a1a1aa; display: flex; align-items: center; justify-content: center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m15 6-6 6 6 6"></path></svg></button>
+<button aria-label="Lecture" style="width: 40px; height: 32px; border: 0; border-radius: 4px; background: #2a2a2e; color: #ececef; display: flex; align-items: center; justify-content: center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5l12 7-12 7z"></path></svg></button>
+<button aria-label="Image suivante" style="width: 32px; height: 28px; border: 0; border-radius: 4px; background: transparent; color: #a1a1aa; display: flex; align-items: center; justify-content: center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg></button>
+<button aria-label="Fin" style="width: 32px; height: 28px; border: 0; border-radius: 4px; background: transparent; color: #a1a1aa; display: flex; align-items: center; justify-content: center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M18 5v14M6 6l8 6-8 6z"></path></svg></button>
+<button aria-label="Boucle" style="width: 32px; height: 28px; border: 0; border-radius: 4px; background: transparent; color: #a1a1aa; display: flex; align-items: center; justify-content: center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M17 2l3 3-3 3"></path><path d="M4 11V9a4 4 0 0 1 4-4h12"></path><path d="M7 22l-3-3 3-3"></path><path d="M20 13v2a4 4 0 0 1-4 4H4"></path></svg></button>
+</div>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 500; width: 160px; text-align: right;">01:02:14:<span style="color: {{accent}};">08</span></span>
+</div>
+</div>
+
+<!-- Inspecteur -->
+<div style="background: #161618; display: flex; flex-direction: column; min-width: 0;">
+<div style="height: 36px; display: flex; align-items: center; padding: 0 14px; border-bottom: 1px solid #2c2c31; gap: 8px;"><span style="font-weight: 500;">Inspecteur</span><div style="flex: 1;"></div><span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding: 1px 6px; border-radius: 2px; background: {{accentSoft}}; color: {{accent}};">Clip d'effet</span></div>
+<div style="padding: 12px 14px 0; display: flex; flex-direction: column; gap: 2px;"><div style="font-size: 14px; font-weight: 600;">Bavure par flux optique</div><div style="font-size: 12px; color: #a1a1aa;">Piste Effets 1 · 01:02:10:00 à 01:02:19:12</div></div>
+<div style="display: flex; gap: 16px; padding: 10px 14px 0; border-bottom: 1px solid #2c2c31; color: #a1a1aa;"><span style="padding-bottom: 6px; color: #ececef; font-weight: 500; border-bottom: 2px solid {{accent}};">Effet</span><span style="padding-bottom: 8px;">Masque</span><span style="padding-bottom: 8px;">Fusion</span><span style="padding-bottom: 8px;">Modulateurs</span></div>
+<div style="flex: 1; overflow: hidden; padding: 12px 14px; display: flex; flex-direction: column; gap: 12px;">
+<div style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #a1a1aa;">Moteur flux optique</div>
+<div style="display: grid; grid-template-columns: 14px 104px minmax(0, 1fr) 52px; align-items: center; gap: 8px;"><span style="width: 9px; height: 9px; transform: rotate(45deg); background: #5fb4c0;"></span><span style="font-size: 12px; font-weight: 500; color: #5fb4c0;">Force</span><span style="height: 4px; border-radius: 9999px; background: #2c2c31; position: relative;"><span style="position: absolute; left: 0; top: 0; bottom: 0; width: 72%; border-radius: 9999px; background: #5fb4c0;"></span></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; text-align: right; padding: 2px 6px; border-radius: 4px; background: #1f1f22; border: 1px solid #717179;">72 %</span></div>
+<div style="display: grid; grid-template-columns: 14px 104px minmax(0, 1fr) 52px; align-items: center; gap: 8px;"><span style="width: 9px; height: 9px; transform: rotate(45deg); border: 1.5px solid #71717a; box-sizing: border-box;"></span><span style="font-size: 12px; font-weight: 500; color: #a1a1aa;">Lissage</span><span style="height: 4px; border-radius: 9999px; background: #2c2c31; position: relative;"><span style="position: absolute; left: 0; top: 0; bottom: 0; width: 40%; border-radius: 9999px; background: #a1a1aa;"></span></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; text-align: right; padding: 2px 6px; border-radius: 4px; background: #1f1f22; border: 1px solid #717179;">40 %</span></div>
+<div style="display: grid; grid-template-columns: 14px 104px minmax(0, 1fr) 52px; align-items: center; gap: 8px;"><span style="width: 9px; height: 9px; transform: rotate(45deg); background: #5fb4c0;"></span><span style="font-size: 12px; font-weight: 500; color: #5fb4c0;">Persistance</span><span style="height: 4px; border-radius: 9999px; background: #2c2c31; position: relative;"><span style="position: absolute; left: 0; top: 0; bottom: 0; width: 85%; border-radius: 9999px; background: #5fb4c0;"></span></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; text-align: right; padding: 2px 6px; border-radius: 4px; background: #1f1f22; border: 1px solid #717179;">85 %</span></div>
+<div style="display: grid; grid-template-columns: 14px 104px minmax(0, 1fr) 52px; align-items: center; gap: 8px;"><span style="width: 9px; height: 9px; transform: rotate(45deg); border: 1.5px solid #71717a; box-sizing: border-box;"></span><span style="font-size: 12px; font-weight: 500; color: #a1a1aa;">Rafraîchissement</span><span style="height: 4px; border-radius: 9999px; background: #2c2c31; position: relative;"><span style="position: absolute; left: 0; top: 0; bottom: 0; width: 12%; border-radius: 9999px; background: #a1a1aa;"></span></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; text-align: right; padding: 2px 6px; border-radius: 4px; background: #1f1f22; border: 1px solid #717179;">12 %</span></div>
+<div style="display: grid; grid-template-columns: 14px 104px minmax(0, 1fr); align-items: center; gap: 8px;"><span></span><span style="font-size: 12px; font-weight: 500; color: #a1a1aa;">Image de référence</span><span style="height: 28px; display: flex; align-items: center; justify-content: space-between; padding: 0 8px; border-radius: 4px; background: #1f1f22; border: 1px solid #717179;">Début du clip<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#a1a1aa" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span></div>
+<div style="height: 1px; background: #2c2c31; margin: 4px 0;"></div>
+<div style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #a1a1aa;">Masque et fusion</div>
+<div style="display: flex; justify-content: space-between; align-items: center;"><span style="color: #a1a1aa; font-size: 12px; font-weight: 500;">Masque</span><span style="font-size: 12px;">Ellipse 1 · adouci 24 px</span></div>
+<div style="display: flex; justify-content: space-between; align-items: center;"><span style="color: #a1a1aa; font-size: 12px; font-weight: 500;">Mode de fusion</span><span style="font-size: 12px;">Normal</span></div>
+<div style="display: flex; justify-content: space-between; align-items: center;"><span style="color: #a1a1aa; font-size: 12px; font-weight: 500;">Opacité</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px;">100 %</span></div>
+</div>
+<div style="padding: 12px 14px; border-top: 1px solid #2c2c31; display: flex; gap: 8px;"><button style="flex: 1; height: 28px; border-radius: 4px; border: 1px solid #717179; background: #1f1f22; color: #ececef; font-weight: 500;">Enregistrer comme préréglage</button><button style="height: 28px; padding: 0 10px; border-radius: 4px; border: 1px solid #717179; background: #1f1f22; color: #ececef;">Calculer</button></div>
+</div>
+
+<!-- Vumètres -->
+<div style="background: #161618; display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 8px;">
+<span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #a1a1aa;">Mix</span>
+<div style="flex: 1; display: flex; gap: 4px;">
+<div style="width: 8px; height: 100%; background: #0e0e10; border-radius: 1px; position: relative; overflow: hidden;"><div style="position: absolute; left: 0; right: 0; bottom: 0; height: 58%; background: #5fb4c0;"></div><div style="position: absolute; left: 0; right: 0; bottom: 58%; height: 6%; background: #d9c04a;"></div></div>
+<div style="width: 8px; height: 100%; background: #0e0e10; border-radius: 1px; position: relative; overflow: hidden;"><div style="position: absolute; left: 0; right: 0; bottom: 0; height: 52%; background: #5fb4c0;"></div></div>
+</div>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #a1a1aa;">−6,2</span>
+</div>
+</div>
+
+<!-- Vue d'ensemble de la séquence -->
+<div style="height: 28px; flex-shrink: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); background: #161618; border-bottom: 1px solid #2c2c31;">
+<div style="display: flex; align-items: center; padding: 0 12px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #71717a; border-right: 1px solid #2c2c31;">Vue d'ensemble</div>
+<div style="position: relative;">
+<div style="position: absolute; top: 6px; height: 6px; left: 1%; width: 18%; background: #2f3d5c; border-radius: 1px;"></div>
+<div style="position: absolute; top: 6px; height: 6px; left: 19.4%; width: 12%; background: #2f3d5c; border-radius: 1px;"></div>
+<div style="position: absolute; top: 6px; height: 6px; left: 31.8%; width: 24%; background: #2f3d5c; border-radius: 1px;"></div>
+<div style="position: absolute; top: 6px; height: 6px; left: 56.2%; width: 16%; background: #2f3d5c; border-radius: 1px;"></div>
+<div style="position: absolute; top: 6px; height: 6px; left: 72.6%; width: 26%; background: #2f3d5c; border-radius: 1px;"></div>
+<div style="position: absolute; top: 15px; height: 4px; left: 36%; width: 6%; background: #4a3220; border-radius: 1px;"></div>
+<div style="position: absolute; top: 15px; height: 4px; left: 64%; width: 4%; background: #4a3220; border-radius: 1px;"></div>
+<div style="position: absolute; top: 21px; height: 4px; left: 1%; width: 97.6%; background: #2c4a3e; border-radius: 1px;"></div>
+<div style="position: absolute; top: 2px; bottom: 2px; left: 33%; width: 12%; border: 1px solid #a1a1aa; border-radius: 2px;"></div>
+<div style="position: absolute; top: 0; bottom: 0; left: 39%; width: 2px; background: {{accent}};"></div>
+</div>
+</div>
+
+<!-- Barre d'outils de la timeline -->
+<div style="height: 36px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding: 0 12px; background: #161618; border-bottom: 1px solid #2c2c31;">
+<button aria-label="Sélection" style="width: 30px; height: 26px; border: 0; border-radius: 4px; background: #2a2a2e; color: #ececef; display: flex; align-items: center; justify-content: center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M5 3l14 8-6 2-2 6z"></path></svg></button>
+<button aria-label="Couper" style="width: 30px; height: 26px; border: 0; border-radius: 4px; background: transparent; color: #a1a1aa; display: flex; align-items: center; justify-content: center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"></path></svg></button>
+<button aria-label="Ripple" style="width: 30px; height: 26px; border: 0; border-radius: 4px; background: transparent; color: #a1a1aa; display: flex; align-items: center; justify-content: center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 12h12M12 8l4 4-4 4M20 5v14"></path></svg></button>
+<button aria-label="Slip" style="width: 30px; height: 26px; border: 0; border-radius: 4px; background: transparent; color: #a1a1aa; display: flex; align-items: center; justify-content: center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="4" y="7" width="16" height="10" rx="1"></rect><path d="M9 12h6M9 12l2-2M9 12l2 2"></path></svg></button>
+<div style="width: 1px; height: 18px; background: #2c2c31; margin: 0 6px;"></div>
+<button aria-label="Aimantation" style="width: 30px; height: 26px; border: 0; border-radius: 4px; background: {{accentSoft}}; color: {{accent}}; display: flex; align-items: center; justify-content: center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M6 4v8a6 6 0 0 0 12 0V4"></path><path d="M6 8h4M14 8h4"></path></svg></button>
+<button style="height: 26px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #a1a1aa;">+ Piste</button>
+<div style="flex: 1;"></div>
+<span style="font-size: 12px; color: #a1a1aa;">Zoom</span>
+<span style="width: 120px; height: 4px; border-radius: 9999px; background: #2c2c31; position: relative;"><span style="position: absolute; left: 0; top: 0; bottom: 0; width: 46%; border-radius: 9999px; background: #a1a1aa;"></span><span style="position: absolute; left: 46%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 9999px; background: #ececef;"></span></span>
+</div>
+
+<!-- Timeline -->
+<div style="flex: 1; min-height: 0; display: flex; background: #161618;">
+<div style="width: 220px; flex-shrink: 0; display: flex; flex-direction: column; border-right: 1px solid #2c2c31;">
+<div style="height: 28px; display: flex; align-items: center; padding: 0 12px; border-bottom: 1px solid #2c2c31; font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 500;">01:02:14:<span style="color: {{accent}};">08</span></div>
+<div style="height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 0; background: #1f1f22; border-bottom: 1px solid #2c2c31;"><span style="width: 4px; align-self: stretch; background: {{accent}};"></span><span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #a1a1aa; flex: 1;">Effets 1</span><span style="font-size: 12px; font-weight: 600; color: #a1a1aa;">M</span><span style="font-size: 12px; font-weight: 600; color: #a1a1aa;">S</span></div>
+<div style="height: 52px; display: flex; gap: 8px; padding: 0 10px 0 0; background: #1f1f22; border-bottom: 1px solid #2c2c31;"><span style="width: 4px; background: #5a7bb8;"></span><div style="flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 6px;"><div style="display: flex; align-items: center; gap: 8px;"><span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #a1a1aa; flex: 1;">V2</span><span style="font-size: 11px; font-style: italic; font-weight: 600; color: #a1a1aa;">fx</span><span style="font-size: 12px; font-weight: 600; color: #a1a1aa;">M</span><span style="font-size: 12px; font-weight: 600; color: #a1a1aa;">S</span></div><div style="display: flex; align-items: center; gap: 6px;"><span style="font-size: 11px; color: #71717a; width: 52px;">Opacité</span><span style="flex: 1; height: 3px; background: #2c2c31; position: relative;"><span style="position: absolute; left: 0; top: 0; bottom: 0; width: 100%; background: #71717a;"></span></span></div></div></div>
+<div style="height: 52px; display: flex; gap: 8px; padding: 0 10px 0 0; background: #1f1f22; border-bottom: 1px solid #2c2c31;"><span style="width: 4px; background: #5a7bb8;"></span><div style="flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 6px;"><div style="display: flex; align-items: center; gap: 8px;"><span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #ececef; flex: 1;">V1</span><span style="font-size: 11px; font-style: italic; font-weight: 600; color: {{accent}};">fx</span><span style="font-size: 12px; font-weight: 600; color: #a1a1aa;">M</span><span style="font-size: 12px; font-weight: 600; color: #a1a1aa;">S</span></div><div style="display: flex; align-items: center; gap: 6px;"><span style="font-size: 11px; color: #71717a; width: 52px;">Opacité</span><span style="flex: 1; height: 3px; background: #2c2c31; position: relative;"><span style="position: absolute; left: 0; top: 0; bottom: 0; width: 100%; background: #71717a;"></span></span></div></div></div>
+<div style="height: 26px; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 16px; background: #161618; border-bottom: 1px solid #2c2c31;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5fb4c0" stroke-width="2" aria-hidden="true"><path d="M5 5v8h12"></path></svg><span style="font-size: 12px; color: #5fb4c0; flex: 1;">Datamosh · Force</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#71717a" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></div>
+<div style="height: 40px; display: flex; gap: 8px; padding: 0 10px 0 0; background: #1f1f22; border-bottom: 1px solid #2c2c31;"><span style="width: 4px; background: #4f8f72;"></span><div style="flex: 1; display: flex; align-items: center; gap: 8px;"><span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #a1a1aa; flex: 1;">A1</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #a1a1aa;">0,0 dB</span><span style="font-size: 12px; font-weight: 600; color: #a1a1aa;">M</span><span style="font-size: 12px; font-weight: 600; color: #a1a1aa;">S</span></div></div>
+<div style="height: 40px; display: flex; gap: 8px; padding: 0 10px 0 0; background: #1f1f22; border-bottom: 1px solid #2c2c31;"><span style="width: 4px; background: #4f8f72;"></span><div style="flex: 1; display: flex; align-items: center; gap: 8px;"><span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #a1a1aa; flex: 1;">A2 · Musique</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #a1a1aa;">−4,5 dB</span><span style="font-size: 12px; font-weight: 600; color: #a1a1aa;">M</span><span style="font-size: 12px; font-weight: 600; color: #a1a1aa;">S</span></div></div>
+</div>
+
+<div style="flex: 1; min-width: 0; position: relative; display: flex; flex-direction: column;">
+<div style="height: 28px; position: relative; border-bottom: 1px solid #2c2c31; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #71717a;">
+<span style="position: absolute; left: 1%; top: 6px;">01:02:00:00</span>
+<span style="position: absolute; left: 21%; top: 6px;">01:02:05:00</span>
+<span style="position: absolute; left: 41%; top: 6px;">01:02:10:00</span>
+<span style="position: absolute; left: 61%; top: 6px;">01:02:15:00</span>
+<span style="position: absolute; left: 81%; top: 6px;">01:02:20:00</span>
+<span style="position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: repeating-linear-gradient(90deg, #2c2c31 0 1px, transparent 1px 4%);"></span>
+</div>
+<div style="height: 36px; position: relative; border-bottom: 1px solid #2c2c31;">
+<div style="position: absolute; left: 40%; width: 38%; top: 4px; bottom: 4px; border-radius: 2px; background: #4a3220; box-shadow: inset 0 0 0 2px {{accent}}; padding: 6px 8px; box-sizing: border-box; font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden;">Bavure par flux optique<span style="position: absolute; right: 6px; top: 6px; font-size: 11px; font-style: italic; font-weight: 600; color: {{accent}};">fx</span></div>
+</div>
+<div style="height: 52px; position: relative; border-bottom: 1px solid #2c2c31;">
+<div style="position: absolute; left: 66%; width: 22%; top: 4px; bottom: 4px; border-radius: 2px; background: #2f3d5c; padding: 4px 8px; box-sizing: border-box; font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden;">TITRE_ATLAS.mov</div>
+</div>
+<div style="height: 52px; position: relative; border-bottom: 1px solid #2c2c31;">
+<div style="position: absolute; left: 1%; width: 49%; top: 4px; bottom: 4px; border-radius: 2px; background: #2f3d5c; padding: 4px 8px; box-sizing: border-box; font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden;">PLAN_014_v2.mov<span style="position: absolute; right: 8px; top: 4px; font-size: 11px; font-style: italic; font-weight: 600; color: #a1a1aa;">fx</span></div>
+<div style="position: absolute; left: 50%; width: 48%; top: 4px; bottom: 4px; border-radius: 2px; background: #2f3d5c; padding: 4px 8px 4px 72px; box-sizing: border-box; font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden;">PLAN_015.mov</div>
+<div style="position: absolute; left: 45%; width: 10%; top: 4px; bottom: 4px; border-radius: 2px; background: #133c42; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500;">Datamosh</div>
+</div>
+<div style="height: 26px; position: relative; border-bottom: 1px solid #2c2c31; background: #0e0e10;">
+<svg width="100%" height="26" viewBox="0 0 1000 26" preserveAspectRatio="none" style="position: absolute; inset: 0;" aria-hidden="true"><polyline points="0,20 400,20 470,6 600,6 680,14 780,20 1000,20" fill="none" stroke="#5fb4c0" stroke-width="1.5" vector-effect="non-scaling-stroke"></polyline></svg>
+<span style="position: absolute; left: 40%; top: 16px; width: 8px; height: 8px; margin-left: -4px; transform: rotate(45deg); background: #5fb4c0;"></span>
+<span style="position: absolute; left: 47%; top: 2px; width: 8px; height: 8px; margin-left: -4px; transform: rotate(45deg); background: #5fb4c0;"></span>
+<span style="position: absolute; left: 60%; top: 2px; width: 8px; height: 8px; margin-left: -4px; transform: rotate(45deg); background: #5fb4c0;"></span>
+<span style="position: absolute; left: 68%; top: 10px; width: 8px; height: 8px; margin-left: -4px; transform: rotate(45deg); background: #5fb4c0;"></span>
+<span style="position: absolute; left: 78%; top: 16px; width: 8px; height: 8px; margin-left: -4px; transform: rotate(45deg); background: #5fb4c0;"></span>
+</div>
+<div style="height: 40px; position: relative; border-bottom: 1px solid #2c2c31;">
+<div style="position: absolute; left: 1%; width: 97%; top: 4px; bottom: 4px; border-radius: 2px; background: #2c4a3e; overflow: hidden; display: flex; align-items: center; gap: 2px; padding: 0 6px; box-sizing: border-box;">
+<sc-for list="{{wave1}}" as="h" hint-placeholder-count="60"><i style="flex: 1; height: {{h}}; background: #a1a1aa; border-radius: 1px;"></i></sc-for>
+</div>
+</div>
+<div style="height: 40px; position: relative; border-bottom: 1px solid #2c2c31;">
+<div style="position: absolute; left: 1%; width: 97%; top: 4px; bottom: 4px; border-radius: 2px; background: #2c4a3e; overflow: hidden; display: flex; align-items: center; gap: 2px; padding: 0 6px; box-sizing: border-box;">
+<sc-for list="{{wave2}}" as="h" hint-placeholder-count="60"><i style="flex: 1; height: {{h}}; background: #a1a1aa; border-radius: 1px;"></i></sc-for>
+</div>
+</div>
+<div style="position: absolute; left: 51.5%; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: {{accent}}; pointer-events: none;"></div>
+<div style="position: absolute; left: 51.5%; top: 0; width: 0; height: 0; margin-left: -6px; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid {{accent}}; pointer-events: none;"></div>
+</div>
+</div>
+
+<!-- Espaces de travail -->
+<div style="height: 40px; flex-shrink: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; padding: 0 12px; border-top: 1px solid #2c2c31; background: #0e0e10;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #71717a;">GPU · Proxy 1/2 · 24 i/s · Cache 82 %</span>
+<div style="display: flex; gap: 4px;">
+<span style="padding: 6px 16px; color: #a1a1aa;">Médias</span>
+<span style="padding: 6px 16px; color: #ececef; font-weight: 600; box-shadow: inset 0 -2px 0 {{accent}};">Montage</span>
+<span style="padding: 6px 16px; color: #a1a1aa;">Glitch</span>
+<span style="padding: 6px 16px; color: #a1a1aa;">Export</span>
+</div>
+<span style="text-align: right; font-size: 12px; color: #71717a;">Enregistré il y a 1 min</span>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;accent&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Orange&quot;,&quot;Violet froid&quot;,&quot;Mauve&quot;],&quot;default&quot;:&quot;Mauve&quot;},&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:1000}}">
+class Component extends DCLogic {
+renderVals() {
+const mk = (seed, n) => {
+const out = [];
+let v = seed;
+for (let i = 0; i < n; i++) {
+v = (v * 9301 + 49297) % 233280;
+out.push(Math.round(20 + (v / 233280) * 70) + '%');
+}
+return out;
+};
+const pal = { 'Orange': ['#d9883f', '#3a2614'], 'Violet froid': ['#8f86c4', '#24223a'], 'Mauve': ['#b07cc6', '#33213b'] };
+const p = pal[this.props.accent] || pal['Orange'];
+return { wave1: mk(7, 120), wave2: mk(42, 120), accent: p[0], accentSoft: p[1] };
+}
+}
+</script>
+</body>
+</html>
