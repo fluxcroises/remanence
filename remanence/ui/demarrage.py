@@ -10,7 +10,7 @@ from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QFont, QPainter
 from PySide6.QtWidgets import QApplication, QWidget
 
-from remanence import EDITEUR
+from remanence import ANNEE, EDITEUR, __version__
 from remanence.ui import charte
 
 LARGEUR, HAUTEUR = 880, 600
@@ -102,16 +102,21 @@ class EcranDemarrage(QWidget):
         p.setPen(c.c("ink-muted"))
         p.drawText(QRectF(g + 80, haut + 46, 300, 18), Qt.AlignLeft, "Montage et datamosh")
 
-        # Bas de la carte : l'étape de chargement à gauche, l'éditeur à droite. La version et les
-        # licences sont dans À propos.
-        ligne = QRectF(g, CARTE.bottom() - 46, CARTE.width() - 80, 18)
+        # Bas de la carte : l'étape de chargement, puis copyright et version ; l'éditeur à droite.
+        gauche = QRectF(g, CARTE.bottom() - 58, CARTE.width() - 80, 18)
         p.setFont(c.police("label"))
-        p.drawText(ligne, Qt.AlignLeft | Qt.AlignVCenter, self._message)
+        p.drawText(gauche, Qt.AlignLeft | Qt.AlignVCenter, self._message)
+        p.setFont(c.police("body", 11))
+        p.drawText(gauche.translated(0, 20), Qt.AlignLeft | Qt.AlignVCenter,
+                   f"© {ANNEE} {EDITEUR} · Version {__version__}")
         logo = c.logo_editeur(16)
+        milieu = gauche.bottom() + 1
         if logo is not None:
             l = logo.width() / logo.devicePixelRatio()
-            p.drawPixmap(int(ligne.right() - l), int(ligne.center().y() - 8), logo)
+            p.drawPixmap(int(gauche.right() - l), int(milieu - 8), logo)
         else:
+            p.setFont(c.police("label"))
             p.setPen(c.c("ink"))
-            p.drawText(ligne, Qt.AlignRight | Qt.AlignVCenter, EDITEUR)
+            p.drawText(QRectF(gauche.left(), milieu - 9, gauche.width(), 18),
+                       Qt.AlignRight | Qt.AlignVCenter, EDITEUR)
         p.end()
