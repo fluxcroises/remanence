@@ -76,6 +76,7 @@ class VueTimeline(QWidget):
     media_depose = Signal(list, int, str)
     # ("raccord" | "coupe", identifiant du clip, image depuis le début du clip)
     cle_basculee = Signal(str, str, int)
+    outil_demande = Signal(str)
     # (préréglage, "clip" | "vide", identifiant du clip ou de la piste, image)
     prereglage_depose = Signal(object, str, str, int)
 
@@ -494,10 +495,14 @@ class VueTimeline(QWidget):
             px, py = self.x_de(clip.debut + x), self._y_enveloppe(r, v * clip.gain)
             p.fillRect(QRectF(px - 3, py - 3, 6, 6), c.c("ink"))
 
+    @staticmethod
+    def _temps_cles(clip: Clip) -> list[int]:
+        return sorted({k[0] for e in clip.effets for cles in e.cles.values() for k in cles
+                       if 0 <= k[0] < clip.duree})
+
     def _dessiner_cles(self, p: QPainter, clip: Clip, r: QRectF):
         """Losanges keyframe en bas du clip, un par instant qui porte une image clé d'effet."""
-        temps = sorted({k[0] for e in clip.effets for cles in e.cles.values() for k in cles
-                        if 0 <= k[0] < clip.duree})
+        temps = self._temps_cles(clip)
         if not temps:
             return
         c = charte.actuelle()
@@ -545,6 +550,11 @@ class VueTimeline(QWidget):
                 bord = self.x_de(clip.debut + min(clip.transition.duree, clip.duree))
                 if abs(pos.x() - bord) <= 5:
                     return "transition", piste, clip, -1
+            if pos.y() >= r.bottom() - 12:
+                for t in self._temps_cles(clip):
+                    x = self.x_de(clip.debut + t) + self.px_par_image / 2
+                    if abs(pos.x() - x) <= 6:
+                        return "cle_effet", piste, clip, t
             for rang, (x, v) in enumerate(clip.enveloppe):
                 px, py = self.x_de(clip.debut + x), self._y_enveloppe(r, v * clip.gain)
                 if abs(pos.x() - px) <= 5 and abs(pos.y() - py) <= 5:
@@ -602,16 +612,16 @@ class VueTimeline(QWidget):
             curseurs = {"bord_debut": Qt.SizeHorCursor, "bord_fin": Qt.SizeHorCursor,
                         "roll_debut": Qt.SplitHCursor, "roll_fin": Qt.SplitHCursor,
                         "fondu_entree": Qt.SizeHorCursor, "fondu_sortie": Qt.SizeHorCursor,
-                        "transition": Qt.SizeHorCursor,
+                        "transition": Qt.SizeHorCursor, "cle_effet": Qt.PointingHandCursor,
                         "point": Qt.SizeAllCursor, "deplacer": Qt.OpenHandCursor,
                         "slip": Qt.SizeHorCursor, "slide": Qt.SizeHorCursor}
             repere = self._repere_a(pos)
             if repere is not None:
                 self.setCursor(Qt.PointingHandCursor)
-                self.setToolTip({("raccord", False): "Raccord : poser une transition datamosh",
-                                 ("raccord", True): "Raccord : retirer la transition datamosh",
-                                 ("coupe", False): "Image clé : la supprimer",
-                                 ("coupe", True): "Image clé supprimée : la rendre"}
+                self.setToolTip({("raccord", False): "Transition datamosh",
+                                 ("raccord", True): "Retirer la transition datamosh",
+                                 ("coupe", False): "Faire baver la coupe",
+                                 ("coupe", True): "Rétablir la coupe"}
                                 [(repere[1], repere[4])])
                 return
             self.setToolTip("")
@@ -678,6 +688,17 @@ class VueTimeline(QWidget):
                 cible = cible2
             edition.rogner(self.projet, seq, clip.id, cote, cible - bord, inclure_lies=lies,
                            ripple=self.ripple)
+        elif g.type == "cle_effet":
+            _, clip = seq.trouver(g.clip_id)
+            t = max(0, min(round(self.f_de(pos.x())) - clip.debut, clip.duree - 1))
+            for effet in clip.effets:
+                for cle, cles in effet.cles.items():
+                    if any(k[0] == g.rang for k in cles):
+                        effet.cles[cle] = sorted(
+                            [k for k in cles if k[0] not in (t, g.rang)] +
+                            [[t, k[1], k[2]] for k in cles if k[0] == g.rang],
+                            key=lambda k: k[0])
+            self._placer_tete(clip.debut + t)
         elif g.type == "transition":
             _, clip = seq.trouver(g.clip_id)
             clip.transition.duree = max(1, min(round(self.f_de(pos.x())) - clip.debut,
@@ -763,6 +784,8 @@ class VueTimeline(QWidget):
                 edition.couper(seq, f, ids)
                 self.modifie.emit("Coupe")
             return
+        if zone == "cle_effet":
+            self._placer_tete(clip.debut + rang)
         if piste.verrouillee:
             self._choisir({clip.id})
             return
@@ -785,7 +808,11 @@ class VueTimeline(QWidget):
                     "fondu_entree": "Fondu d'entrée", "fondu_sortie": "Fondu de sortie",
                     "point": "Point d'enveloppe", "slip": "Slip", "slide": "Slide",
                     "roll_debut": "Roll", "roll_fin": "Roll", "marqueur": "Marqueur déplacé",
-                    "transition": "Durée de la transition"}
+                    "transition": "Durée de la transition", "cle_effet": "Image clé déplacée"}
+        if g.type == "cle_effet" and round((e.position().x() - g.x0) / self.px_par_image) == 0:
+            self.projet.sequence.pistes = copy.deepcopy(g.etat)
+            self.update()
+            return
         if g.type in libelles:
             if g.type == "marqueur" and g.marqueurs is not None and \
                     [m.position for m in g.marqueurs] == \
@@ -905,7 +932,10 @@ class VueTimeline(QWidget):
             except edition.EditionImpossible:
                 pass
         elif e.key() == Qt.Key_Escape:
-            self._choisir(set())
+            if self.outil != "selection":
+                self.outil_demande.emit("selection")
+            else:
+                self._choisir(set())
         else:
             super().keyPressEvent(e)
 
@@ -1162,9 +1192,9 @@ class Timeline(QWidget):
         self.zone_entetes.setFixedWidth(LARGEUR_ENTETE)
         self._entetes: list[EntetePiste] = []
         self.timecode = ChampTimecode(20, self.zone_entetes)
-        self._nom_cles = etiquette("Images clés", "section")
+        self._nom_cles = etiquette("Coupes", "section")
         self._nom_cles.setParent(self.zone_entetes)
-        self._nom_cles.setToolTip("Raccords et coupes de la vidéo")
+        self._nom_cles.setToolTip("Coupes et raccords (datamosh)")
         self.timecode.position_demandee.connect(fenetre.aller_a)
         self.vumetres = Vumetres(fenetre.lecture.cretes)
 
@@ -1176,6 +1206,7 @@ class Timeline(QWidget):
         self.b_selection.setChecked(True)
         self.b_selection.clicked.connect(lambda: self.choisir_outil("selection"))
         self.b_couper.clicked.connect(lambda: self.choisir_outil("couper"))
+        self.vue.outil_demande.connect(self.choisir_outil)
         self.b_aimant = bouton_icone("magnet", "Aimantation (F8)",
                                      cochable=True)
         self.b_aimant.setChecked(True)
@@ -1251,6 +1282,7 @@ class Timeline(QWidget):
         self.b_selection.setChecked(outil == "selection")
         self.b_couper.setChecked(outil == "couper")
         self.vue.survol_coupe = None
+        self.vue.setCursor(Qt.ArrowCursor)
         self.vue.update()
 
     def _ripple(self, actif: bool):

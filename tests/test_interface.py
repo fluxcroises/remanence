@@ -626,6 +626,41 @@ def test_effets_ffglitch_dans_l_inspecteur(fenetre, medias, monkeypatch):
     assert _attendre(lambda: "FFglitch absent : effet sans action" in textes(), 2)
 
 
+def test_losanges_de_la_timeline_et_echap(fenetre, medias):
+    """Clic sur un losange d'un clip : la tête y va ; le glisser déplace l'image clé.
+    Échap quitte l'outil de coupe."""
+    from PySide6.QtCore import QPoint, QPointF, Qt
+    from PySide6.QtTest import QTest
+    from remanence.effets import nouvel_effet, poser_cle
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    effet = nouvel_effet("scanlines")
+    poser_cle(effet, "force", 4, 10)
+    poser_cle(effet, "force", 20, 80)
+    w.ajouter_effet("clip", clip.id, [effet])
+    vue = w.timeline.vue
+    vue.px_par_image = 12
+    vue.update()
+    _attendre(lambda: False, 0.3)
+    x = vue.x_de(clip.debut + 4) + vue.px_par_image / 2
+    y = next(y for y in range(vue.height()) if vue._sous(QPointF(x, y))[0] == "cle_effet")
+    QTest.mouseClick(vue, Qt.LeftButton, Qt.NoModifier, QPoint(round(x), y))
+    assert _attendre(lambda: w.lecture.position == clip.debut + 4, 2), "la tête va au losange"
+    QTest.mousePress(vue, Qt.LeftButton, Qt.NoModifier, QPoint(round(x), y))
+    QTest.mouseMove(vue, QPoint(round(x + 6 * vue.px_par_image), y))
+    QTest.mouseRelease(vue, Qt.LeftButton, Qt.NoModifier,
+                       QPoint(round(x + 6 * vue.px_par_image), y))
+    cles = lambda: w.projet.sequence.pistes_video[0].clips[0].effets[0].cles["force"]
+    assert _attendre(lambda: [k[0] for k in cles()] == [10, 20], 2), "image clé déplacée"
+    w.timeline.choisir_outil("couper")
+    vue.setFocus()
+    QTest.keyClick(vue, Qt.Key_Escape)
+    assert vue.outil == "selection" and w.timeline.b_selection.isChecked()
+
+
 def test_masques_depuis_l_interface(fenetre, medias):
     """Ajouter un masque, le régler, le déplacer à la souris sur le programme, le retirer."""
     from PySide6.QtCore import QPoint, Qt
