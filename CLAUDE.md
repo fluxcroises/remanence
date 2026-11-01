@@ -26,9 +26,10 @@ Logiciel Windows de montage vidéo orienté datamosh et glitch art, dans l'espri
 
 ## État d'avancement
 
-- Étape 1 (socle et visionneuse) : codée, avec la charte graphique intégrée (31 octobre 2026). Refonte de l'interface en cours (lots ci-dessous) ; lots 1 à 5 faits le 1er novembre 2026 (refonte terminée), puis corrections du test manuel du 1er novembre, 90 tests au vert. En attente de la validation de Lewis.
+- Étape 1 (socle et visionneuse) : validée par Lewis le 1er novembre 2026 (charte intégrée, refonte de l'interface en cinq lots, corrections du test manuel, timecode au choix, double écran façon Resolve, textes courts), 91 tests au vert.
 - Captures de référence de l'état actuel : `UI/captures/`.
-- Étapes 2 à 6 : non commencées. Ne pas passer à l'étape suivante sans validation explicite.
+- Étape 2 (effets en temps réel et ciblage) : plan présenté le 1er novembre 2026, en attente de l'accord de Lewis.
+- Étapes 3 à 6 : non commencées. Ne pas passer à l'étape suivante sans validation explicite.
 
 ## Commandes
 
