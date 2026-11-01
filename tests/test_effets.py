@@ -191,6 +191,28 @@ def test_animation_et_opacite_dans_l_image(medias):
     assert np.abs(_image(projet, 5) - (source[1] + plein) / 2).max() < 1e-5
 
 
+def test_effet_entre_ses_images_cles(medias, tmp_path):
+    """Un effet animé n'agit qu'entre sa première et sa dernière image clé ; hors de cette
+    plage, l'export recopie la source. Une seule image clé : l'effet agit partout."""
+    from remanence.effets import poser_cle
+    projet, clip = _projet(medias)
+    seq = projet.sequence
+    source = {f: _image(projet, f) for f in (2, 5, 8, 20)}
+    e = nouvel_effet("decalage_rvb")
+    e.params["force"] = 80
+    poser_cle(e, "force", 5, 80)
+    clip.effets = [e]
+    assert np.abs(_image(projet, 2) - source[2]).max() > 0.1, "une seule clé : partout"
+    poser_cle(e, "force", 8, 80)
+    assert np.abs(_image(projet, 2) - source[2]).max() < 1e-6, "avant la première clé"
+    assert np.abs(_image(projet, 20) - source[20]).max() < 1e-6, "après la dernière clé"
+    assert np.abs(_image(projet, 5) - source[5]).max() > 0.1
+    assert np.abs(_image(projet, 8) - source[8]).max() > 0.1
+    rapport = exporter(projet, seq, tmp_path / "entre.mov")
+    assert rapport.conforme
+    assert rapport.images_calculees == 4 and rapport.images_recopiees == clip.duree - 4
+
+
 @pytest.mark.parametrize("mode", ["addition", "ecran", "produit", "difference"])
 def test_modes_de_fusion(medias, mode):
     """Un clip opaque posé sur un autre avec un mode : la formule du mode, pixel par pixel."""

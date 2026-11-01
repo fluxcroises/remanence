@@ -150,6 +150,23 @@ def valeur_a(effet: Effet, cle: str, t: float) -> float:
     return cles[-1][1]
 
 
+def plage_cles(effet: Effet) -> tuple[float, float] | None:
+    """Première et dernière image clé de l'effet, tous réglages confondus ; None s'il en a
+    moins de deux instants (pas encore de plage : l'effet agit partout)."""
+    temps = {k[0] for cles in effet.cles.values() for k in cles}
+    if len(temps) < 2:
+        return None
+    return min(temps), max(temps)
+
+
+def agit_a(effet: Effet, t: float) -> bool:
+    """Un effet animé n'agit qu'entre sa première et sa dernière image clé (choix de Lewis,
+    1er novembre 2026 : des bouffées de glitch, pas un effet qui tient sa valeur hors des
+    clés comme dans After Effects)."""
+    plage = plage_cles(effet)
+    return plage is None or plage[0] <= t <= plage[1]
+
+
 def instantane(effet: Effet, t: float) -> Effet:
     """L'effet tel qu'il est au temps t : paramètres et opacité fixés, prêt pour le rendu."""
     if not effet.cles:

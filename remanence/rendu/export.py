@@ -231,7 +231,7 @@ def exporter(projet: Projet, seq: Sequence, chemin: Path, cle_format: str = "sou
     n_images = fin - debut
 
     piles = [couches(projet, seq, f) for f in range(debut, fin)]
-    idents = [identite(p, seq) for p in piles]
+    idents = [identite(p, seq, f) for p, f in zip(piles, range(debut, fin))]
     remux_total = (
         ref is not None and all(i is not None and i.media.id == ref.id for i in idents)
         and [i.image_source for i in idents] == list(range(ref.infos.video.nb_images))

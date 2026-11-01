@@ -16,7 +16,7 @@ import numpy as np
 from remanence.media.lecteur import FREQUENCE_MIXAGE, LecteurVideo, Pool
 from remanence.media.proxy import chemin_audio, chemin_proxy
 from remanence.media.sonde import analyser
-from remanence.effets import EFFETS, instantane
+from remanence.effets import EFFETS, agit_a, instantane
 from remanence.projet.modele import Clip, Effet, Media, Projet, Sequence
 from remanence.moteurs.codec import prerendu
 from remanence.rendu.couleur import vers_rvb16_apercu, vers_rvba
@@ -40,7 +40,8 @@ class Couche:
 def actifs(effets: list[Effet], t: float = 0) -> list[Effet]:
     """Effets allumés, figés au temps t (depuis le début de leur porteur). Les effets codec
     passent en tête : leur pré-rendu part de la source, avant tout effet en temps réel."""
-    allumes = [instantane(e, t) for e in effets if e.actif and e.type in EFFETS]
+    allumes = [instantane(e, t) for e in effets
+               if e.actif and e.type in EFFETS and agit_a(e, t)]
     return sorted(allumes, key=lambda e: not EFFETS[e.type].codec)
 
 
@@ -70,10 +71,10 @@ def couches(projet: Projet, seq: Sequence, f: int) -> list[Couche]:
     return resultat
 
 
-def identite(pile: list[Couche], seq: Sequence | None = None) -> Couche | None:
-    """La couche dont l'image source est le résultat exact, s'il en existe une : aucun effet
-    sur elle, au-dessus d'elle ni sur la séquence."""
-    if not pile or (seq is not None and actifs(seq.effets)):
+def identite(pile: list[Couche], seq: Sequence | None = None, f: int = 0) -> Couche | None:
+    """La couche dont l'image source est le résultat exact à l'image f, s'il en existe une :
+    aucun effet sur elle, au-dessus d'elle ni sur la séquence."""
+    if not pile or (seq is not None and actifs(seq.effets, f)):
         return None
     haut = pile[-1]
     if haut.media is None or haut.effets or haut.opacite < 1.0 or haut.fusion != "normal" \
@@ -178,7 +179,7 @@ class Compositeur:
         largeur = max(2, round(seq.largeur * echelle))
         hauteur = max(2, round(seq.hauteur * echelle))
         pile = couches(self.projet, seq, f)
-        if len(pile) == 1 and identite(pile, seq) is not None:
+        if len(pile) == 1 and identite(pile, seq, f) is not None:
             v = pile[0].media.infos.video
             if not v.alpha and (v.largeur, v.hauteur) == (seq.largeur, seq.hauteur):
                 image = self.lecteur(pile[0].media, proxy).image(pile[0].image_source)

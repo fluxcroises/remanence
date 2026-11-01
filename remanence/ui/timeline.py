@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (QHBoxLayout, QInputDialog, QMenu, QScrollBar, QSl
 from remanence.media.lecteur import AudioCache
 from remanence.media.proxy import chemin_audio
 from remanence.media.timecode import images_vers_tc
-from remanence.effets import EFFETS
+from remanence.effets import EFFETS, plage_cles
 from remanence.effets.prereglages import MIME_PREREGLAGE, depuis_mime
 from remanence.projet import edition
 from remanence.projet.modele import Clip, Marqueur, Piste, Projet, valeur_enveloppe
@@ -509,10 +509,18 @@ class VueTimeline(QWidget):
         p.save()
         # Bande sombre sous les losanges : ils restent lisibles sur les vignettes.
         p.fillRect(QRectF(r.left(), r.bottom() - 13, r.width(), 13), c.c("bg-app", 0.8))
+        y = r.bottom() - 6.5
+        # Trait entre la première et la dernière image clé : là où l'effet agit.
+        p.setPen(QPen(c.c("keyframe"), 2))
+        for e in clip.effets:
+            plage = plage_cles(e)
+            if plage is not None and e.actif:
+                x0, x1 = (min(max(self.x_de(clip.debut + t) + self.px_par_image / 2,
+                                  r.left() + 6), r.right() - 6) for t in plage)
+                p.drawLine(QPointF(x0, y), QPointF(x1, y))
         p.setRenderHint(QPainter.Antialiasing, True)
         p.setPen(QPen(c.c("bg-app"), 1))
         p.setBrush(c.c("keyframe"))
-        y = r.bottom() - 6.5
         for t in temps:
             x = self.x_de(clip.debut + t) + self.px_par_image / 2
             x = min(max(x, r.left() + 6), r.right() - 6)
