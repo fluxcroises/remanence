@@ -221,3 +221,55 @@ def test_historique_et_barre_des_espaces(fenetre, medias):
     w.a_barre_espaces.trigger()
     assert w.barre_bas.isVisibleTo(w)
     assert "Sans titre" in w.barre_titre.projet.text() and "i/s" in w.barre_titre.cadence.text()
+
+
+def test_moniteur_source_et_montage_depuis_la_source(fenetre, medias):
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    m = next(iter(w.projet.medias.values()))
+    w.choisir_espace("montage")
+    w.charger_source(m)
+    assert w._actif == "source" and w._docks["source"].isVisible()
+    assert _attendre(lambda: w.source.zone._image is not None), "la source ne s'affiche pas"
+    w.aller("source", 5)
+    w.point_entree()
+    w.aller("source", 14)
+    w.point_sortie()
+    assert (w.projet.medias[m.id].point_entree, w.projet.medias[m.id].point_sortie) == (5, 15)
+
+    w.monter_source(inserer=False)
+    clips = w.projet.sequence.pistes_video[0].clips
+    assert [(c.debut, c.entree, c.duree) for c in clips] == [(0, 5, 10)]
+    assert w._actif == "programme" and w.lecture.position == 10
+    w.aller_a(4)
+    w.monter_source(inserer=True)
+    clips = w.projet.sequence.pistes_video[0].clips
+    assert [(c.debut, c.entree, c.duree) for c in clips] == [(0, 5, 4), (4, 5, 10), (14, 9, 6)]
+
+    # I s'adresse au moniteur actif : ici le programme, pas la source.
+    w.aller_a(2)
+    w.point_entree()
+    assert w.projet.sequence.point_entree == 2 and w.projet.medias[m.id].point_entree == 5
+
+    w.poser_medias([f"{m.id}@20:25"], 40, "")
+    assert any((c.debut, c.entree, c.duree) == (40, 20, 5)
+               for c in w.projet.sequence.pistes_video[0].clips)
+
+
+def test_double_ecran_et_programme_externe(fenetre, medias):
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    w.basculer_double_ecran(True)
+    assert w._double_ecran is not None
+    assert w._docks["timeline"].parent() is w._double_ecran
+    w.choisir_espace("media")
+    assert w._docks["timeline"].isVisible(), "la timeline reste sur le second écran"
+    w.basculer_double_ecran(False)
+    assert w._double_ecran is None and w._docks["timeline"].parent() is w
+    w.basculer_programme_externe()
+    assert w._programme_externe is not None
+    w.basculer_programme_externe()
+    assert _attendre(lambda: w._programme_externe is None, 2)

@@ -6,11 +6,12 @@ import time
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QEvent, QSettings, Qt, QTimer
-from PySide6.QtGui import QAction, QImage, QKeySequence, QPixmap
+from PySide6.QtCore import QEvent, Qt, QTimer
+from PySide6.QtGui import QAction, QGuiApplication, QImage, QKeySequence, QPixmap
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QFileDialog, QInputDialog,
-                               QMainWindow, QMessageBox, QToolBar, QWidget)
+                               QMainWindow, QMessageBox, QToolBar, QVBoxLayout, QWidget)
 
+from remanence.config import reglages_interface
 from remanence.media import intermediaire
 from remanence.media.lecteur import LecteurVideo, generer_cache_audio
 from remanence.media.proxy import chemin_audio, chemin_proxy, generer_proxy, proxy_utile
@@ -19,6 +20,7 @@ from remanence.projet import edition, serialisation
 from remanence.projet.historique import Historique
 from remanence.projet.modele import Marqueur, Media, Projet, nouvel_id
 from remanence.rendu.couleur import vers_rvb16_apercu, vers_rvba
+from remanence.media.timecode import images_vers_tc
 from remanence.rendu.export import exporter
 from remanence.ui import charte
 from remanence.ui.apropos import APropos
@@ -32,7 +34,8 @@ from remanence.ui.medias import PanneauMedias
 from remanence.ui.panneau_export import FileExport, FormulaireExport
 from remanence.ui.taches import GestionnaireTaches, Tache
 from remanence.ui.timeline import Timeline
-from remanence.ui.visionneuse import LIBELLES_QUALITE, Visionneuse
+from remanence.ui.visionneuse import (LIBELLES_QUALITE, Moniteur, ZoneImage, glisser_source,
+                                      peindre_cadre_actif)
 
 INTERVALLE_AUTO_MS = 2 * 60 * 1000
 EXTENSIONS_MEDIAS = ("*.mov *.mp4 *.mxf *.mkv *.avi *.webm *.mts *.m2ts *.m4v *.mpg *.mpeg "
@@ -41,11 +44,11 @@ EXTENSIONS_MEDIAS = ("*.mov *.mp4 *.mxf *.mkv *.avi *.webm *.mts *.m2ts *.m4v *.
 HAUTEUR_VIGNETTE = 48
 BORD = 5
 # À augmenter quand les panneaux changent : les dispositions mémorisées avant sont ignorées.
-VERSION_DISPOSITION = 2
+VERSION_DISPOSITION = 3
 # Panneaux visibles dans chaque espace de travail.
 PANNEAUX_ESPACE = {
-    "media": {"medias", "visionneuse", "droite"},
-    "montage": {"medias", "visionneuse", "droite", "mixage", "timeline"},
+    "media": {"medias", "source", "droite"},
+    "montage": {"medias", "source", "visionneuse", "droite", "mixage", "timeline"},
     "export": {"export", "visionneuse", "file_export", "timeline"},
 }
 
@@ -104,7 +107,15 @@ class FenetrePrincipale(QMainWindow):
         self.lecture = MoteurLecture()
         self.taches = GestionnaireTaches()
         self.medias = PanneauMedias()
-        self.visionneuse = Visionneuse()
+        self.visionneuse = Moniteur("programme")
+        self.source = Moniteur("source")
+        self.source.zone.glissable = True
+        self.lecture_source = MoteurLecture()
+        self.media_source: Media | None = None
+        self._actif = "programme"
+        self._un_seul = False
+        self._double_ecran: QMainWindow | None = None
+        self._programme_externe: QWidget | None = None
         self.inspecteur = Inspecteur()
         self.metadonnees = Metadonnees()
         self.liste_historique = ListeHistorique()
@@ -131,9 +142,16 @@ class FenetrePrincipale(QMainWindow):
         self._docks["export"] = d
         d, _ = panneau_onglets([("File d'export", self.file_export)], "file_export", self)
         self._docks["file_export"] = d
+        d, self._entete_source = panneau("Source", self.source, "source", self)
+        self._docks["source"] = d
+        self.source.qualite.hide()
         d, self._entete_visionneuse = panneau("Programme", self.visionneuse, "visionneuse", self)
         self._docks["visionneuse"] = d
         self._entete_visionneuse.ajouter(self.visionneuse.qualite)
+        self.duree_source = etiquette("", "info-valeur")
+        self._entete_source.ajouter(self.duree_source)
+        self.duree_programme = etiquette("", "info-valeur")
+        self._entete_visionneuse.ajouter(self.duree_programme)
         d, _ = panneau("Mixage", self.vumetres, "mixage", self, titre_visible=False)
         self._docks["mixage"] = d
         d, _ = panneau("Timeline", self.timeline, "timeline", self, titre_visible=False)
@@ -216,7 +234,8 @@ class FenetrePrincipale(QMainWindow):
         d = self._docks
         visibles = PANNEAUX_ESPACE[espace]
         for nom, dock in d.items():
-            dock.setFloating(False)
+            if not self._est_externe(nom):
+                dock.setFloating(False)
         if espace == "export":
             self.addDockWidget(Qt.LeftDockWidgetArea, d["export"])
             self.addDockWidget(Qt.BottomDockWidgetArea, d["timeline"])
@@ -225,31 +244,37 @@ class FenetrePrincipale(QMainWindow):
             self.resizeDocks([d["export"], d["visionneuse"], d["file_export"]], [340, 900, 360],
                              Qt.Horizontal)
             self.resizeDocks([d["visionneuse"], d["timeline"]], [640, 260], Qt.Vertical)
+        elif espace == "media":
+            self.addDockWidget(Qt.LeftDockWidgetArea, d["medias"])
+            self.splitDockWidget(d["medias"], d["source"], Qt.Horizontal)
+            self.splitDockWidget(d["source"], d["droite"], Qt.Horizontal)
+            self.resizeDocks([d["medias"], d["source"], d["droite"]], [620, 660, 380],
+                             Qt.Horizontal)
         else:
             self.addDockWidget(Qt.LeftDockWidgetArea, d["medias"])
             self.addDockWidget(Qt.BottomDockWidgetArea, d["timeline"])
-            self.splitDockWidget(d["medias"], d["visionneuse"], Qt.Horizontal)
+            self.splitDockWidget(d["medias"], d["source"], Qt.Horizontal)
+            self.splitDockWidget(d["source"], d["visionneuse"], Qt.Horizontal)
             self.splitDockWidget(d["visionneuse"], d["droite"], Qt.Horizontal)
             self.splitDockWidget(d["droite"], d["mixage"], Qt.Horizontal)
-            if espace == "media":
-                self.resizeDocks([d["medias"], d["visionneuse"], d["droite"]], [640, 640, 380],
-                                 Qt.Horizontal)
-            else:
-                self.resizeDocks([d["medias"], d["visionneuse"], d["droite"], d["mixage"]],
-                                 [320, 860, 340, 56], Qt.Horizontal)
-                self.resizeDocks([d["visionneuse"], d["timeline"]], [520, 420], Qt.Vertical)
+            self.resizeDocks([d["medias"], d["source"], d["visionneuse"], d["droite"],
+                              d["mixage"]], [300, 470, 470, 320, 56], Qt.Horizontal)
+            self.resizeDocks([d["visionneuse"], d["timeline"]], [500, 440], Qt.Vertical)
         for nom, dock in d.items():
-            dock.setVisible(nom in visibles)
+            if not self._est_externe(nom):
+                dock.setVisible(nom in visibles)
 
     def _appliquer_espace(self, espace: str, par_defaut: bool = False):
-        reglages = QSettings("Remanence", "Remanence")
+        reglages = reglages_interface()
         etat = None if par_defaut else reglages.value(f"disposition/{espace}")
         if etat is None or not self.restoreState(etat, VERSION_DISPOSITION):
             self._disposition(espace)
         # Une disposition mémorisée ne doit jamais faire apparaître un panneau d'un autre espace.
         for nom, dock in self._docks.items():
-            if nom not in PANNEAUX_ESPACE[espace]:
+            if nom not in PANNEAUX_ESPACE[espace] and not self._est_externe(nom):
                 dock.hide()
+        if self._un_seul and espace == "montage":
+            self.basculer_un_seul_moniteur()
         if espace == "media":
             self.onglets_droite.choisir(1)
         elif espace == "export":
@@ -257,22 +282,25 @@ class FenetrePrincipale(QMainWindow):
         self._espace = espace
         self.barre_espaces.activer(espace)
 
+    def _est_externe(self, nom: str) -> bool:
+        return self._double_ecran is not None and nom in ("timeline", "mixage")
+
     def choisir_espace(self, espace: str):
         """Change la disposition ; le projet, la sélection et la tête de lecture ne bougent pas."""
         if espace == self._espace:
             return
-        QSettings("Remanence", "Remanence").setValue(f"disposition/{self._espace}",
+        reglages_interface().setValue(f"disposition/{self._espace}",
                                                      self.saveState(VERSION_DISPOSITION))
         self._appliquer_espace(espace)
 
     def _restaurer_disposition(self):
-        reglages = QSettings("Remanence", "Remanence")
+        reglages = reglages_interface()
         espace = reglages.value("espace_actif", "montage")
         if espace in PANNEAUX_ESPACE:
             self._appliquer_espace(espace)
 
     def retablir_disposition(self):
-        reglages = QSettings("Remanence", "Remanence")
+        reglages = reglages_interface()
         for espace in PANNEAUX_ESPACE:
             reglages.remove(f"disposition/{espace}")
         self._appliquer_espace(self._espace, par_defaut=True)
@@ -321,6 +349,11 @@ class FenetrePrincipale(QMainWindow):
         self._action(mo, "Dissocier son et image", self.dissocier, "U")
         self._action(mo, "Lier la sélection", self.lier, "Ctrl+L")
         mo.addSeparator()
+        self._action(mo, "Insérer depuis la source", lambda: self.monter_source(True), "F9",
+                     "Pose la partie choisie de la source à la tête de lecture et pousse la suite.")
+        self._action(mo, "Écraser depuis la source", lambda: self.monter_source(False), "F10",
+                     "Pose la partie choisie de la source à la tête de lecture, par-dessus.")
+        mo.addSeparator()
         self._action(mo, "Ajouter une piste vidéo", lambda: self.ajouter_piste("video"))
         self._action(mo, "Ajouter une piste audio", lambda: self.ajouter_piste("audio"))
         mo.addSeparator()
@@ -329,7 +362,7 @@ class FenetrePrincipale(QMainWindow):
         lec = m.addMenu("&Lecture")
         self._action(lec, "Lire / Pause", self._espace_clavier, "Space")
         self._action(lec, "Lecture arrière", lambda: self._jkl(-1), "J")
-        self._action(lec, "Arrêt", self.lecture.pause, "K")
+        self._action(lec, "Arrêt", lambda: self._moteur().pause(), "K")
         self._action(lec, "Lecture avant", lambda: self._jkl(1), "L")
         self.a_boucle = self._action(lec, "Lecture en boucle", self._basculer_boucle, "Ctrl+B")
         self.a_boucle.setCheckable(True)
@@ -340,9 +373,11 @@ class FenetrePrincipale(QMainWindow):
                      "Shift+Left")
         self._action(lec, "Une seconde en avant", lambda: self._pas(self._cadence()),
                      "Shift+Right")
-        self._action(lec, "Début de la séquence", lambda: self.aller_a(0), "Home")
-        self._action(lec, "Fin de la séquence",
-                     lambda: self.aller_a(max(0, self.projet.sequence.duree() - 1)), "End")
+        self._action(lec, "Aller au début", lambda: self._aller_bord(False), "Home")
+        self._action(lec, "Aller à la fin", lambda: self._aller_bord(True), "End")
+        lec.addSeparator()
+        self._action(lec, "Basculer entre source et programme", self.basculer_moniteur, "Q",
+                     "Les commandes de lecture s'adressent au moniteur actif, souligné en mauve.")
         lec.addSeparator()
         self._action(lec, "Point d'entrée", self.point_entree, "I")
         self._action(lec, "Point de sortie", self.point_sortie, "O")
@@ -365,9 +400,25 @@ class FenetrePrincipale(QMainWindow):
         self.a_barre_espaces.setCheckable(True)
         self.a_barre_espaces.setChecked(True)
         self._action(a, "Plein écran", self._plein_ecran, "F11")
+        a.addSeparator()
+        self.a_un_seul = self._action(a, "Un seul moniteur", self.basculer_un_seul_moniteur,
+                                      "Ctrl+Shift+Q",
+                                      "Ne montre que le moniteur actif, en grand ; Q bascule.")
+        self.a_un_seul.setCheckable(True)
+        self.a_programme_externe = self._action(
+            a, "Programme en plein écran", self.basculer_programme_externe, "Ctrl+F",
+            "Montre le programme en plein écran, sur le second écran s'il y en a un. Échap ferme.")
+        self.a_double_ecran = self._action(a, "Double écran", self.basculer_double_ecran,
+                                           aide="Envoie la timeline et les vumètres sur le "
+                                                "second écran, comme dans DaVinci Resolve.")
+        self.a_double_ecran.setCheckable(True)
+        QGuiApplication.instance().screenAdded.connect(lambda _e: self._ecrans_changes())
+        QGuiApplication.instance().screenRemoved.connect(lambda _e: self._ecrans_changes())
+        self._ecrans_changes()
 
         fe = m.addMenu("F&enêtre")
         for nom, dock, titre in (("medias", self._docks["medias"], "Média"),
+                                 ("source", self._docks["source"], "Source"),
                                  ("visionneuse", self._docks["visionneuse"], "Programme"),
                                  ("droite", self._docks["droite"], "Inspecteur"),
                                  ("mixage", self._docks["mixage"], "Vumètres"),
@@ -377,7 +428,7 @@ class FenetrePrincipale(QMainWindow):
             fe.addAction(act)
         fe.addSeparator()
         detacher = fe.addMenu("Détacher un panneau")
-        for nom, titre in (("medias", "Média"), ("visionneuse", "Programme"),
+        for nom, titre in (("medias", "Média"), ("source", "Source"), ("visionneuse", "Programme"),
                            ("droite", "Inspecteur"), ("timeline", "Timeline")):
             self._action(detacher, titre, lambda _=False, nom=nom: self._docks[nom].setFloating(
                 not self._docks[nom].isFloating()))
@@ -386,6 +437,93 @@ class FenetrePrincipale(QMainWindow):
 
         ai = m.addMenu("&Aide")
         self._action(ai, "À propos de Remanence", lambda: APropos(self).exec())
+
+    def basculer_un_seul_moniteur(self):
+        self._un_seul = self.a_un_seul.isChecked()
+        if self._espace == "montage":
+            self._docks["source"].setVisible(not self._un_seul or self._actif == "source")
+            self._docks["visionneuse"].setVisible(not self._un_seul or self._actif == "programme")
+
+    def _autre_ecran(self):
+        for ecran in QGuiApplication.screens():
+            if ecran is not self.screen():
+                return ecran
+        return None
+
+    def _ecrans_changes(self):
+        deux = len(QGuiApplication.screens()) > 1
+        self.a_double_ecran.setEnabled(deux or self._double_ecran is not None)
+        self.a_double_ecran.setText("Double écran" if deux
+                                    else "Double écran (aucun second écran détecté)")
+
+    def basculer_double_ecran(self, actif: bool | None = None):
+        """La timeline et les vumètres passent dans une fenêtre sur le second écran."""
+        actif = self.a_double_ecran.isChecked() if actif is None else actif
+        if actif and self._double_ecran is None:
+            # Fenêtre sans parent : sinon restoreState() de la fenêtre principale retrouverait la
+            # timeline parmi ses descendants et la rapatrierait au changement d'espace.
+            fenetre = QMainWindow()
+            fenetre.setWindowTitle("Remanence · Timeline")
+            fenetre.setWindowIcon(self.windowIcon())
+            fenetre.setCentralWidget(QWidget())
+            fenetre.centralWidget().hide()
+            for nom, zone in (("timeline", Qt.BottomDockWidgetArea),
+                              ("mixage", Qt.RightDockWidgetArea)):
+                dock = self._docks[nom]
+                self.removeDockWidget(dock)
+                fenetre.addDockWidget(zone, dock)
+                dock.show()
+            fenetre.closeEvent = lambda e: (e.accept(), self.basculer_double_ecran(False))
+            ecran = self._autre_ecran()
+            if ecran is not None:
+                fenetre.setGeometry(ecran.availableGeometry())
+                fenetre.showMaximized()
+            else:
+                fenetre.resize(1400, 500)
+                fenetre.show()
+            self._double_ecran = fenetre
+        elif not actif and self._double_ecran is not None:
+            fenetre, self._double_ecran = self._double_ecran, None
+            for nom in ("timeline", "mixage"):
+                dock = self._docks[nom]
+                fenetre.removeDockWidget(dock)
+                self.addDockWidget(Qt.BottomDockWidgetArea, dock)
+            fenetre.closeEvent = lambda e: e.accept()
+            fenetre.close()
+            fenetre.deleteLater()
+            self._appliquer_espace(self._espace, par_defaut=True)
+        self.a_double_ecran.setChecked(self._double_ecran is not None)
+        self._ecrans_changes()
+
+    def basculer_programme_externe(self):
+        if self._programme_externe is not None:
+            self._programme_externe.close()
+            return
+        fenetre = QWidget(None, Qt.Window | Qt.FramelessWindowHint)
+        fenetre.setWindowTitle("Remanence · Programme")
+        lay = QVBoxLayout(fenetre)
+        lay.setContentsMargins(0, 0, 0, 0)
+        zone = ZoneImage(fenetre)
+        lay.addWidget(zone)
+        relais = self.lecture.image_prete.connect(lambda image, f: zone.montrer(image))
+
+        def fermer(e):
+            self.lecture.image_prete.disconnect(relais)
+            self._programme_externe = None
+            e.accept()
+
+        def touche(e):
+            if e.key() in (Qt.Key_Escape, Qt.Key_F) or e.matches(QKeySequence.Cancel):
+                fenetre.close()
+            else:
+                self.keyPressEvent(e)
+        fenetre.closeEvent = fermer
+        fenetre.keyPressEvent = touche
+        ecran = self._autre_ecran() or self.screen()
+        fenetre.setGeometry(ecran.geometry())
+        fenetre.showFullScreen()
+        self._programme_externe = fenetre
+        self.lecture.rafraichir()
 
     def _plein_ecran(self):
         if self.isFullScreen():
@@ -397,8 +535,9 @@ class FenetrePrincipale(QMainWindow):
         self.medias.importer.connect(self.importer)
         self.medias.fichiers_deposes.connect(self.importer_chemins)
         self.medias.media_selectionne.connect(self._media_choisi)
-        self.medias.media_active.connect(lambda mid: self.poser_medias([mid],
-                                                                       self.lecture.position, ""))
+        self.medias.media_active.connect(
+            lambda mid: self.charger_source(self.projet.medias[mid]) if mid in self.projet.medias
+            else None)
         vue = self.timeline.vue
         vue.modifie.connect(self.valider)
         vue.tete_changee.connect(self.aller_a)
@@ -407,20 +546,32 @@ class FenetrePrincipale(QMainWindow):
         self.inspecteur.reglage.connect(self._reglage_clip)
         self.liste_historique.aller.connect(self._aller_historique)
         self.formulaire_export.lancer.connect(self._lancer_export)
-        self.lecture.image_prete.connect(lambda image, f: self.visionneuse.zone.montrer(image))
+        for nom, moteur, moniteur in (("programme", self.lecture, self.visionneuse),
+                                      ("source", self.lecture_source, self.source)):
+            moteur.image_prete.connect(lambda image, f, m=moniteur: m.zone.montrer(image))
+            moteur.lecture_changee.connect(moniteur.etat_lecture)
+            moteur.erreur.connect(lambda m, d: self.message(f"Image impossible à calculer : {m}",
+                                                            8000))
+            moniteur.active.connect(lambda nom=nom: self.activer_moniteur(nom))
+            moniteur.demande_lecture.connect(lambda nom=nom: self.lire_pause(nom))
+            moniteur.demande_vitesse.connect(lambda sens, nom=nom: self._jkl(sens, nom))
+            moniteur.demande_position.connect(lambda f, nom=nom: self.aller(nom, f))
+            moniteur.demande_entree.connect(lambda nom=nom: self.point_entree(nom))
+            moniteur.demande_sortie.connect(lambda nom=nom: self.point_sortie(nom))
+            moniteur.demande_aller_entree.connect(lambda nom=nom: self._aller_point(nom, 0))
+            moniteur.demande_aller_sortie.connect(lambda nom=nom: self._aller_point(nom, 1))
+            moniteur.b_boucle.toggled.connect(lambda v, nom=nom: self._boucle(v, nom))
+            moniteur.demande_qualite.connect(lambda cle, m=moteur: m.definir_qualite(cle))
         self.lecture.position_changee.connect(self._position)
-        self.lecture.lecture_changee.connect(self.visionneuse.etat_lecture)
-        self.lecture.erreur.connect(lambda m, d: self.message(f"Image impossible à calculer : {m}",
-                                                              8000))
-        v = self.visionneuse
-        v.demande_lecture.connect(self.lire_pause)
-        v.demande_position.connect(self.aller_a)
-        v.demande_qualite.connect(self.lecture.definir_qualite)
-        v.b_debut.clicked.connect(lambda: self.aller_a(0))
-        v.b_fin.clicked.connect(lambda: self.aller_a(max(0, self.projet.sequence.duree() - 1)))
-        v.b_prec.clicked.connect(lambda: self._pas(-1))
-        v.b_suiv.clicked.connect(lambda: self._pas(1))
-        v.b_boucle.toggled.connect(self._boucle)
+        self.lecture_source.position_changee.connect(self._position_source)
+        self.source.zone.glisser_depart.connect(self._glisser_source)
+        self.timeline.vue.installEventFilter(self)
+
+    def eventFilter(self, objet, e):
+        # Travailler dans la timeline rend le programme actif, comme un clic dans son moniteur.
+        if objet is self.timeline.vue and e.type() == QEvent.MouseButtonPress:
+            self.activer_moniteur("programme")
+        return False
 
     # Affichage de l'état
 
@@ -437,9 +588,12 @@ class FenetrePrincipale(QMainWindow):
         self._titre()
         self._position(self.lecture.position)
         seq = self.projet.sequence
-        self.visionneuse.afficher_points(seq)
         self._entete_visionneuse.precision.setText(seq.nom)
-        self._boucle(self.visionneuse.b_boucle.isChecked())
+        self.duree_programme.setText(images_vers_tc(seq.duree(), seq.fraction_cadence))
+        self._boucle(self.visionneuse.b_boucle.isChecked(), "programme")
+        if self.media_source is not None:
+            self.media_source = self.projet.medias.get(self.media_source.id)
+            self._position_source(self.lecture_source.position)
         self.liste_historique.afficher(self.historique.libelles(), self.historique.position)
         if self._espace == "export":
             self.formulaire_export.actualiser(self.projet, self.chemin)
@@ -496,9 +650,20 @@ class FenetrePrincipale(QMainWindow):
 
     def _position(self, f: int):
         seq = self.projet.sequence
-        for champ in (self.visionneuse.timecode, self.timeline.timecode):
-            champ.afficher(f, seq.tc_debut, seq.fraction_cadence, seq.tc_drop)
+        self.visionneuse.afficher_position(f, seq.duree(), seq.tc_debut, seq.fraction_cadence,
+                                           seq.tc_drop, seq.point_entree, seq.point_sortie)
+        self.timeline.timecode.afficher(f, seq.tc_debut, seq.fraction_cadence, seq.tc_drop)
         self.timeline.suivre_tete(f)
+
+    def _position_source(self, f: int):
+        m = self.media_source
+        if m is None:
+            return
+        v = m.infos.video
+        cadence = v.fraction_cadence if v else self.projet.sequence.fraction_cadence
+        self.source.afficher_position(f, m.nb_images(cadence), (v.tc_debut or 0) if v else 0,
+                                      cadence, v.tc_drop if v else False, m.point_entree,
+                                      m.point_sortie)
 
     def _cadence(self) -> int:
         return max(1, round(float(self.projet.sequence.fraction_cadence)))
@@ -523,64 +688,191 @@ class FenetrePrincipale(QMainWindow):
         if media is not None:
             self.metadonnees.afficher(media)
             self.onglets_droite.choisir(1)
+            self.charger_source(media)
 
-    # Lecture
+    def charger_source(self, media: Media):
+        """Affiche le média dans le moniteur source, avec ses points d'entrée et de sortie."""
+        if self.media_source is not None and self.media_source.id == media.id:
+            return
+        mini = Projet.nouveau()
+        mini.medias[media.id] = media
+        try:
+            edition.ajouter_media(mini, mini.sequence, media, 0)
+        except edition.EditionImpossible as e:
+            self.message(str(e))
+            return
+        self.media_source = media
+        self.lecture_source.pause()
+        self.lecture_source.definir_projet(mini)
+        self.lecture_source.aller_a(media.point_entree or 0)
+        self._entete_source.precision.setText(media.nom)
+        v = media.infos.video
+        cadence = v.fraction_cadence if v else self.projet.sequence.fraction_cadence
+        self.duree_source.setText(images_vers_tc(media.nb_images(cadence), cadence))
+        self.source.zone.taille_reference = (v.largeur, v.hauteur) if v else None
+        if not v:
+            self.source.zone.montrer_message("Média audio : pas d'image à afficher.")
+        self._position_source(self.lecture_source.position)
+        self.activer_moniteur("source")
+
+    # Lecture : chaque commande s'adresse au moniteur actif (source ou programme).
+
+    def activer_moniteur(self, nom: str):
+        if nom == "source" and self.media_source is None:
+            return
+        self._actif = nom
+        peindre_cadre_actif(self._entete_source, nom == "source")
+        peindre_cadre_actif(self._entete_visionneuse, nom == "programme")
+        if self._un_seul and self._espace == "montage":
+            self._docks["source"].setVisible(nom == "source")
+            self._docks["visionneuse"].setVisible(nom == "programme")
+
+    def basculer_moniteur(self):
+        self.activer_moniteur("source" if self._actif == "programme" else "programme")
+
+    def _moteur(self, nom: str | None = None) -> MoteurLecture:
+        return self.lecture_source if (nom or self._actif) == "source" else self.lecture
+
+    def _duree(self, nom: str) -> int:
+        if nom == "source":
+            m = self.media_source
+            return m.nb_images(self.projet.sequence.fraction_cadence) if m else 0
+        return self.projet.sequence.duree()
+
+    def _points(self, nom: str) -> tuple[int | None, int | None]:
+        if nom == "source":
+            m = self.media_source
+            return (m.point_entree, m.point_sortie) if m else (None, None)
+        return self.projet.sequence.point_entree, self.projet.sequence.point_sortie
+
+    def aller(self, nom: str, f: int):
+        moteur = self._moteur(nom)
+        if moteur.en_lecture:
+            moteur.pause()
+        moteur.aller_a(max(0, min(f, max(0, self._duree(nom) - 1))))
 
     def aller_a(self, f: int):
-        if self.lecture.en_lecture:
-            self.lecture.pause()
-        self.lecture.aller_a(f)
+        """Place la tête du programme (timeline)."""
+        moteur = self.lecture
+        if moteur.en_lecture:
+            moteur.pause()
+        moteur.aller_a(max(0, f))
 
     def _pas(self, n: int):
-        self.aller_a(max(0, self.lecture.position + n))
+        self.aller(self._actif, self._moteur().position + n)
+
+    def _aller_bord(self, fin: bool):
+        self.aller(self._actif, self._duree(self._actif) - 1 if fin else 0)
+
+    def _aller_point(self, nom: str, i: int):
+        point = self._points(nom)[i]
+        if point is not None:
+            self.aller(nom, point if i == 0 else point - 1)
 
     def _espace_clavier(self):
         # Espace active le bouton qui a le focus clavier, comme partout ailleurs sous Windows.
         focus = QApplication.focusWidget()
-        if isinstance(focus, QAbstractButton) and focus is not self.visionneuse.b_lire:
+        if isinstance(focus, QAbstractButton) and focus not in (self.visionneuse.b_lire,
+                                                                self.source.b_lire):
             focus.click()
         else:
             self.lire_pause()
 
-    def lire_pause(self):
-        if self.lecture.en_lecture:
-            self.lecture.pause()
-        else:
-            if self.lecture.position >= self.projet.sequence.duree() - 1:
-                self.lecture.aller_a(0)
-            self.lecture.lire(1.0)
+    def lire_pause(self, nom: str | None = None):
+        nom = nom or self._actif
+        moteur = self._moteur(nom)
+        if moteur.en_lecture:
+            moteur.pause()
+            return
+        # Un seul moniteur joue à la fois, comme dans les logiciels de montage.
+        self._moteur("programme" if nom == "source" else "source").pause()
+        if moteur.position >= self._duree(nom) - 1:
+            moteur.aller_a(0)
+        moteur.lire(1.0)
 
-    def _jkl(self, sens: int):
-        v = self.lecture.vitesse
+    def _jkl(self, sens: int, nom: str | None = None):
+        nom = nom or self._actif
+        moteur = self._moteur(nom)
+        self._moteur("programme" if nom == "source" else "source").pause()
+        v = moteur.vitesse
         vitesse = max(-8.0, min(8.0, v * 2)) if v * sens > 0 else float(sens)
-        self.lecture.lire(vitesse)
+        moteur.lire(vitesse)
         self.message(f"Lecture {'avant' if vitesse > 0 else 'arrière'} ×{abs(vitesse):g}" +
                      ("" if vitesse == 1 else ", son coupé"), 2000)
 
     def _basculer_boucle(self):
-        self.visionneuse.b_boucle.toggle()
+        moniteur = self.source if self._actif == "source" else self.visionneuse
+        moniteur.b_boucle.toggle()
 
-    def _boucle(self, actif: bool):
-        self.a_boucle.setChecked(actif)
-        seq = self.projet.sequence
+    def _boucle(self, actif: bool, nom: str = "programme"):
+        if nom == "programme":
+            self.a_boucle.setChecked(actif)
+        moteur = self._moteur(nom)
         if not actif:
-            self.lecture.definir_boucle(None)
+            moteur.definir_boucle(None)
             return
-        debut = seq.point_entree or 0
-        fin = seq.point_sortie if seq.point_sortie is not None else seq.duree()
-        self.lecture.definir_boucle((debut, fin))
+        entree, sortie = self._points(nom)
+        moteur.definir_boucle((entree or 0, sortie if sortie is not None else self._duree(nom)))
 
-    def point_entree(self):
-        self.projet.sequence.point_entree = self.lecture.position
-        self.valider("Point d'entrée")
+    def point_entree(self, nom: str | None = None):
+        nom = nom or self._actif
+        f = self._moteur(nom).position
+        if nom == "source" and self.media_source is not None:
+            self.media_source.point_entree = f
+            if self.media_source.point_sortie is not None and self.media_source.point_sortie <= f:
+                self.media_source.point_sortie = None
+            self.valider("Point d'entrée de la source")
+        elif nom == "programme":
+            self.projet.sequence.point_entree = f
+            self.valider("Point d'entrée")
 
-    def point_sortie(self):
-        self.projet.sequence.point_sortie = self.lecture.position + 1
-        self.valider("Point de sortie")
+    def point_sortie(self, nom: str | None = None):
+        nom = nom or self._actif
+        f = self._moteur(nom).position + 1
+        if nom == "source" and self.media_source is not None:
+            self.media_source.point_sortie = f
+            if (self.media_source.point_entree or 0) >= f:
+                self.media_source.point_entree = None
+            self.valider("Point de sortie de la source")
+        elif nom == "programme":
+            self.projet.sequence.point_sortie = f
+            self.valider("Point de sortie")
 
     def effacer_points(self):
-        self.projet.sequence.point_entree = self.projet.sequence.point_sortie = None
-        self.valider("Points effacés")
+        if self._actif == "source" and self.media_source is not None:
+            self.media_source.point_entree = self.media_source.point_sortie = None
+            self.valider("Points de la source effacés")
+        else:
+            self.projet.sequence.point_entree = self.projet.sequence.point_sortie = None
+            self.valider("Points effacés")
+
+    # Monter depuis la source
+
+    def monter_source(self, inserer: bool):
+        """F9 insère, F10 écrase : la partie choisie de la source va à la tête du programme."""
+        m = self.media_source
+        if m is None:
+            self.message("Choisissez d'abord un média : il s'affiche dans le moniteur source.")
+            return
+        seq = self.projet.sequence
+        entree, sortie = m.plage_source(seq.fraction_cadence)
+        f = self.lecture.position
+        operation = edition.inserer_media if inserer else edition.ajouter_media
+        clips = []
+
+        def faire():
+            clips.extend(operation(self.projet, seq, m, f, None, entree, sortie - entree))
+        self._tenter("Insertion depuis la source" if inserer else "Écrasement depuis la source",
+                     faire)
+        if clips:
+            self.aller_a(max(c.fin for c in clips))
+            self.activer_moniteur("programme")
+
+    def _glisser_source(self):
+        m = self.media_source
+        if m is not None:
+            entree, sortie = m.plage_source(self.projet.sequence.fraction_cadence)
+            glisser_source(self.source.zone, m.id, entree, sortie)
 
     def marqueur(self):
         seq = self.projet.sequence
@@ -671,11 +963,17 @@ class FenetrePrincipale(QMainWindow):
         piste = next((p for p in seq.pistes if p.id == piste_id), None)
         position = f
         try:
-            for mid in ids:
+            for element in ids:
+                mid, _, plage = element.partition("@")
                 media = self.projet.medias.get(mid)
                 if media is None:
                     continue
-                clips = edition.ajouter_media(self.projet, seq, media, position, piste)
+                entree, duree = 0, None
+                if plage:
+                    a, b = (int(x) for x in plage.split(":"))
+                    entree, duree = a, b - a
+                clips = edition.ajouter_media(self.projet, seq, media, position, piste, entree,
+                                              duree)
                 if clips:
                     position = max(c.fin for c in clips)
         except edition.EditionImpossible as e:
@@ -930,10 +1228,15 @@ class FenetrePrincipale(QMainWindow):
         if not self._confirmer_abandon():
             e.ignore()
             return
-        reglages = QSettings("Remanence", "Remanence")
+        reglages = reglages_interface()
         reglages.setValue(f"disposition/{self._espace}", self.saveState(VERSION_DISPOSITION))
         reglages.setValue("espace_actif", self._espace)
+        if self._double_ecran is not None:
+            self.basculer_double_ecran(False)
+        if self._programme_externe is not None:
+            self._programme_externe.close()
         self.taches.tout_annuler()
         self.lecture.fermer()
+        self.lecture_source.fermer()
         self.taches.attendre(3000)
         e.accept()

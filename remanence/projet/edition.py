@@ -32,30 +32,35 @@ def _piste_type(seq: Sequence, type_: str, apres: Piste | None = None) -> Piste:
     if apres is not None and apres.type == type_:
         return apres
     if pistes:
-        return pistes[0]
+        # V1 est la piste vidéo du bas (comme dans Resolve), A1 la première piste audio.
+        return pistes[-1] if type_ == "video" else pistes[0]
     p = Piste(nouvel_id(), type_, f"{'Vidéo' if type_ == 'video' else 'Audio'} 1")
     seq.pistes.append(p)
     return p
 
 
 def ajouter_media(projet: Projet, seq: Sequence, media: Media, debut: int,
-                  piste: Piste | None = None) -> list[Clip]:
-    """Pose un média sur la timeline. Image et son arrivent liés."""
+                  piste: Piste | None = None, entree: int = 0,
+                  duree: int | None = None) -> list[Clip]:
+    """Pose un média (ou la partie [entree, entree+duree)) sur la timeline, en écrasant ce
+    qu'il recouvre. Image et son arrivent liés."""
     if media.hors_ligne:
         raise EditionImpossible(f"Le média « {media.nom} » est hors ligne.")
     if not seq.reglee and media.infos.video and seq.duree() == 0:
         regler_sequence_sur_media(seq, media)
         if debut == 0 and media.infos.video.tc_debut is not None:
-            seq.tc_debut = media.infos.video.tc_debut
-    duree = media.nb_images(seq.fraction_cadence)
+            seq.tc_debut = media.infos.video.tc_debut + entree
+    longueur = media.nb_images(seq.fraction_cadence)
+    entree = max(0, min(entree, longueur - 1))
+    duree = longueur - entree if duree is None else max(1, min(duree, longueur - entree))
     lien = nouvel_id() if (media.infos.video and media.infos.audio) else None
     crees = []
     if media.infos.video:
         pv = piste if piste is not None and piste.type == "video" else _piste_type(seq, "video")
-        crees.append((pv, Clip(nouvel_id(), media.id, max(0, debut), 0, duree, lien)))
+        crees.append((pv, Clip(nouvel_id(), media.id, max(0, debut), entree, duree, lien)))
     if media.infos.audio:
         pa = piste if piste is not None and piste.type == "audio" else _piste_type(seq, "audio")
-        crees.append((pa, Clip(nouvel_id(), media.id, max(0, debut), 0, duree, lien)))
+        crees.append((pa, Clip(nouvel_id(), media.id, max(0, debut), entree, duree, lien)))
     for p, c in crees:
         if p.verrouillee:
             raise EditionImpossible(f"La piste « {p.nom} » est verrouillée.")
@@ -64,6 +69,31 @@ def ajouter_media(projet: Projet, seq: Sequence, media: Media, debut: int,
         p.clips.append(c)
         p.trier()
     return [c for _, c in crees]
+
+
+def ouvrir_espace(seq: Sequence, f: int, duree: int):
+    """Décale de `duree` images tout ce qui suit f sur les pistes non verrouillées, en coupant
+    les clips à cheval : c'est l'insertion des logiciels de montage."""
+    couper(seq, f)
+    for p in seq.pistes:
+        if p.verrouillee:
+            continue
+        for c in p.clips:
+            if c.debut >= f:
+                c.debut += duree
+    for m in seq.marqueurs:
+        if m.position >= f:
+            m.position += duree
+
+
+def inserer_media(projet: Projet, seq: Sequence, media: Media, debut: int,
+                  piste: Piste | None = None, entree: int = 0,
+                  duree: int | None = None) -> list[Clip]:
+    """Comme ajouter_media, mais en poussant la suite de la séquence au lieu de l'écraser."""
+    longueur = media.nb_images(seq.fraction_cadence)
+    duree = longueur - entree if duree is None else duree
+    ouvrir_espace(seq, debut, duree)
+    return ajouter_media(projet, seq, media, debut, piste, entree, duree)
 
 
 def liberer(piste: Piste, debut: int, fin: int, exclure: set[str]):

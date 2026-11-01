@@ -315,6 +315,7 @@ QLabel[role="avertissement"] {{ color: {warning}; }}
 QLabel[role="erreur"] {{ color: {danger}; }}
 
 QWidget[role="entete"] {{ background: {surface}; border-bottom: 1px solid {line}; }}
+QWidget[role="entete"][actif="true"] {{ border-bottom: 2px solid {accent}; }}
 QWidget[role="barre-haut"] {{ background: {bg_app}; border-bottom: 1px solid {line}; }}
 QWidget[role="barre-bas"] {{ background: {bg_app}; border-top: 1px solid {line}; }}
 QWidget[role="onglets"] {{ background: {surface}; border-bottom: 1px solid {line}; }}

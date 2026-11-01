@@ -24,6 +24,9 @@ class Media:
     chemin: str
     infos: InfosMedia
     hors_ligne: bool = False
+    # Points d'entrée et de sortie posés dans le moniteur source (images du média, sortie exclue).
+    point_entree: int | None = None
+    point_sortie: int | None = None
 
     @property
     def nom(self) -> str:
@@ -35,12 +38,24 @@ class Media:
             return self.infos.video.nb_images
         return max(1, round(self.infos.duree_s * float(cadence)))
 
+    def plage_source(self, cadence: Fraction) -> tuple[int, int]:
+        """Partie du média choisie dans le moniteur source : (entrée, sortie exclue)."""
+        fin = self.nb_images(cadence)
+        a = min(max(0, self.point_entree or 0), fin - 1)
+        b = self.point_sortie if self.point_sortie is not None else fin
+        return a, max(a + 1, min(b, fin))
+
     def vers_dict(self) -> dict:
-        return {"id": self.id, "chemin": self.chemin, "infos": self.infos.vers_dict()}
+        d = {"id": self.id, "chemin": self.chemin, "infos": self.infos.vers_dict()}
+        if self.point_entree is not None or self.point_sortie is not None:
+            d["points"] = [self.point_entree, self.point_sortie]
+        return d
 
     @staticmethod
     def depuis_dict(d: dict) -> "Media":
-        return Media(d["id"], d["chemin"], InfosMedia.depuis_dict(d["infos"]))
+        entree, sortie = d.get("points", [None, None])
+        return Media(d["id"], d["chemin"], InfosMedia.depuis_dict(d["infos"]),
+                     point_entree=entree, point_sortie=sortie)
 
 
 @dataclass

@@ -63,7 +63,18 @@ def etiquette(texte: str, role: str = "") -> QLabel:
     return l
 
 
-class EnTetePanneau(QWidget):
+class BarreTitrePanneau(QWidget):
+    """Barre de titre de 36 px. QDockWidget se règle sur la taille suggérée de sa barre de titre,
+    pas sur sa hauteur fixe : sans cette correction, le contenu recouvrait le bas de la barre."""
+
+    def sizeHint(self) -> QSize:
+        return QSize(super().sizeHint().width(), 36)
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(super().minimumSizeHint().width(), 36)
+
+
+class EnTetePanneau(BarreTitrePanneau):
     """Barre de titre d'un panneau ancrable : titre, précision, outils, bouton Détacher."""
 
     def __init__(self, dock: QDockWidget, titre: str):
@@ -320,7 +331,7 @@ class PanneauOnglets(QStackedWidget):
 
     def __init__(self, dock: QDockWidget, onglets: list[tuple[str, QWidget]]):
         super().__init__()
-        self.entete = QWidget(dock)
+        self.entete = BarreTitrePanneau(dock)
         self.entete.setProperty("role", "onglets")
         self.entete.setAttribute(Qt.WA_StyledBackground, True)
         self.entete.setFixedHeight(36)

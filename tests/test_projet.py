@@ -116,3 +116,17 @@ def test_sauvegarde_auto(medias, tmp_path):
     auto = serialisation.enregistrer_auto(projet, chemin)
     assert auto.name == "p.auto.remanence"
     assert serialisation.sauvegarde_auto_plus_recente(chemin) == auto
+
+
+def test_plage_source_et_insertion(medias):
+    projet, m = _projet_avec(medias)
+    seq = projet.sequence
+    m.point_entree, m.point_sortie = 5, 15
+    a, b = m.plage_source(seq.fraction_cadence)
+    v, _ = edition.ajouter_media(projet, seq, m, 0, entree=a, duree=b - a)
+    assert (v.entree, v.duree) == (5, 10) and seq.tc_debut == 86400 + 5
+    edition.inserer_media(projet, seq, m, 4, entree=0, duree=6)
+    pv = seq.pistes_video[0]
+    assert [(c.debut, c.entree, c.duree) for c in pv.clips] == [(0, 5, 4), (4, 0, 6), (10, 9, 6)]
+    relu = Projet.depuis_dict(projet.vers_dict())
+    assert relu.medias[m.id].point_entree == 5 and relu.medias[m.id].point_sortie == 15
