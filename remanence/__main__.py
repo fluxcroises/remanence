@@ -4,7 +4,7 @@ import sys
 import time
 import traceback
 
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QSurfaceFormat
 from PySide6.QtWidgets import QApplication
 
@@ -22,8 +22,8 @@ def principal() -> int:
 
     from remanence.ui import charte
     charte.charger_polices()
-    charte.definir(QSettings("Remanence", "Remanence").value("theme", "dark"))
-    app.setStyleSheet(charte.actuelle().feuille())
+    charte.definir("dark")
+    charte.actuelle().appliquer(app)
     app.setWindowIcon(charte.actuelle().icone_application())
 
     from remanence.ui.demarrage import EcranDemarrage

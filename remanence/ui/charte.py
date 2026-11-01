@@ -14,14 +14,16 @@ from functools import lru_cache
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray, QRectF, QSize, Qt
-from PySide6.QtGui import QColor, QFont, QFontDatabase, QIcon, QPainter, QPainterPath, QPixmap
+from PySide6.QtGui import (QColor, QFont, QFontDatabase, QIcon, QPainter, QPainterPath, QPalette,
+                           QPixmap)
 from PySide6.QtSvg import QSvgRenderer
 
 RACINE = Path(__file__).resolve().parents[2]
 FICHIER_TOKENS = RACINE / "UI" / "charte" / "tokens.json"
 DOSSIER_LOGOS = RACINE / "UI" / "charte" / "assets" / "Logos"
 RESSOURCES = Path(__file__).resolve().parents[1] / "ressources"
-THEMES = {"dark": "Sombre", "light": "Clair"}
+# Un seul thème : un logiciel de montage se travaille dans le sombre (décision de Lewis).
+THEMES = {"dark": "Sombre"}
 POIDS = {400: QFont.Normal, 500: QFont.Medium, 600: QFont.DemiBold}
 
 
@@ -112,6 +114,28 @@ class Charte:
         if reste:
             raise ValueError(f"Tokens absents de la charte : {sorted(set(reste))}")
         return feuille
+
+    def palette(self) -> QPalette:
+        """Palette Qt tirée de la charte : les éléments que la feuille de style ne dessine pas
+        (indicateurs, sélection de texte, menus natifs) restent dans le thème."""
+        pal = QPalette()
+        for role, token in [
+            (QPalette.Window, "surface"), (QPalette.WindowText, "ink"), (QPalette.Base, "surface-raised"),
+            (QPalette.AlternateBase, "surface"), (QPalette.Text, "ink"), (QPalette.Button, "surface-raised"),
+            (QPalette.ButtonText, "ink"), (QPalette.Highlight, "accent-soft"),
+            (QPalette.HighlightedText, "ink"), (QPalette.ToolTipBase, "surface-raised"),
+            (QPalette.ToolTipText, "ink"), (QPalette.PlaceholderText, "ink-muted"),
+            (QPalette.Mid, "control-border"), (QPalette.Dark, "bg-app"), (QPalette.Light, "surface-hover"),
+        ]:
+            pal.setColor(role, self.c(token))
+        for role in (QPalette.Text, QPalette.ButtonText, QPalette.WindowText):
+            pal.setColor(QPalette.Disabled, role, self.c("ink-faint"))
+        return pal
+
+    def appliquer(self, app):
+        # Style natif de Windows : les lettres des menus ne se soulignent qu'avec Alt.
+        app.setPalette(self.palette())
+        app.setStyleSheet(self.feuille())
 
     # Icônes et logo
 
@@ -245,7 +269,8 @@ MODELE_QSS = """
 * {{ {police_body} }}
 QWidget {{ color: {ink}; background: transparent; }}
 QMainWindow, QMainWindow > QWidget {{ background: {bg_app}; }}
-QMainWindow::separator {{ background: {line}; width: 1px; height: 1px; }}
+QMainWindow::separator {{ background: {bg_app}; width: 3px; height: 3px; }}
+QMainWindow::separator:hover {{ background: {line}; }}
 QDockWidget > QWidget, QDialog, QMessageBox {{ background: {surface}; }}
 QDockWidget {{ color: {ink}; }}
 QToolTip {{ background: {surface_raised}; color: {ink}; border: 1px solid {line};
@@ -269,6 +294,26 @@ QLabel[role="erreur"] {{ color: {danger}; }}
 QWidget[role="entete"] {{ background: {surface}; border-bottom: 1px solid {line}; }}
 QWidget[role="barre-haut"] {{ background: {bg_app}; border-bottom: 1px solid {line}; }}
 QWidget[role="barre-bas"] {{ background: {bg_app}; border-top: 1px solid {line}; }}
+QWidget[role="onglets"] {{ background: {surface}; border-bottom: 1px solid {line}; }}
+QLabel[role="info"] {{ color: {ink_muted}; {police_label} }}
+QLabel[role="info-valeur"] {{ color: {ink_muted}; {police_value} }}
+QToolButton[variante="fenetre"] {{ background: transparent; border: 0; border-radius: 0;
+    min-width: 44px; max-width: 44px; min-height: 36px; max-height: 36px; padding: 0; }}
+QToolButton[variante="fenetre"]:hover {{ background: {surface_hover}; }}
+QToolButton[variante="fenetre-fermer"] {{ background: transparent; border: 0; border-radius: 0;
+    min-width: 44px; max-width: 44px; min-height: 36px; max-height: 36px; padding: 0; }}
+QToolButton[variante="fenetre-fermer"]:hover {{ background: {danger}; }}
+QToolButton[variante="espace"] {{ background: transparent; border: 0; border-radius: 0;
+    border-bottom: 2px solid transparent; color: {ink_muted}; padding: 0 14px;
+    min-height: 34px; max-height: 34px; }}
+QToolButton[variante="espace"]:hover {{ color: {ink}; }}
+QToolButton[variante="espace"]:checked {{ color: {ink}; border-bottom: 2px solid {accent}; }}
+QToolButton[variante="onglet"] {{ background: transparent; border: 0; border-radius: 0;
+    border-bottom: 2px solid transparent; color: {ink_muted}; padding: 0 12px;
+    min-height: 34px; max-height: 34px; }}
+QToolButton[variante="onglet"]:hover {{ color: {ink}; }}
+QToolButton[variante="onglet"]:checked {{ color: {ink}; font-weight: 500;
+    border-bottom: 2px solid {accent}; }}
 QWidget[role="panneau"] {{ background: {surface}; }}
 QWidget[role="pied"] {{ background: {surface}; border-top: 1px solid {line}; }}
 QWidget[role="entete-piste"] {{ background: {surface_raised}; border-bottom: 1px solid {line}; }}
@@ -352,8 +397,9 @@ QHeaderView::section {{ background: {surface}; color: {ink_muted}; border: 0;
     border-bottom: 1px solid {line}; padding: {space_1} {space_2}; {police_caption} }}
 QTableWidget {{ gridline-color: {line}; }}
 
-QMenuBar {{ background: transparent; color: {ink_muted}; }}
-QMenuBar::item {{ padding: {space_1} 7px; background: transparent; }}
+QMenuBar {{ background: transparent; color: {ink}; min-height: 36px; max-height: 36px;
+    padding: 0; spacing: 0; }}
+QMenuBar::item {{ padding: 0 9px; margin: 0; background: transparent; }}
 QMenuBar::item:selected {{ background: {surface_hover}; color: {ink}; border-radius: {radius_sm}; }}
 QMenu {{ background: {surface_raised}; border: 1px solid {line}; border-radius: {radius_md};
     padding: {space_1}; }}
@@ -378,5 +424,12 @@ QScrollBar::add-line, QScrollBar::sub-line, QScrollBar::add-page, QScrollBar::su
     width: 0; height: 0; background: transparent; }}
 
 QRadioButton, QCheckBox {{ spacing: {space_2}; border: 2px solid transparent; }}
+QRadioButton::indicator, QCheckBox::indicator {{ width: 12px; height: 12px;
+    border: 1px solid {control_border}; background: {surface_raised}; }}
+QRadioButton::indicator {{ border-radius: 7px; }}
+QCheckBox::indicator {{ border-radius: {radius_xs}; }}
+QRadioButton::indicator:checked, QCheckBox::indicator:checked {{ background: {accent};
+    border-color: {accent}; }}
+QRadioButton::indicator:disabled, QCheckBox::indicator:disabled {{ border-color: {line}; }}
 QDialogButtonBox QPushButton {{ min-width: 96px; }}
 """

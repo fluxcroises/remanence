@@ -40,7 +40,7 @@ def test_aucune_couleur_codee_en_dur():
     assert not fautes, fautes
 
 
-@pytest.mark.parametrize("theme", ["dark", "light"])
+@pytest.mark.parametrize("theme", ["dark"])
 def test_feuille_de_style_complete(app, theme):
     c = charte.Charte(theme)
     feuille = c.feuille()
@@ -65,7 +65,7 @@ PAIRES = [
 ]
 
 
-@pytest.mark.parametrize("theme", ["dark", "light"])
+@pytest.mark.parametrize("theme", ["dark"])
 @pytest.mark.parametrize("texte,fond,minimum", PAIRES)
 def test_contrastes(theme, texte, fond, minimum):
     c = charte.Charte(theme)

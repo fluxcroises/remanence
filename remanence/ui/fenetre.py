@@ -6,11 +6,10 @@ import time
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QSettings, Qt, QTimer
-from PySide6.QtGui import QAction, QActionGroup, QImage, QKeySequence, QPixmap
-from PySide6.QtWidgets import (QAbstractButton, QApplication, QButtonGroup, QFileDialog,
-                               QHBoxLayout, QInputDialog, QLabel, QMainWindow, QMenuBar,
-                               QMessageBox, QPushButton, QToolBar, QWidget)
+from PySide6.QtCore import QEvent, QSettings, Qt, QTimer
+from PySide6.QtGui import QAction, QImage, QKeySequence, QPixmap
+from PySide6.QtWidgets import (QAbstractButton, QApplication, QFileDialog, QInputDialog,
+                               QMainWindow, QMessageBox, QToolBar, QWidget)
 
 from remanence.media import intermediaire
 from remanence.media.lecteur import LecteurVideo, generer_cache_audio
@@ -23,12 +22,14 @@ from remanence.rendu.couleur import vers_rvb16_apercu, vers_rvba
 from remanence.rendu.export import exporter
 from remanence.ui import charte
 from remanence.ui.apropos import APropos
-from remanence.ui.composants import Vumetres, bouton_icone, etiquette, panneau, rafraichir_icones
-from remanence.ui.dialogue_export import DialogueExport, DialogueRapport
+from remanence.ui.barres import BarreEspaces, BarreTitre
+from remanence.ui.composants import Vumetres, etiquette, panneau, panneau_onglets
 from remanence.ui.erreurs import afficher_erreur
-from remanence.ui.inspecteur import Inspecteur
+from remanence.ui.inspecteur import Historique as ListeHistorique
+from remanence.ui.inspecteur import Inspecteur, Metadonnees
 from remanence.ui.lecture import MoteurLecture
 from remanence.ui.medias import PanneauMedias
+from remanence.ui.panneau_export import FileExport, FormulaireExport
 from remanence.ui.taches import GestionnaireTaches, Tache
 from remanence.ui.timeline import Timeline
 from remanence.ui.visionneuse import LIBELLES_QUALITE, Visionneuse
@@ -38,6 +39,15 @@ EXTENSIONS_MEDIAS = ("*.mov *.mp4 *.mxf *.mkv *.avi *.webm *.mts *.m2ts *.m4v *.
                      "*.wav *.aif *.aiff *.mp3 *.flac *.m4a *.dpx *.exr *.tif *.tiff *.png "
                      "*.jpg *.jpeg *.braw *.r3d *.ari")
 HAUTEUR_VIGNETTE = 48
+BORD = 5
+# À augmenter quand les panneaux changent : les dispositions mémorisées avant sont ignorées.
+VERSION_DISPOSITION = 2
+# Panneaux visibles dans chaque espace de travail.
+PANNEAUX_ESPACE = {
+    "media": {"medias", "visionneuse", "droite"},
+    "montage": {"medias", "visionneuse", "droite", "mixage", "timeline"},
+    "export": {"export", "visionneuse", "file_export", "timeline"},
+}
 
 
 def _en_rvb8(image, couleur, largeur: int, hauteur: int) -> np.ndarray:
@@ -78,100 +88,9 @@ def _qimage(rvb: np.ndarray) -> QImage:
     return QImage(rvb.data, l, h, 3 * l, QImage.Format_RGB888).copy()
 
 
-class BarreHaut(QWidget):
-    """Logo, menus, nom du projet, panneaux à afficher, et le bouton principal Exporter."""
-
-    def __init__(self, fenetre: "FenetrePrincipale"):
-        super().__init__()
-        self.setProperty("role", "barre-haut")
-        self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setFixedHeight(charte.actuelle().px("toolbar-h"))
-        lay = QHBoxLayout(self)
-        lay.setContentsMargins(12, 0, 12, 0)
-        lay.setSpacing(12)
-        self.symbole = QLabel()
-        self.symbole.setAccessibleName("Remanence")
-        self.nom = etiquette("Remanence")
-        self.nom.setStyleSheet("font-weight: 600;")
-        self.menus = QMenuBar()
-        self.menus.setNativeMenuBar(False)
-        self.titre = etiquette("")
-        self.titre.setStyleSheet("font-weight: 600;")
-        self.etat = etiquette("", "secondaire")
-        lay.addWidget(self.symbole)
-        lay.addWidget(self.nom)
-        lay.addWidget(self.menus)
-        lay.addStretch(1)
-        lay.addWidget(self.titre)
-        lay.addWidget(self.etat)
-        lay.addStretch(1)
-        self.boutons_panneaux = QHBoxLayout()
-        self.boutons_panneaux.setSpacing(4)
-        lay.addLayout(self.boutons_panneaux)
-        self.exporter = QPushButton("Exporter")
-        self.exporter.setProperty("variante", "principal")
-        self.exporter.setToolTip("Exporter la séquence (Ctrl+E)")
-        self.exporter.clicked.connect(fenetre.exporter)
-        lay.addWidget(self.exporter)
-        self.appliquer_charte()
-
-    def appliquer_charte(self):
-        self.symbole.setPixmap(charte.actuelle().symbole(18))
-
-
-class BarreBas(QWidget):
-    """État technique à gauche, espaces de travail au centre, sauvegarde et tâches à droite."""
-
-    def __init__(self, fenetre: "FenetrePrincipale"):
-        super().__init__()
-        self.setProperty("role", "barre-bas")
-        self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setFixedHeight(charte.actuelle().px("toolbar-h"))
-        lay = QHBoxLayout(self)
-        lay.setContentsMargins(12, 0, 12, 0)
-        self.etat = etiquette("", "etat")
-        self.message = etiquette("", "secondaire")
-        self.message.hide()
-        gauche = QHBoxLayout()
-        gauche.addWidget(self.etat)
-        gauche.addWidget(self.message)
-        gauche.addStretch(1)
-        lay.addLayout(gauche, 1)
-        self.espaces = QButtonGroup(self)
-        centre = QHBoxLayout()
-        centre.setSpacing(4)
-        for cle, nom, aide in (("medias", "Médias", "Espace de travail pour trier et examiner "
-                                                   "les médias"),
-                               ("montage", "Montage", "Espace de travail pour monter la séquence")):
-            b = QPushButton(nom)
-            b.setProperty("variante", "onglet")
-            b.setCheckable(True)
-            b.setToolTip(aide)
-            b.setProperty("espace", cle)
-            self.espaces.addButton(b)
-            centre.addWidget(b)
-        self.espaces.buttons()[1].setChecked(True)
-        lay.addLayout(centre)
-        droite = QHBoxLayout()
-        droite.addStretch(1)
-        droite.addWidget(fenetre.taches)
-        self.sauvegarde = etiquette("Jamais enregistré", "secondaire")
-        droite.addWidget(self.sauvegarde)
-        lay.addLayout(droite, 1)
-        self._minuterie = QTimer(self)
-        self._minuterie.timeout.connect(lambda: (self.message.hide(), self.etat.show()))
-        self._minuterie.setSingleShot(True)
-
-    def afficher_message(self, texte: str, duree_ms: int = 5000):
-        self.message.setText(texte)
-        self.etat.hide()
-        self.message.show()
-        self._minuterie.start(duree_ms)
-
-
 class FenetrePrincipale(QMainWindow):
     def __init__(self):
-        super().__init__()
+        super().__init__(None, Qt.Window | Qt.FramelessWindowHint)
         self.projet = Projet.nouveau()
         self.historique = Historique(self.projet)
         self.chemin: Path | None = None
@@ -180,63 +99,63 @@ class FenetrePrincipale(QMainWindow):
         self._derniere_sauvegarde: float | None = None
         self._espace = "montage"
         self.setWindowIcon(charte.actuelle().icone_application())
+        self.setMouseTracking(True)
 
         self.lecture = MoteurLecture()
         self.taches = GestionnaireTaches()
         self.medias = PanneauMedias()
         self.visionneuse = Visionneuse()
         self.inspecteur = Inspecteur()
+        self.metadonnees = Metadonnees()
+        self.liste_historique = ListeHistorique()
         self.timeline = Timeline(self)
         self.vumetres = Vumetres(self.lecture.cretes)
+        self.formulaire_export = FormulaireExport()
+        self.file_export = FileExport()
 
         self.setDockNestingEnabled(True)
         self.setCentralWidget(QWidget())
         self.centralWidget().hide()
         self._docks = {}
-        self._entetes = {}
-        for nom, titre, widget in [("medias", "Médias", self.medias),
-                                   ("visionneuse", "Programme", self.visionneuse),
-                                   ("inspecteur", "Inspecteur", self.inspecteur),
-                                   ("mixage", "Mixage", self.vumetres),
-                                   ("timeline", "Timeline", self.timeline)]:
-            d, entete = panneau(titre, widget, nom, self, titre_visible=nom != "mixage")
-            self._docks[nom] = d
-            self._entetes[nom] = entete
-        self._entetes["visionneuse"].ajouter(self.visionneuse.qualite)
-        self.inspecteur.setMinimumWidth(320)
-        self.medias.setMinimumWidth(280)
+        d, self.onglets_gauche = panneau_onglets([("Média", self.medias)], "medias", self)
+        self._docks["medias"] = d
+        d, self.onglets_droite = panneau_onglets(
+            [("Inspecteur", self.inspecteur), ("Métadonnées", self.metadonnees),
+             ("Historique", self.liste_historique)], "droite", self)
+        self._docks["droite"] = d
         self.badge_inspecteur = etiquette("", "badge-accent")
         self.badge_inspecteur.hide()
-        self._entetes["inspecteur"].ajouter(self.badge_inspecteur)
+        self.onglets_droite.ajouter_outil(self.badge_inspecteur)
+        d, self.onglets_export = panneau_onglets([("Export", self.formulaire_export)], "export",
+                                                 self)
+        self._docks["export"] = d
+        d, _ = panneau_onglets([("File d'export", self.file_export)], "file_export", self)
+        self._docks["file_export"] = d
+        d, self._entete_visionneuse = panneau("Programme", self.visionneuse, "visionneuse", self)
+        self._docks["visionneuse"] = d
+        self._entete_visionneuse.ajouter(self.visionneuse.qualite)
+        d, _ = panneau("Mixage", self.vumetres, "mixage", self, titre_visible=False)
+        self._docks["mixage"] = d
+        d, _ = panneau("Timeline", self.timeline, "timeline", self, titre_visible=False)
+        self._docks["timeline"] = d
         self.inspecteur.badge.connect(self._badge)
+        self.onglets_droite.onglet_change.connect(lambda _i: self._badge())
+        self.inspecteur.setMinimumWidth(320)
+        self.medias.setMinimumWidth(260)
 
-        self.barre_haut = BarreHaut(self)
-        self.setMenuWidget(self.barre_haut)
-        self.barre_bas = BarreBas(self)
-        bas = QToolBar("Barre d'état")
-        bas.setObjectName("barre_bas")
-        bas.setMovable(False)
-        bas.setFloatable(False)
-        bas.toggleViewAction().setVisible(False)
-        bas.addWidget(self.barre_bas)
-        self.addToolBar(Qt.BottomToolBarArea, bas)
-        self.barre_bas.espaces.buttonClicked.connect(
-            lambda b: self.choisir_espace(b.property("espace")))
+        self.barre_titre = BarreTitre(self)
+        self.setMenuWidget(self.barre_titre)
+        self.barre_espaces = BarreEspaces(self.taches)
+        self.barre_bas = QToolBar("Espaces de travail")
+        self.barre_bas.setObjectName("barre_espaces")
+        self.barre_bas.setMovable(False)
+        self.barre_bas.setFloatable(False)
+        self.barre_bas.addWidget(self.barre_espaces)
+        self.addToolBar(Qt.BottomToolBarArea, self.barre_bas)
+        self.barre_espaces.espace_choisi.connect(self.choisir_espace)
 
-        self._disposition_par_defaut()
-        self._etat_defaut = self.saveState()
+        self._appliquer_espace("montage", par_defaut=True)
         self._actions()
-        for nom, icone, aide in (("medias", "app-window", "Afficher ou masquer le panneau Médias"),
-                                 ("inspecteur", "sliders-horizontal",
-                                  "Afficher ou masquer l'inspecteur"),
-                                 ("mixage", "audio-lines", "Afficher ou masquer les vumètres")):
-            b = bouton_icone(icone, aide, variante="panneau", texte=self._docks[nom].windowTitle(),
-                             cochable=True)
-            b.setChecked(True)
-            b.toggled.connect(self._docks[nom].setVisible)
-            self._docks[nom].visibilityChanged.connect(
-                lambda v, b=b, d=self._docks[nom]: b.setChecked(not d.isHidden()))
-            self.barre_haut.boutons_panneaux.addWidget(b)
         self._connecter()
         self._afficher_tout()
         self._restaurer_disposition()
@@ -247,74 +166,116 @@ class FenetrePrincipale(QMainWindow):
         self._minuterie_etat = QTimer(self)
         self._minuterie_etat.timeout.connect(self._etat_sauvegarde)
         self._minuterie_etat.start(20000)
-        QTimer.singleShot(0, self._etat_technique)
         self.resize(1600, 1000)
 
-    # Disposition et espaces de travail
+    # Fenêtre sans cadre : bords de redimensionnement et état agrandi
 
-    def _disposition_par_defaut(self):
+    def changeEvent(self, e):
+        if e.type() == QEvent.WindowStateChange:
+            agrandie = self.isMaximized() or self.isFullScreen()
+            self.setContentsMargins(*(0 if agrandie else BORD,) * 4)
+            self.barre_titre.etat_fenetre(agrandie)
+        super().changeEvent(e)
+
+    def _bords(self, pos) -> Qt.Edges:
+        if self.isMaximized():
+            return Qt.Edges()
+        bords = Qt.Edges()
+        if pos.x() <= BORD:
+            bords |= Qt.LeftEdge
+        if pos.x() >= self.width() - BORD:
+            bords |= Qt.RightEdge
+        if pos.y() <= BORD:
+            bords |= Qt.TopEdge
+        if pos.y() >= self.height() - BORD:
+            bords |= Qt.BottomEdge
+        return bords
+
+    def mouseMoveEvent(self, e):
+        bords = self._bords(e.position().toPoint())
+        curseurs = {Qt.LeftEdge: Qt.SizeHorCursor, Qt.RightEdge: Qt.SizeHorCursor,
+                    Qt.TopEdge: Qt.SizeVerCursor, Qt.BottomEdge: Qt.SizeVerCursor,
+                    Qt.LeftEdge | Qt.TopEdge: Qt.SizeFDiagCursor,
+                    Qt.RightEdge | Qt.BottomEdge: Qt.SizeFDiagCursor,
+                    Qt.RightEdge | Qt.TopEdge: Qt.SizeBDiagCursor,
+                    Qt.LeftEdge | Qt.BottomEdge: Qt.SizeBDiagCursor}
+        self.setCursor(curseurs.get(bords, Qt.ArrowCursor))
+        super().mouseMoveEvent(e)
+
+    def mousePressEvent(self, e):
+        bords = self._bords(e.position().toPoint())
+        if e.button() == Qt.LeftButton and bords:
+            self.windowHandle().startSystemResize(bords)
+            return
+        super().mousePressEvent(e)
+
+    # Espaces de travail
+
+    def _disposition(self, espace: str):
+        """Disposition par défaut d'un espace : quels panneaux, où, et à quelle taille."""
         d = self._docks
-        for dock in d.values():
+        visibles = PANNEAUX_ESPACE[espace]
+        for nom, dock in d.items():
             dock.setFloating(False)
-            dock.show()
-        self.addDockWidget(Qt.LeftDockWidgetArea, d["medias"])
-        self.addDockWidget(Qt.RightDockWidgetArea, d["inspecteur"])
-        self.addDockWidget(Qt.BottomDockWidgetArea, d["timeline"])
-        self.splitDockWidget(d["medias"], d["visionneuse"], Qt.Horizontal)
-        self.splitDockWidget(d["visionneuse"], d["inspecteur"], Qt.Horizontal)
-        self.splitDockWidget(d["inspecteur"], d["mixage"], Qt.Horizontal)
-        self.resizeDocks([d["medias"], d["visionneuse"], d["inspecteur"], d["mixage"]],
-                         [340, 820, 340, 56], Qt.Horizontal)
-        self.resizeDocks([d["visionneuse"], d["timeline"]], [520, 400], Qt.Vertical)
+        if espace == "export":
+            self.addDockWidget(Qt.LeftDockWidgetArea, d["export"])
+            self.addDockWidget(Qt.BottomDockWidgetArea, d["timeline"])
+            self.splitDockWidget(d["export"], d["visionneuse"], Qt.Horizontal)
+            self.splitDockWidget(d["visionneuse"], d["file_export"], Qt.Horizontal)
+            self.resizeDocks([d["export"], d["visionneuse"], d["file_export"]], [340, 900, 360],
+                             Qt.Horizontal)
+            self.resizeDocks([d["visionneuse"], d["timeline"]], [640, 260], Qt.Vertical)
+        else:
+            self.addDockWidget(Qt.LeftDockWidgetArea, d["medias"])
+            self.addDockWidget(Qt.BottomDockWidgetArea, d["timeline"])
+            self.splitDockWidget(d["medias"], d["visionneuse"], Qt.Horizontal)
+            self.splitDockWidget(d["visionneuse"], d["droite"], Qt.Horizontal)
+            self.splitDockWidget(d["droite"], d["mixage"], Qt.Horizontal)
+            if espace == "media":
+                self.resizeDocks([d["medias"], d["visionneuse"], d["droite"]], [640, 640, 380],
+                                 Qt.Horizontal)
+            else:
+                self.resizeDocks([d["medias"], d["visionneuse"], d["droite"], d["mixage"]],
+                                 [320, 860, 340, 56], Qt.Horizontal)
+                self.resizeDocks([d["visionneuse"], d["timeline"]], [520, 420], Qt.Vertical)
+        for nom, dock in d.items():
+            dock.setVisible(nom in visibles)
 
-    def _disposition_medias(self):
-        self._disposition_par_defaut()
-        d = self._docks
-        self.resizeDocks([d["medias"], d["visionneuse"], d["inspecteur"], d["mixage"]],
-                         [720, 560, 380, 56], Qt.Horizontal)
-        self.resizeDocks([d["visionneuse"], d["timeline"]], [700, 220], Qt.Vertical)
+    def _appliquer_espace(self, espace: str, par_defaut: bool = False):
+        reglages = QSettings("Remanence", "Remanence")
+        etat = None if par_defaut else reglages.value(f"disposition/{espace}")
+        if etat is None or not self.restoreState(etat, VERSION_DISPOSITION):
+            self._disposition(espace)
+        # Une disposition mémorisée ne doit jamais faire apparaître un panneau d'un autre espace.
+        for nom, dock in self._docks.items():
+            if nom not in PANNEAUX_ESPACE[espace]:
+                dock.hide()
+        if espace == "media":
+            self.onglets_droite.choisir(1)
+        elif espace == "export":
+            self.formulaire_export.actualiser(self.projet, self.chemin)
+        self._espace = espace
+        self.barre_espaces.activer(espace)
 
     def choisir_espace(self, espace: str):
+        """Change la disposition ; le projet, la sélection et la tête de lecture ne bougent pas."""
         if espace == self._espace:
             return
-        reglages = QSettings("Remanence", "Remanence")
-        reglages.setValue(f"espace/{self._espace}", self.saveState())
-        self._espace = espace
-        etat = reglages.value(f"espace/{espace}")
-        if etat is not None:
-            self.restoreState(etat)
-        elif espace == "medias":
-            self._disposition_medias()
-        else:
-            self._disposition_par_defaut()
-        for b in self.barre_bas.espaces.buttons():
-            b.setChecked(b.property("espace") == espace)
+        QSettings("Remanence", "Remanence").setValue(f"disposition/{self._espace}",
+                                                     self.saveState(VERSION_DISPOSITION))
+        self._appliquer_espace(espace)
 
     def _restaurer_disposition(self):
-        etat = QSettings("Remanence", "Remanence").value("disposition")
-        if etat is not None:
-            self.restoreState(etat)
+        reglages = QSettings("Remanence", "Remanence")
+        espace = reglages.value("espace_actif", "montage")
+        if espace in PANNEAUX_ESPACE:
+            self._appliquer_espace(espace)
 
     def retablir_disposition(self):
         reglages = QSettings("Remanence", "Remanence")
-        reglages.remove("espace/medias")
-        reglages.remove("espace/montage")
-        if self._espace == "medias":
-            self._disposition_medias()
-        else:
-            self._disposition_par_defaut()
-            self.restoreState(self._etat_defaut)
-
-    def changer_theme(self, theme: str):
-        QSettings("Remanence", "Remanence").setValue("theme", theme)
-        charte.definir(theme)
-        QApplication.instance().setStyleSheet(charte.actuelle().feuille())
-        rafraichir_icones()
-        self.barre_haut.appliquer_charte()
-        self.visionneuse.timecode.appliquer_charte()
-        self.timeline.timecode.appliquer_charte()
-        self.setWindowIcon(charte.actuelle().icone_application())
-        self._afficher_tout()
+        for espace in PANNEAUX_ESPACE:
+            reglages.remove(f"disposition/{espace}")
+        self._appliquer_espace(self._espace, par_defaut=True)
 
     # Menus et raccourcis
 
@@ -331,7 +292,7 @@ class FenetrePrincipale(QMainWindow):
         return a
 
     def _actions(self):
-        m = self.barre_haut.menus
+        m = self.barre_titre.menus
         f = m.addMenu("&Fichier")
         self._action(f, "Nouveau projet", self.nouveau, "Ctrl+N")
         self._action(f, "Ouvrir un projet…", self.ouvrir, "Ctrl+O")
@@ -340,24 +301,30 @@ class FenetrePrincipale(QMainWindow):
         self._action(f, "Enregistrer sous…", self.enregistrer_sous, "Ctrl+Shift+S")
         f.addSeparator()
         self._action(f, "Importer des médias…", self.importer, "Ctrl+I")
-        self._action(f, "Exporter la séquence…", self.exporter, "Ctrl+E")
+        self._action(f, "Exporter la séquence…", lambda: self.choisir_espace("export"), "Ctrl+E")
         f.addSeparator()
         self._action(f, "Quitter", self.close, "Ctrl+Q")
 
         e = m.addMenu("É&dition")
         self.a_annuler = self._action(e, "Annuler", self.annuler, "Ctrl+Z")
         self.a_retablir = self._action(e, "Rétablir", self.retablir, ["Ctrl+Y", "Ctrl+Shift+Z"])
-        e.addSeparator()
-        self._action(e, "Outil de sélection", lambda: self.timeline.choisir_outil("selection"), "V")
-        self._action(e, "Outil de coupe", lambda: self.timeline.choisir_outil("couper"), "C")
 
-        c = m.addMenu("&Clip")
-        self._action(c, "Couper à la tête de lecture", self.couper, ["S", "B"],
+        mo = m.addMenu("&Montage")
+        self._action(mo, "Outil de sélection", lambda: self.timeline.choisir_outil("selection"),
+                     "V")
+        self._action(mo, "Outil de coupe", lambda: self.timeline.choisir_outil("couper"), "C")
+        mo.addSeparator()
+        self._action(mo, "Couper à la tête de lecture", self.couper, ["S", "B"],
                      "Coupe les clips sélectionnés, ou tous ceux sous la tête si rien n'est "
                      "sélectionné.")
-        self._action(c, "Supprimer les clips sélectionnés", self.supprimer, ["Del", "Backspace"])
-        self._action(c, "Dissocier son et image", self.dissocier, "U")
-        self._action(c, "Lier la sélection", self.lier, "Ctrl+L")
+        self._action(mo, "Supprimer les clips sélectionnés", self.supprimer, ["Del", "Backspace"])
+        self._action(mo, "Dissocier son et image", self.dissocier, "U")
+        self._action(mo, "Lier la sélection", self.lier, "Ctrl+L")
+        mo.addSeparator()
+        self._action(mo, "Ajouter une piste vidéo", lambda: self.ajouter_piste("video"))
+        self._action(mo, "Ajouter une piste audio", lambda: self.ajouter_piste("audio"))
+        mo.addSeparator()
+        self._action(mo, "Ajouter un marqueur", self.marqueur, "M")
 
         lec = m.addMenu("&Lecture")
         self._action(lec, "Lire / Pause", self._espace_clavier, "Space")
@@ -381,31 +348,50 @@ class FenetrePrincipale(QMainWindow):
         self._action(lec, "Point de sortie", self.point_sortie, "O")
         self._action(lec, "Effacer les points d'entrée et de sortie", self.effacer_points,
                      "Alt+X")
-        self._action(lec, "Ajouter un marqueur", self.marqueur, "M")
 
         a = m.addMenu("&Affichage")
-        themes = a.addMenu("Thème")
-        groupe = QActionGroup(self)
-        for cle, nom in charte.THEMES.items():
-            act = self._action(themes, nom, lambda _=False, cle=cle: self.changer_theme(cle))
-            act.setCheckable(True)
-            act.setChecked(charte.actuelle().theme == cle)
-            groupe.addAction(act)
         qualite = a.addMenu("Résolution de l'aperçu")
         for cle, nom in LIBELLES_QUALITE.items():
-            self._action(qualite, nom, lambda _=False, cle=cle: self.visionneuse.choisir_qualite(cle))
+            self._action(qualite, nom,
+                         lambda _=False, cle=cle: self.visionneuse.choisir_qualite(cle))
         a.addSeparator()
-        self._action(a, "Espace Médias", lambda: self.choisir_espace("medias"), "Alt+1")
-        self._action(a, "Espace Montage", lambda: self.choisir_espace("montage"), "Alt+2")
+        for i, (cle, nom) in enumerate((("media", "Média"), ("montage", "Montage"),
+                                        ("export", "Export")), 1):
+            self._action(a, f"Espace {nom}", lambda _=False, cle=cle: self.choisir_espace(cle),
+                         f"Shift+{i}")
+        a.addSeparator()
+        self.a_barre_espaces = self._action(a, "Barre des espaces de travail",
+                                            lambda v: self.barre_bas.setVisible(v))
+        self.a_barre_espaces.setCheckable(True)
+        self.a_barre_espaces.setChecked(True)
+        self._action(a, "Plein écran", self._plein_ecran, "F11")
 
         fe = m.addMenu("F&enêtre")
-        for dock in self._docks.values():
-            fe.addAction(dock.toggleViewAction())
+        for nom, dock, titre in (("medias", self._docks["medias"], "Média"),
+                                 ("visionneuse", self._docks["visionneuse"], "Programme"),
+                                 ("droite", self._docks["droite"], "Inspecteur"),
+                                 ("mixage", self._docks["mixage"], "Vumètres"),
+                                 ("timeline", self._docks["timeline"], "Timeline")):
+            act = dock.toggleViewAction()
+            act.setText(titre)
+            fe.addAction(act)
+        fe.addSeparator()
+        detacher = fe.addMenu("Détacher un panneau")
+        for nom, titre in (("medias", "Média"), ("visionneuse", "Programme"),
+                           ("droite", "Inspecteur"), ("timeline", "Timeline")):
+            self._action(detacher, titre, lambda _=False, nom=nom: self._docks[nom].setFloating(
+                not self._docks[nom].isFloating()))
         fe.addSeparator()
         self._action(fe, "Revenir à la disposition par défaut", self.retablir_disposition)
 
         ai = m.addMenu("&Aide")
         self._action(ai, "À propos de Remanence", lambda: APropos(self).exec())
+
+    def _plein_ecran(self):
+        if self.isFullScreen():
+            self.showNormal()
+        else:
+            self.showFullScreen()
 
     def _connecter(self):
         self.medias.importer.connect(self.importer)
@@ -419,6 +405,8 @@ class FenetrePrincipale(QMainWindow):
         vue.selection_changee.connect(self._selection)
         vue.media_depose.connect(self.poser_medias)
         self.inspecteur.reglage.connect(self._reglage_clip)
+        self.liste_historique.aller.connect(self._aller_historique)
+        self.formulaire_export.lancer.connect(self._lancer_export)
         self.lecture.image_prete.connect(lambda image, f: self.visionneuse.zone.montrer(image))
         self.lecture.position_changee.connect(self._position)
         self.lecture.lecture_changee.connect(self.visionneuse.etat_lecture)
@@ -427,7 +415,7 @@ class FenetrePrincipale(QMainWindow):
         v = self.visionneuse
         v.demande_lecture.connect(self.lire_pause)
         v.demande_position.connect(self.aller_a)
-        v.demande_qualite.connect(self._qualite)
+        v.demande_qualite.connect(self.lecture.definir_qualite)
         v.b_debut.clicked.connect(lambda: self.aller_a(0))
         v.b_fin.clicked.connect(lambda: self.aller_a(max(0, self.projet.sequence.duree() - 1)))
         v.b_prec.clicked.connect(lambda: self._pas(-1))
@@ -437,7 +425,9 @@ class FenetrePrincipale(QMainWindow):
     # Affichage de l'état
 
     def message(self, texte: str, duree_ms: int = 5000):
-        self.barre_bas.afficher_message(texte, duree_ms)
+        self.barre_espaces.message.setText(texte)
+        QTimer.singleShot(duree_ms, lambda: self.barre_espaces.message.text() == texte
+                          and self.barre_espaces.message.setText(""))
 
     def _afficher_tout(self):
         self.medias.afficher(self.projet)
@@ -448,8 +438,11 @@ class FenetrePrincipale(QMainWindow):
         self._position(self.lecture.position)
         seq = self.projet.sequence
         self.visionneuse.afficher_points(seq)
-        self._entetes["visionneuse"].precision.setText(seq.nom)
+        self._entete_visionneuse.precision.setText(seq.nom)
         self._boucle(self.visionneuse.b_boucle.isChecked())
+        self.liste_historique.afficher(self.historique.libelles(), self.historique.position)
+        if self._espace == "export":
+            self.formulaire_export.actualiser(self.projet, self.chemin)
         self.a_annuler.setEnabled(self.historique.peut_annuler())
         self.a_retablir.setEnabled(self.historique.peut_retablir())
         self.a_annuler.setText(f"Annuler {self.historique.libelle_annuler().lower()}".strip())
@@ -457,39 +450,30 @@ class FenetrePrincipale(QMainWindow):
         if not seq.duree():
             self.visionneuse.zone.montrer_message(
                 "Glissez un média sur la timeline pour le voir ici.")
-        self._etat_technique()
 
     def _titre(self):
-        nom = self.chemin.stem if self.chemin else "Projet sans titre"
+        nom = self.chemin.stem if self.chemin else "Sans titre"
         self.setWindowTitle(f"{nom}{' (modifié)' if self.modifie else ''} · Remanence")
-        self.barre_haut.titre.setText(f"{nom} · {self.projet.sequence.nom}")
-        self.barre_haut.etat.setText("Modifié" if self.modifie else "")
+        seq = self.projet.sequence
+        cad = f"{float(seq.fraction_cadence):.3f}".rstrip("0").rstrip(".").replace(".", ",")
+        self.barre_titre.afficher_projet(nom, self.modifie, seq.largeur, seq.hauteur, cad)
         self._etat_sauvegarde()
 
     def _etat_sauvegarde(self):
         if self._derniere_sauvegarde is None:
-            texte = "Jamais enregistré"
+            texte = "Projet jamais enregistré"
         else:
             minutes = int((time.time() - self._derniere_sauvegarde) // 60)
             texte = ("Enregistré à l'instant" if minutes < 1
                      else f"Enregistré il y a {minutes} min")
-        self.barre_bas.sauvegarde.setText(texte)
+        self.barre_titre.projet.setToolTip(texte)
 
-    def _etat_technique(self):
-        seq = self.projet.sequence
-        cad = f"{float(seq.fraction_cadence):.3f}".rstrip("0").rstrip(".").replace(".", ",")
-        rendu = "OpenGL" if self.visionneuse.zone.rendu_gpu else "Rendu logiciel"
-        qualite = LIBELLES_QUALITE[self.visionneuse._qualite]
-        self.barre_bas.etat.setText(f"{rendu} · {qualite} · {cad} i/s · "
-                                    f"{seq.largeur} × {seq.hauteur}")
-
-    def _qualite(self, cle: str):
-        self.lecture.definir_qualite(cle)
-        self._etat_technique()
-
-    def _badge(self, texte: str):
-        self.badge_inspecteur.setText(texte)
-        self.badge_inspecteur.setVisible(bool(texte))
+    def _badge(self, texte: str | None = None):
+        if texte is not None:
+            self.badge_inspecteur.setText(texte)
+        # Le badge décrit le contenu de l'onglet Inspecteur : caché sur les autres onglets.
+        self.badge_inspecteur.setVisible(bool(self.badge_inspecteur.text())
+                                         and self.onglets_droite.currentIndex() == 0)
 
     def valider(self, libelle: str):
         """À appeler après toute modification du projet : historique, affichage, aperçu."""
@@ -505,6 +489,11 @@ class FenetrePrincipale(QMainWindow):
         self.modifie = True
         self._afficher_tout()
 
+    def _aller_historique(self, position: int):
+        p = self.historique.aller(position)
+        if p is not None:
+            self._remplacer_projet(p)
+
     def _position(self, f: int):
         seq = self.projet.sequence
         for champ in (self.visionneuse.timecode, self.timeline.timecode):
@@ -516,7 +505,14 @@ class FenetrePrincipale(QMainWindow):
 
     def _selection(self, ids: set):
         if len(ids) == 1:
-            self.inspecteur.clip(self.projet, next(iter(ids)))
+            clip_id = next(iter(ids))
+            self.inspecteur.clip(self.projet, clip_id)
+            _, c = self.projet.sequence.trouver(clip_id)
+            media = self.projet.medias.get(c.media_id) if c else None
+            if media:
+                self.metadonnees.afficher(media)
+            if self.onglets_droite.currentIndex() == 1 and self._espace == "montage":
+                self.onglets_droite.choisir(0)
         elif ids:
             self.inspecteur.vide()
             self.message(f"{len(ids)} clips sélectionnés", 3000)
@@ -525,7 +521,8 @@ class FenetrePrincipale(QMainWindow):
 
     def _media_choisi(self, media):
         if media is not None:
-            self.inspecteur.fiche_media(media)
+            self.metadonnees.afficher(media)
+            self.onglets_droite.choisir(1)
 
     # Lecture
 
@@ -805,32 +802,28 @@ class FenetrePrincipale(QMainWindow):
     # Export
 
     def exporter(self):
-        seq = self.projet.sequence
-        if seq.duree() == 0:
-            QMessageBox.information(self, "Rien à exporter",
-                                    "La timeline est vide. Glissez un média sur la timeline avant "
-                                    "d'exporter.")
-            return
-        d = DialogueExport(self.projet, self.chemin, self)
-        if d.exec() != DialogueExport.Accepted:
-            return
-        r = d.reglages()
+        self.choisir_espace("export")
+
+    def _lancer_export(self, r: dict):
         copie = Projet.depuis_dict(self.projet.vers_dict())
         for m in copie.medias.values():
             m.hors_ligne = self.projet.medias[m.id].hors_ligne
         nom = r["chemin"].name
+        tache = Tache(f"Export de {nom}", lambda progression, annule: exporter(
+            copie, copie.sequence, r["chemin"], r["cle_format"], r["debut"], r["fin"],
+            progression, annule))
+        ligne = self.file_export.ajouter(nom, r["format"], lambda: tache.annule.set())
+        tache.signaux.progression.connect(ligne.progression)
 
-        def travail(progression, annule):
-            return exporter(copie, copie.sequence, r["chemin"], r["cle_format"], r["debut"],
-                            r["fin"], progression, annule)
+        def termine(rapport):
+            ligne.termine(rapport)
+            self.message(f"Export de {nom} terminé.", 6000)
 
-        self.taches.lancer(
-            Tache(f"Export de {nom}", travail),
-            lambda rapport: DialogueRapport(rapport, self).exec(),
-            lambda m, det: afficher_erreur(self, "Export impossible",
-                                           f"L'export de « {nom} » a échoué : {m}", det),
-            lambda: self.message(f"Export de {nom} annulé. Aucun fichier n'a été laissé à moitié "
-                                 "écrit.", 6000))
+        def echec(m, det):
+            ligne.echec(m)
+            afficher_erreur(self, "Export impossible", f"L'export de « {nom} » a échoué : {m}", det)
+
+        self.taches.lancer(tache, termine, echec, ligne.annule)
 
     # Projet
 
@@ -938,8 +931,8 @@ class FenetrePrincipale(QMainWindow):
             e.ignore()
             return
         reglages = QSettings("Remanence", "Remanence")
-        reglages.setValue("disposition", self.saveState())
-        reglages.setValue(f"espace/{self._espace}", self.saveState())
+        reglages.setValue(f"disposition/{self._espace}", self.saveState(VERSION_DISPOSITION))
+        reglages.setValue("espace_actif", self._espace)
         self.taches.tout_annuler()
         self.lecture.fermer()
         self.taches.attendre(3000)

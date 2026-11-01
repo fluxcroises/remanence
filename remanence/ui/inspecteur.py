@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QPushButton, QScrollArea, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QListWidget, QListWidgetItem,
+                               QPushButton, QScrollArea, QVBoxLayout, QWidget)
 
 from remanence.media.timecode import images_vers_tc
 from remanence.projet.modele import Media, Projet
@@ -28,11 +28,8 @@ def nom_court_piste(seq, piste) -> str:
     return f"A{seq.pistes_audio.index(piste) + 1}"
 
 
-class Inspecteur(QWidget):
-    # (clip_id, champ, valeur) ; la fenêtre applique et enregistre dans l'historique.
-    reglage = Signal(str, str, object)
-    # Texte du badge de l'en-tête (« Clip vidéo », « Média »), vide sans sélection.
-    badge = Signal(str)
+class PanneauFiche(QWidget):
+    """Colonne défilante de titres, sections et lignes libellé-valeur, avec un pied facultatif."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -57,7 +54,6 @@ class Inspecteur(QWidget):
         self._lay_pied = QHBoxLayout(self._pied)
         self._lay_pied.setContentsMargins(14, 12, 14, 12)
         racine.addWidget(self._pied)
-        self.vide()
 
     def _titre(self, titre: str, sous_titre: str = ""):
         bloc = QVBoxLayout()
@@ -100,16 +96,22 @@ class Inspecteur(QWidget):
         _effacer(self._lay_pied)
         self._pied.hide()
 
+
+class Metadonnees(PanneauFiche):
+    """Fiche technique du média choisi dans le panneau Média ou du clip sélectionné."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.vide()
+
     def vide(self):
         self._vider()
-        self.badge.emit("")
-        self._titre("Aucune sélection")
-        self._note("Cliquez sur un clip de la timeline pour régler son niveau et ses fondus, "
-                   "ou sur un média pour lire sa fiche technique.")
+        self._titre("Aucun média")
+        self._note("Cliquez sur un média ou sur un clip pour lire sa fiche technique : codec, "
+                   "profondeur, cadence, timecode, couleur et audio.")
 
-    def fiche_media(self, media: Media):
+    def afficher(self, media: Media):
         self._vider()
-        self.badge.emit("Média")
         self._titre(media.nom, "Fichier hors ligne : " + media.chemin if media.hors_ligne
                     else media.infos.conteneur)
         self._section("Fiche technique")
@@ -122,6 +124,46 @@ class Inspecteur(QWidget):
                 n = etiquette(f"Avertissement : {a}", "avertissement")
                 n.setWordWrap(True)
                 self._lay.addWidget(n)
+
+
+class Historique(QListWidget):
+    """Toutes les actions de la session ; un clic ramène le projet à cet état."""
+    aller = Signal(int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAccessibleName("Historique des actions")
+        self.itemActivated.connect(lambda item: self.aller.emit(self.row(item)))
+        self.itemClicked.connect(lambda item: self.aller.emit(self.row(item)))
+
+    def afficher(self, libelles: list[str], position: int):
+        self.blockSignals(True)
+        self.clear()
+        for i, libelle in enumerate(libelles):
+            texte = libelle if i else "Ouverture du projet"
+            item = QListWidgetItem(texte + ("  ·  état actuel" if i == position else ""))
+            if i > position:
+                item.setToolTip("Action annulée : cliquez pour la rétablir.")
+            self.addItem(item)
+        self.setCurrentRow(position)
+        self.blockSignals(False)
+
+
+class Inspecteur(PanneauFiche):
+    # (clip_id, champ, valeur) ; la fenêtre applique et enregistre dans l'historique.
+    reglage = Signal(str, str, object)
+    # Texte du badge de l'en-tête (« Clip vidéo », « Clip audio »), vide sans sélection.
+    badge = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.vide()
+
+    def vide(self):
+        self._vider()
+        self.badge.emit("")
+        self._titre("Aucune sélection")
+        self._note("Cliquez sur un clip de la timeline pour régler son niveau et ses fondus.")
 
     def clip(self, projet: Projet, clip_id: str):
         seq = projet.sequence

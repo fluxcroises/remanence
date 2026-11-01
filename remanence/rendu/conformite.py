@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from fractions import Fraction
 
-import av
 import numpy as np
 
 from remanence.media import timecode as tcmod

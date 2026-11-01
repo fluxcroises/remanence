@@ -66,7 +66,7 @@ def etiquette(texte: str, role: str = "") -> QLabel:
 class EnTetePanneau(QWidget):
     """Barre de titre d'un panneau ancrable : titre, précision, outils, bouton Détacher."""
 
-    def __init__(self, dock: QDockWidget, titre: str, titre_visible: bool = True):
+    def __init__(self, dock: QDockWidget, titre: str):
         super().__init__(dock)
         self.setProperty("role", "entete")
         self.setAttribute(Qt.WA_StyledBackground, True)
@@ -77,9 +77,6 @@ class EnTetePanneau(QWidget):
         self.titre = etiquette(titre)
         self.titre.setStyleSheet("font-weight: 500;")
         self.precision = etiquette("", "secondaire")
-        self.titre.setVisible(titre_visible)
-        if not titre_visible:
-            self._lay.setContentsMargins(4, 0, 4, 0)
         self._lay.addWidget(self.titre)
         self._lay.addWidget(self.precision)
         self._lay.addStretch(1)
@@ -96,13 +93,15 @@ class EnTetePanneau(QWidget):
 
 
 def panneau(titre: str, contenu: QWidget, nom: str, parent,
-            titre_visible: bool = True) -> tuple[QDockWidget, EnTetePanneau]:
+            titre_visible: bool = True) -> tuple[QDockWidget, EnTetePanneau | None]:
+    """Panneau ancrable. Sans titre visible (timeline, vumètres), il n'a pas de barre du tout :
+    on le détache depuis le menu Fenêtre."""
     d = QDockWidget(titre, parent)
     d.setObjectName(nom)
     d.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable |
                   QDockWidget.DockWidgetClosable)
-    entete = EnTetePanneau(d, titre, titre_visible)
-    d.setTitleBarWidget(entete)
+    entete = EnTetePanneau(d, titre) if titre_visible else None
+    d.setTitleBarWidget(entete if entete is not None else QWidget(d))
     contenu.setProperty("role", "panneau")
     contenu.setAttribute(Qt.WA_StyledBackground, True)
     d.setWidget(contenu)
@@ -313,3 +312,59 @@ class Vumetres(QWidget):
                     p.fillRect(QRectF(x, y1, largeur, hauteur * (fin - debut)), c.c(couleur))
         p.end()
 
+
+
+class PanneauOnglets(QStackedWidget):
+    """Contenu d'un panneau à onglets ; la barre d'onglets sert de titre au panneau ancrable."""
+    onglet_change = Signal(int)
+
+    def __init__(self, dock: QDockWidget, onglets: list[tuple[str, QWidget]]):
+        super().__init__()
+        self.entete = QWidget(dock)
+        self.entete.setProperty("role", "onglets")
+        self.entete.setAttribute(Qt.WA_StyledBackground, True)
+        self.entete.setFixedHeight(36)
+        lay = QHBoxLayout(self.entete)
+        lay.setContentsMargins(4, 0, 6, 0)
+        lay.setSpacing(0)
+        self.boutons: list[QToolButton] = []
+        for i, (nom, widget) in enumerate(onglets):
+            b = QToolButton()
+            b.setText(nom)
+            b.setProperty("variante", "onglet")
+            b.setCheckable(True)
+            b.setAutoExclusive(True)
+            b.clicked.connect(lambda _=False, i=i: self.choisir(i))
+            lay.addWidget(b)
+            self.boutons.append(b)
+            widget.setProperty("role", "panneau")
+            widget.setAttribute(Qt.WA_StyledBackground, True)
+            self.addWidget(widget)
+        lay.addStretch(1)
+        self._outils = QHBoxLayout()
+        self._outils.setSpacing(4)
+        lay.addLayout(self._outils)
+        detacher = bouton_icone("picture-in-picture-2", "Détacher le panneau (ou double-clic "
+                                                        "sur sa barre d'onglets)")
+        detacher.clicked.connect(lambda: dock.setFloating(not dock.isFloating()))
+        lay.addWidget(detacher)
+        dock.setTitleBarWidget(self.entete)
+        dock.setWidget(self)
+        self.choisir(0)
+
+    def ajouter_outil(self, widget: QWidget):
+        self._outils.addWidget(widget)
+
+    def choisir(self, i: int):
+        self.setCurrentIndex(i)
+        self.boutons[i].setChecked(True)
+        self.onglet_change.emit(i)
+
+
+def panneau_onglets(onglets: list[tuple[str, QWidget]], nom: str,
+                    parent) -> tuple[QDockWidget, PanneauOnglets]:
+    d = QDockWidget(onglets[0][0], parent)
+    d.setObjectName(nom)
+    d.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable |
+                  QDockWidget.DockWidgetClosable)
+    return d, PanneauOnglets(d, onglets)

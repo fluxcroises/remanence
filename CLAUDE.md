@@ -20,7 +20,7 @@ Logiciel Windows de montage vidéo orienté datamosh et glitch art, dans l'espri
 
 ## État d'avancement
 
-- Étape 1 (socle et visionneuse) : codée, avec la charte graphique intégrée (31 octobre 2026), 102 tests au vert. En attente de la validation de Lewis.
+- Étape 1 (socle et visionneuse) : codée, avec la charte graphique intégrée (31 octobre 2026). Refonte de l'interface en cours (lots ci-dessous) ; lot 1 fait le 1er novembre 2026, 78 tests au vert. En attente de la validation de Lewis.
 - Captures de référence de l'état actuel : `UI/captures/`.
 - Étapes 2 à 6 : non commencées. Ne pas passer à l'étape suivante sans validation explicite.
 
@@ -59,6 +59,12 @@ Logiciel Windows de montage vidéo orienté datamosh et glitch art, dans l'espri
 - Défaut de la charte signalé : `success` en thème clair donne 4,499:1 sur `surface`. Il n'est posé que sur `surface-raised`.
 - Les éléments de la maquette qui dépendent des étapes suivantes (onglets Effets, Transitions, Scripts ; onglets Masque, Fusion, Modulateurs ; images clés ; badges fx ; Avant/Après ; Ripple et Slip ; espaces Glitch et Export) ne sont pas affichés tant qu'ils ne fonctionnent pas.
 - Typographie : espace insécable avant « : ; ? ! % » et entre un nombre et son unité, dans tous les textes.
+- Refonte de l'interface (1er novembre 2026). Référence : `UI/refonte/maquette-refonte.webp` et `UI/refonte/refonte.md` (proposition de Lewis, pas à reproduire à l'identique ; nom « MoshStudio Pro » de la maquette remplacé par Remanence). Se rapprocher de DaVinci Resolve, esprit logiciel professionnel, dense.
+  - Décisions de Lewis : thème clair supprimé ; on garde le mauve de la charte (pas le violet vif de la maquette) ; barre du haut sur une seule ligne avec les boutons de fenêtre intégrés ; deux moniteurs côte à côte (source, programme) dans l'espace Montage ; espaces de travail selon l'avancement (Média, Montage, Export maintenant ; Cut quand le montage rapide existera ; Datamosh à l'étape 3 ; Couleur et Fusion seulement s'ils entrent au cahier des charges) ; convention Vegas pour la molette et les raccourcis (flèches seules pour une image) ; fondu enchaîné automatique au chevauchement (désactivable).
+  - Navigation du bas : 36 px, centrée, icônes et libellés, soulignement mauve sous l'espace actif, sans logo ni version, masquable (Affichage).
+  - Double écran comme dans Resolve (demande du 1er novembre 2026) : timeline et vumètres sur le second écran, programme en plein écran possible ; prévu au lot 2.
+  - Fait au lot 1 : fenêtre sans cadre (`barres.py` : BarreTitre avec startSystemMove/startSystemResize, bords de 5 px), navigation `BarreEspaces`, espaces Média/Montage/Export (`PANNEAUX_ESPACE` dans `fenetre.py`, dispositions mémorisées par espace avec `VERSION_DISPOSITION`), panneaux à onglets (`panneau_onglets`), onglets Inspecteur/Métadonnées/Historique, espace Export (`panneau_export.py` : formulaire et file d'export ; l'ancienne boîte de dialogue d'export est supprimée), palette Qt générée par la charte, style natif Windows conservé (Fusion soulignait les lettres des menus).
+  - Lots : 1 fondations visuelles (thème, barre du haut, navigation, espaces, onglets) ; 2 moniteurs source et programme ; 3 médias (chutiers, grille, liste, recherche, survol) ; 4 timeline (en-têtes compacts, barre d'outils, marqueurs nommés, vumètres à droite, gestes) ; 5 inspecteur (sections repliables, Métadonnées, Historique).
 
 <!-- antislop:start -->
 ## antislop

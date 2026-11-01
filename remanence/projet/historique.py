@@ -26,6 +26,20 @@ class Historique:
         self._position += 1
         return True
 
+    @property
+    def position(self) -> int:
+        return self._position
+
+    def libelles(self) -> list[str]:
+        return [libelle for libelle, _ in self._etats]
+
+    def aller(self, position: int) -> Projet | None:
+        """Revient directement à un état de la liste (onglet Historique)."""
+        if not 0 <= position < len(self._etats) or position == self._position:
+            return None
+        self._position = position
+        return Projet.depuis_dict(json.loads(self._etats[position][1]))
+
     def peut_annuler(self) -> bool:
         return self._position > 0
 

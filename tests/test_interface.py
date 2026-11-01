@@ -177,3 +177,47 @@ def test_boutons_de_piste_et_zoom(fenetre, medias):
     piste = w.projet.sequence.pistes_audio[1]
     w.deplacer_piste(piste.id, -1)
     assert w.projet.sequence.pistes_audio[0].id == piste.id
+
+
+def test_espaces_de_travail(fenetre, medias, tmp_path):
+    """Changer d'espace garde la tête de lecture et la sélection ; l'export passe par la file."""
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    w.aller_a(7)
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    w.timeline.vue._choisir({clip.id})
+    for espace in ("media", "export", "montage"):
+        w.choisir_espace(espace)
+        assert w.barre_espaces.boutons[espace].isChecked()
+        assert w.lecture.position == 7 and w.timeline.vue.selection == {clip.id}
+    assert w._docks["timeline"].isVisible() and not w._docks["file_export"].isVisible()
+
+    w.choisir_espace("export")
+    assert w._docks["file_export"].isVisible() and not w._docks["medias"].isVisible()
+    w.formulaire_export.fichier.setText(str(tmp_path / "file.mov"))
+    w.formulaire_export.tout.setChecked(True)
+    w.formulaire_export.bouton.click()
+    lignes = w.file_export.findChildren(type(w.file_export.ajouter("", "", lambda: None)))
+    assert _attendre(lambda: (tmp_path / "file.mov").exists() and
+                     any("conforme" in l.etat.text() for l in lignes), 30)
+
+
+def test_historique_et_barre_des_espaces(fenetre, medias):
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    w.aller_a(10)
+    w.couper()
+    assert w.liste_historique.count() == 4
+    w.liste_historique.aller.emit(2)
+    assert len(w.projet.sequence.pistes_video[0].clips) == 1, "retour avant la coupe"
+    w.liste_historique.aller.emit(3)
+    assert len(w.projet.sequence.pistes_video[0].clips) == 2
+    w.a_barre_espaces.trigger()
+    assert not w.barre_bas.isVisibleTo(w)
+    w.a_barre_espaces.trigger()
+    assert w.barre_bas.isVisibleTo(w)
+    assert "Sans titre" in w.barre_titre.projet.text() and "i/s" in w.barre_titre.cadence.text()
