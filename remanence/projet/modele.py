@@ -82,8 +82,12 @@ class Clip:
     def contient(self, f: int) -> bool:
         return self.debut <= f < self.fin
 
-    def facteur(self, f: int) -> float:
-        """Opacité (vidéo) ou volume (audio) à l'image f de la séquence."""
+    def facteur(self, f: int, sans_fondu_sortie: bool = False) -> float:
+        """Opacité (vidéo) ou volume (audio) à l'image f de la séquence.
+
+        sans_fondu_sortie sert au fondu enchaîné vidéo : le clip du dessous reste plein
+        pendant que celui du dessus apparaît, ce qui donne exactement A × (1 − t) + B × t.
+        """
         decalage = f - self.debut
         if decalage < 0 or decalage >= self.duree:
             return 0.0
@@ -91,7 +95,7 @@ class Clip:
         if self.fondu_entree and decalage < self.fondu_entree:
             valeur *= (decalage + 1) / (self.fondu_entree + 1)
         reste = self.duree - 1 - decalage
-        if self.fondu_sortie and reste < self.fondu_sortie:
+        if self.fondu_sortie and reste < self.fondu_sortie and not sans_fondu_sortie:
             valeur *= (reste + 1) / (self.fondu_sortie + 1)
         return valeur
 
@@ -120,7 +124,13 @@ class Piste:
     verrouillee: bool = False
     solo: bool = False
     niveau: float = 1.0
+    # Hauteur choisie à la souris ; None : la hauteur par défaut de la charte.
+    hauteur: int | None = None
     clips: list[Clip] = field(default_factory=list)
+
+    def clips_a(self, f: int) -> list[Clip]:
+        """Clips présents à l'image f, du plus ancien au plus récent (deux lors d'un fondu)."""
+        return sorted((c for c in self.clips if c.contient(f)), key=lambda c: c.debut)
 
     def clip_a(self, f: int) -> Clip | None:
         for c in self.clips:

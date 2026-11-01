@@ -32,17 +32,17 @@ def couches(projet: Projet, seq: Sequence, f: int) -> list[Couche]:
     """Clips visibles à l'image f, de la piste la plus basse à la plus haute."""
     resultat = []
     for piste in reversed(seq.pistes_entendues("video")):
-        c = piste.clip_a(f)
-        if c is None:
-            continue
-        media = projet.medias.get(c.media_id)
-        if media is None or media.hors_ligne or media.infos.video is None:
-            continue
-        opacite = c.facteur(f) * piste.niveau
-        if opacite <= 0.0:
-            continue
-        n = min(c.entree + (f - c.debut), media.infos.video.nb_images - 1)
-        resultat.append(Couche(c, media, n, min(opacite, 1.0)))
+        presents = piste.clips_a(f)
+        for i, c in enumerate(presents):
+            media = projet.medias.get(c.media_id)
+            if media is None or media.hors_ligne or media.infos.video is None:
+                continue
+            # Fondu enchaîné : le clip recouvert garde toute son opacité sous le suivant.
+            opacite = c.facteur(f, sans_fondu_sortie=i < len(presents) - 1) * piste.niveau
+            if opacite <= 0.0:
+                continue
+            n = min(c.entree + (f - c.debut), media.infos.video.nb_images - 1)
+            resultat.append(Couche(c, media, n, min(opacite, 1.0)))
     return resultat
 
 

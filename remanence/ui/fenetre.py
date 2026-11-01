@@ -25,7 +25,7 @@ from remanence.rendu.export import exporter
 from remanence.ui import charte
 from remanence.ui.apropos import APropos
 from remanence.ui.barres import BarreEspaces, BarreTitre
-from remanence.ui.composants import Vumetres, etiquette, panneau, panneau_onglets
+from remanence.ui.composants import etiquette, panneau, panneau_onglets
 from remanence.ui.erreurs import afficher_erreur
 from remanence.ui.inspecteur import Historique as ListeHistorique
 from remanence.ui.inspecteur import Inspecteur, Metadonnees
@@ -44,11 +44,11 @@ EXTENSIONS_MEDIAS = ("*.mov *.mp4 *.mxf *.mkv *.avi *.webm *.mts *.m2ts *.m4v *.
 HAUTEUR_VIGNETTE = 48
 BORD = 5
 # À augmenter quand les panneaux changent : les dispositions mémorisées avant sont ignorées.
-VERSION_DISPOSITION = 3
+VERSION_DISPOSITION = 4
 # Panneaux visibles dans chaque espace de travail.
 PANNEAUX_ESPACE = {
     "media": {"medias", "source", "droite"},
-    "montage": {"medias", "source", "visionneuse", "droite", "mixage", "timeline"},
+    "montage": {"medias", "source", "visionneuse", "droite", "timeline"},
     "export": {"export", "visionneuse", "file_export", "timeline"},
 }
 
@@ -120,7 +120,6 @@ class FenetrePrincipale(QMainWindow):
         self.metadonnees = Metadonnees()
         self.liste_historique = ListeHistorique()
         self.timeline = Timeline(self)
-        self.vumetres = Vumetres(self.lecture.cretes)
         self.formulaire_export = FormulaireExport()
         self.file_export = FileExport()
 
@@ -152,8 +151,6 @@ class FenetrePrincipale(QMainWindow):
         self._entete_source.ajouter(self.duree_source)
         self.duree_programme = etiquette("", "info-valeur")
         self._entete_visionneuse.ajouter(self.duree_programme)
-        d, _ = panneau("Mixage", self.vumetres, "mixage", self, titre_visible=False)
-        self._docks["mixage"] = d
         d, _ = panneau("Timeline", self.timeline, "timeline", self, titre_visible=False)
         self._docks["timeline"] = d
         self.inspecteur.badge.connect(self._badge)
@@ -256,9 +253,8 @@ class FenetrePrincipale(QMainWindow):
             self.splitDockWidget(d["medias"], d["source"], Qt.Horizontal)
             self.splitDockWidget(d["source"], d["visionneuse"], Qt.Horizontal)
             self.splitDockWidget(d["visionneuse"], d["droite"], Qt.Horizontal)
-            self.splitDockWidget(d["droite"], d["mixage"], Qt.Horizontal)
-            self.resizeDocks([d["medias"], d["source"], d["visionneuse"], d["droite"],
-                              d["mixage"]], [300, 470, 470, 320, 56], Qt.Horizontal)
+            self.resizeDocks([d["medias"], d["source"], d["visionneuse"], d["droite"]],
+                             [300, 480, 480, 340], Qt.Horizontal)
             self.resizeDocks([d["visionneuse"], d["timeline"]], [500, 440], Qt.Vertical)
         for nom, dock in d.items():
             if not self._est_externe(nom):
@@ -283,7 +279,7 @@ class FenetrePrincipale(QMainWindow):
         self.barre_espaces.activer(espace)
 
     def _est_externe(self, nom: str) -> bool:
-        return self._double_ecran is not None and nom in ("timeline", "mixage")
+        return self._double_ecran is not None and nom == "timeline"
 
     def choisir_espace(self, espace: str):
         """Change la disposition ; le projet, la sélection et la tête de lecture ne bougent pas."""
@@ -347,7 +343,22 @@ class FenetrePrincipale(QMainWindow):
                      "sélectionné.")
         self._action(mo, "Supprimer les clips sélectionnés", self.supprimer, ["Del", "Backspace"])
         self._action(mo, "Dissocier son et image", self.dissocier, "U")
-        self._action(mo, "Lier la sélection", self.lier, "Ctrl+L")
+        self._action(mo, "Lier la sélection", self.lier, "G")
+        mo.addSeparator()
+        self.a_ripple = self._action(mo, "Ripple", self.timeline.b_ripple.toggle, "Ctrl+L",
+                                     "Supprimer ou rogner un clip décale la suite, sans trou.")
+        self.a_aimant = self._action(mo, "Aimantation", self.timeline.b_aimant.toggle,
+                                     ["F8", "N"])
+        self.a_fondus = self._action(mo, "Fondus enchaînés automatiques",
+                                     self.timeline.b_fondus.toggle)
+        for action, bouton in ((self.a_ripple, self.timeline.b_ripple),
+                               (self.a_aimant, self.timeline.b_aimant),
+                               (self.a_fondus, self.timeline.b_fondus)):
+            action.setCheckable(True)
+            action.setChecked(bouton.isChecked())
+            action.triggered.disconnect()
+            action.triggered.connect(bouton.setChecked)
+            bouton.toggled.connect(action.setChecked)
         mo.addSeparator()
         self._action(mo, "Insérer depuis la source", lambda: self.monter_source(True), "F9",
                      "Pose la partie choisie de la source à la tête de lecture et pousse la suite.")
@@ -373,6 +384,10 @@ class FenetrePrincipale(QMainWindow):
                      "Shift+Left")
         self._action(lec, "Une seconde en avant", lambda: self._pas(self._cadence()),
                      "Shift+Right")
+        self._action(lec, "Coupe précédente", lambda: self._aller_coupe(-1), "Up")
+        self._action(lec, "Coupe suivante", lambda: self._aller_coupe(1), "Down")
+        self._action(lec, "Marqueur précédent", lambda: self._aller_marqueur(-1), "Ctrl+Left")
+        self._action(lec, "Marqueur suivant", lambda: self._aller_marqueur(1), "Ctrl+Right")
         self._action(lec, "Aller au début", lambda: self._aller_bord(False), "Home")
         self._action(lec, "Aller à la fin", lambda: self._aller_bord(True), "End")
         lec.addSeparator()
@@ -409,8 +424,8 @@ class FenetrePrincipale(QMainWindow):
             a, "Programme en plein écran", self.basculer_programme_externe, "Ctrl+F",
             "Montre le programme en plein écran, sur le second écran s'il y en a un. Échap ferme.")
         self.a_double_ecran = self._action(a, "Double écran", self.basculer_double_ecran,
-                                           aide="Envoie la timeline et les vumètres sur le "
-                                                "second écran, comme dans DaVinci Resolve.")
+                                           aide="Envoie la timeline sur le second écran, "
+                                                "comme dans DaVinci Resolve.")
         self.a_double_ecran.setCheckable(True)
         QGuiApplication.instance().screenAdded.connect(lambda _e: self._ecrans_changes())
         QGuiApplication.instance().screenRemoved.connect(lambda _e: self._ecrans_changes())
@@ -421,7 +436,6 @@ class FenetrePrincipale(QMainWindow):
                                  ("source", self._docks["source"], "Source"),
                                  ("visionneuse", self._docks["visionneuse"], "Programme"),
                                  ("droite", self._docks["droite"], "Inspecteur"),
-                                 ("mixage", self._docks["mixage"], "Vumètres"),
                                  ("timeline", self._docks["timeline"], "Timeline")):
             act = dock.toggleViewAction()
             act.setText(titre)
@@ -457,7 +471,7 @@ class FenetrePrincipale(QMainWindow):
                                     else "Double écran (aucun second écran détecté)")
 
     def basculer_double_ecran(self, actif: bool | None = None):
-        """La timeline et les vumètres passent dans une fenêtre sur le second écran."""
+        """La timeline (et ses vumètres) passe dans une fenêtre sur le second écran."""
         actif = self.a_double_ecran.isChecked() if actif is None else actif
         if actif and self._double_ecran is None:
             # Fenêtre sans parent : sinon restoreState() de la fenêtre principale retrouverait la
@@ -467,12 +481,10 @@ class FenetrePrincipale(QMainWindow):
             fenetre.setWindowIcon(self.windowIcon())
             fenetre.setCentralWidget(QWidget())
             fenetre.centralWidget().hide()
-            for nom, zone in (("timeline", Qt.BottomDockWidgetArea),
-                              ("mixage", Qt.RightDockWidgetArea)):
-                dock = self._docks[nom]
-                self.removeDockWidget(dock)
-                fenetre.addDockWidget(zone, dock)
-                dock.show()
+            dock = self._docks["timeline"]
+            self.removeDockWidget(dock)
+            fenetre.addDockWidget(Qt.BottomDockWidgetArea, dock)
+            dock.show()
             fenetre.closeEvent = lambda e: (e.accept(), self.basculer_double_ecran(False))
             ecran = self._autre_ecran()
             if ecran is not None:
@@ -484,10 +496,9 @@ class FenetrePrincipale(QMainWindow):
             self._double_ecran = fenetre
         elif not actif and self._double_ecran is not None:
             fenetre, self._double_ecran = self._double_ecran, None
-            for nom in ("timeline", "mixage"):
-                dock = self._docks[nom]
-                fenetre.removeDockWidget(dock)
-                self.addDockWidget(Qt.BottomDockWidgetArea, dock)
+            dock = self._docks["timeline"]
+            fenetre.removeDockWidget(dock)
+            self.addDockWidget(Qt.BottomDockWidgetArea, dock)
             fenetre.closeEvent = lambda e: e.accept()
             fenetre.close()
             fenetre.deleteLater()
@@ -766,6 +777,20 @@ class FenetrePrincipale(QMainWindow):
     def _aller_bord(self, fin: bool):
         self.aller(self._actif, self._duree(self._actif) - 1 if fin else 0)
 
+    def _aller_vers(self, positions: list[int], sens: int):
+        """Tête du programme à la position suivante (sens 1) ou précédente (sens -1)."""
+        f = self.lecture.position
+        candidats = [x for x in positions if (x > f if sens > 0 else x < f)]
+        if candidats:
+            self.activer_moniteur("programme")
+            self.aller_a(min(candidats) if sens > 0 else max(candidats))
+
+    def _aller_coupe(self, sens: int):
+        self._aller_vers(edition.coupes(self.projet.sequence), sens)
+
+    def _aller_marqueur(self, sens: int):
+        self._aller_vers([m.position for m in self.projet.sequence.marqueurs], sens)
+
     def _aller_point(self, nom: str, i: int):
         point = self._points(nom)[i]
         if point is not None:
@@ -927,7 +952,11 @@ class FenetrePrincipale(QMainWindow):
         sel = set(self.timeline.vue.selection)
         if sel:
             self.timeline.vue.selection = set()
-            self._tenter("Suppression", lambda: edition.supprimer(self.projet.sequence, sel))
+            if self.timeline.vue.ripple:
+                self._tenter("Suppression ripple",
+                             lambda: edition.supprimer_ripple(self.projet.sequence, sel))
+            else:
+                self._tenter("Suppression", lambda: edition.supprimer(self.projet.sequence, sel))
 
     def dissocier(self):
         sel = set(self.timeline.vue.selection)
@@ -967,7 +996,20 @@ class FenetrePrincipale(QMainWindow):
                 setattr(p, champ, valeur)
         QTimer.singleShot(0, lambda: self.valider({
             "masquee": "Piste masquée", "muette": "Piste muette", "solo": "Solo de piste",
-            "verrouillee": "Verrou de piste", "niveau": "Niveau de piste"}[champ]))
+            "verrouillee": "Verrou de piste", "niveau": "Niveau de piste",
+            "nom": "Piste renommée", "hauteur": "Hauteur de piste"}[champ]))
+
+    def piste_exclusive(self, piste_id: str, champ: str):
+        """Ctrl+clic sur M ou S : la piste garde l'état, les autres pistes audio le perdent.
+        Si elle était déjà la seule, tout est rétabli."""
+        audio = [p for p in self.projet.sequence.pistes if p.type == "audio"]
+        cible = next(p for p in audio if p.id == piste_id)
+        seule = getattr(cible, champ) and not any(getattr(p, champ) for p in audio
+                                                  if p is not cible)
+        for p in audio:
+            setattr(p, champ, False if seule else p is cible)
+        QTimer.singleShot(0, lambda: self.valider("Solo de piste" if champ == "solo"
+                                                  else "Piste muette"))
 
     def deplacer_piste(self, piste_id: str, sens: int):
         edition.deplacer_piste(self.projet.sequence, piste_id, sens)

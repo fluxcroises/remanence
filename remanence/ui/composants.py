@@ -270,7 +270,8 @@ class Vumetres(QWidget):
         super().__init__(parent)
         self._source = source
         self._niveaux = [self.PLANCHER, self.PLANCHER]
-        self.setMinimumWidth(56)
+        self.setMinimumWidth(64)
+        self.setMaximumWidth(64)
         self.setToolTip("Niveau de crête du son lu, en décibels. Au-dessus de 0, le son sature.")
         self.setAccessibleName("Vumètres")
         self._minuterie = QTimer(self)
@@ -296,31 +297,41 @@ class Vumetres(QWidget):
         return f"{m:.1f}".replace(".", ",").replace("-", "−")
 
     def paintEvent(self, _e):
+        """Deux barres (gauche, droite), l'échelle en dB à côté, la crête en haut, L et R en bas."""
         c = charte.actuelle()
         p = QPainter(self)
         p.fillRect(self.rect(), c.c("surface"))
         p.setPen(c.c("ink-muted"))
-        p.setFont(c.police("caption"))
-        p.drawText(QRectF(0, 6, self.width(), 16), Qt.AlignHCenter, "Mix")
-        p.setFont(c.police("value", 11))
-        bas = self.height() - 24
-        p.drawText(QRectF(0, bas + 4, self.width(), 16), Qt.AlignHCenter, self.texte())
-        haut = 28
-        hauteur = bas - haut - 4
-        largeur = 8
-        x0 = self.width() / 2 - largeur - 2
+        p.setFont(c.police("value", 10))
+        p.drawText(QRectF(0, 4, self.width(), 14), Qt.AlignHCenter, self.texte())
+        haut, bas = 24, self.height() - 22
+        hauteur = max(10, bas - haut)
+        largeur = 7
+        x0 = 8
+        seuil_jaune = (-6 - self.PLANCHER) / -self.PLANCHER
+        seuil_rouge = (-1 - self.PLANCHER) / -self.PLANCHER
         for i, db in enumerate(self._niveaux):
-            x = x0 + i * (largeur + 4)
+            x = x0 + i * (largeur + 3)
             p.fillRect(QRectF(x, haut, largeur, hauteur), c.c("bg-app"))
             frac = (db - self.PLANCHER) / -self.PLANCHER
-            seuil_jaune = (-6 - self.PLANCHER) / -self.PLANCHER
-            seuil_rouge = (-1 - self.PLANCHER) / -self.PLANCHER
             for debut, fin, couleur in ((0, min(frac, seuil_jaune), "accent-2"),
                                         (seuil_jaune, min(frac, seuil_rouge), "warning"),
                                         (seuil_rouge, min(frac, 1.0), "danger")):
                 if fin > debut:
                     y1 = haut + hauteur * (1 - fin)
                     p.fillRect(QRectF(x, y1, largeur, hauteur * (fin - debut)), c.c(couleur))
+            p.drawText(QRectF(x - 2, bas + 4, largeur + 4, 14), Qt.AlignHCenter, "LR"[i])
+        # Échelle : graduations lisibles tant que la hauteur le permet.
+        echelle_x = x0 + 2 * (largeur + 3) + 3
+        dernier = -100.0
+        for db in (0, -6, -12, -18, -24, -36, -48, -60):
+            y = haut + hauteur * (-db / -self.PLANCHER)
+            if y - dernier < 12:
+                continue
+            dernier = y
+            p.fillRect(QRectF(echelle_x, y, 3, 1), c.c("ink-faint"))
+            p.drawText(QRectF(echelle_x + 7, y - 7, self.width() - echelle_x - 7, 14),
+                       Qt.AlignLeft | Qt.AlignVCenter, str(db).replace("-", "\u2212"))
         p.end()
 
 

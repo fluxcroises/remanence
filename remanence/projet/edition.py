@@ -144,8 +144,34 @@ def avec_lies(seq: Sequence, ids: set[str]) -> set[str]:
     return ids | {c.id for _, c in seq.tous_les_clips() if c.lien and c.lien in liens}
 
 
+def placer(piste: Piste, ids: set[str], fondus_auto: bool):
+    """Installe les clips `ids` de la piste à leur nouvelle place.
+
+    Un clip qui en recouvre un autre l'écrase, sauf quand fondus_auto est vrai et que le
+    recouvrement ne touche qu'un bord : les deux clips restent et se fondent l'un dans l'autre
+    sur la zone commune, comme dans Vegas Pro.
+    """
+    poses = [c for c in piste.clips if c.id in ids]
+    for c in poses:
+        for o in [o for o in piste.clips if o.id not in ids and o.fin > c.debut and o.debut < c.fin]:
+            if fondus_auto and o.debut < c.debut < o.fin <= c.fin:
+                commun = o.fin - c.debut
+                if commun < min(c.duree, o.duree):
+                    o.fondu_sortie = commun
+                    c.fondu_entree = commun
+                    continue
+            if fondus_auto and c.debut <= o.debut < c.fin < o.fin:
+                commun = c.fin - o.debut
+                if commun < min(c.duree, o.duree):
+                    c.fondu_sortie = commun
+                    o.fondu_entree = commun
+                    continue
+            liberer(piste, max(c.debut, o.debut), min(c.fin, o.fin), ids)
+    piste.trier()
+
+
 def deplacer(seq: Sequence, ids: set[str], delta: int, delta_piste: int = 0,
-             inclure_lies: bool = True):
+             inclure_lies: bool = True, fondus_auto: bool = False):
     """Déplace des clips dans le temps, et d'une ou plusieurs pistes du même type."""
     ids = avec_lies(seq, ids) if inclure_lies else set(ids)
     mouvements = []
@@ -168,15 +194,19 @@ def deplacer(seq: Sequence, ids: set[str], delta: int, delta_piste: int = 0,
         c.debut += delta
         cible.clips.append(c)
     for p in seq.pistes:
-        bouges = [c for c in p.clips if c.id in ids]
-        for c in bouges:
-            liberer(p, c.debut, c.fin, ids)
-        p.trier()
+        if any(c.id in ids for c in p.clips):
+            placer(p, ids, fondus_auto)
 
 
 def rogner(projet: Projet, seq: Sequence, clip_id: str, cote: str, delta: int,
-           inclure_lies: bool = True) -> int:
-    """Déplace le bord gauche ('debut') ou droit ('fin') d'un clip. Renvoie le delta appliqué."""
+           inclure_lies: bool = True, ripple: bool = False) -> int:
+    """Déplace le bord gauche ('debut') ou droit ('fin') d'un clip. Renvoie le delta appliqué.
+
+    En ripple, la place du clip ne change pas : ce qui le suit sur ses pistes avance ou recule
+    d'autant, sans laisser de trou ni écraser.
+    """
+    if ripple:
+        return _rogner_ripple(projet, seq, clip_id, cote, delta, inclure_lies)
     ids = avec_lies(seq, {clip_id}) if inclure_lies else {clip_id}
     clips = [(p, c) for p, c in seq.tous_les_clips() if c.id in ids]
     for p, _ in clips:
@@ -208,6 +238,139 @@ def rogner(projet: Projet, seq: Sequence, clip_id: str, cote: str, delta: int,
             if delta > 0:
                 liberer(p, ancienne_fin, c.fin, {c.id})
     return delta
+
+
+def _rogner_ripple(projet: Projet, seq: Sequence, clip_id: str, cote: str, delta: int,
+                   inclure_lies: bool) -> int:
+    ids = avec_lies(seq, {clip_id}) if inclure_lies else {clip_id}
+    clips = [(p, c) for p, c in seq.tous_les_clips() if c.id in ids]
+    for p, _ in clips:
+        if p.verrouillee:
+            raise EditionImpossible(f"La piste « {p.nom} » est verrouillée.")
+    for _, c in clips:
+        longueur = projet.medias[c.media_id].nb_images(seq.fraction_cadence)
+        if cote == "debut":
+            delta = min(max(delta, -c.entree), c.duree - 1)
+        else:
+            delta = max(min(delta, longueur - c.entree - c.duree), 1 - c.duree)
+    for p, c in clips:
+        ancienne_fin = c.fin
+        if cote == "debut":
+            c.entree += delta
+            c.duree -= delta
+            c.enveloppe = [[x - delta, y] for x, y in c.enveloppe if x - delta >= 0]
+            c.fondu_entree = min(c.fondu_entree, c.duree)
+            decalage = -delta
+        else:
+            c.duree += delta
+            c.enveloppe = [[x, y] for x, y in c.enveloppe if x < c.duree]
+            c.fondu_sortie = min(c.fondu_sortie, c.duree)
+            decalage = delta
+        for o in p.clips:
+            if o.id != c.id and o.debut >= ancienne_fin:
+                o.debut += decalage
+        p.trier()
+    return delta
+
+
+def supprimer_ripple(seq: Sequence, ids: set[str], inclure_lies: bool = True):
+    """Supprime des clips et referme les trous sur leurs pistes."""
+    ids = avec_lies(seq, ids) if inclure_lies else set(ids)
+    for p in seq.pistes:
+        if p.verrouillee:
+            continue
+        retires = sorted((c for c in p.clips if c.id in ids), key=lambda c: c.debut,
+                         reverse=True)
+        p.clips = [c for c in p.clips if c.id not in ids]
+        for r in retires:
+            for o in p.clips:
+                if o.debut >= r.fin:
+                    o.debut -= r.duree
+        p.trier()
+
+
+def glisser_contenu(projet: Projet, seq: Sequence, clip_id: str, delta: int,
+                    inclure_lies: bool = True) -> int:
+    """Slip : le clip reste en place, son contenu glisse (le point d'entrée change)."""
+    ids = avec_lies(seq, {clip_id}) if inclure_lies else {clip_id}
+    clips = [(p, c) for p, c in seq.tous_les_clips() if c.id in ids]
+    for p, c in clips:
+        if p.verrouillee:
+            raise EditionImpossible(f"La piste « {p.nom} » est verrouillée.")
+        longueur = projet.medias[c.media_id].nb_images(seq.fraction_cadence)
+        delta = min(max(delta, -c.entree), longueur - c.entree - c.duree)
+    for _, c in clips:
+        c.entree += delta
+    return delta
+
+
+def _voisins(piste: Piste, c: Clip) -> tuple[Clip | None, Clip | None]:
+    avant = next((o for o in piste.clips if o.fin == c.debut and o.id != c.id), None)
+    apres = next((o for o in piste.clips if o.debut == c.fin and o.id != c.id), None)
+    return avant, apres
+
+
+def faire_glisser(projet: Projet, seq: Sequence, clip_id: str, delta: int,
+                  inclure_lies: bool = True) -> int:
+    """Slide : le clip se déplace avec son contenu ; ses voisins collés s'allongent ou se
+    raccourcissent pour qu'il n'y ait ni trou ni écrasement."""
+    ids = avec_lies(seq, {clip_id}) if inclure_lies else {clip_id}
+    clips = [(p, c) for p, c in seq.tous_les_clips() if c.id in ids]
+    for p, c in clips:
+        if p.verrouillee:
+            raise EditionImpossible(f"La piste « {p.nom} » est verrouillée.")
+        avant, apres = _voisins(p, c)
+        if avant is not None:
+            fin_media = projet.medias[avant.media_id].nb_images(seq.fraction_cadence)
+            delta = max(min(delta, fin_media - avant.entree - avant.duree), 1 - avant.duree)
+        else:
+            delta = max(delta, -c.debut)
+        if apres is not None:
+            delta = min(max(delta, -apres.entree), apres.duree - 1)
+    for p, c in clips:
+        avant, apres = _voisins(p, c)
+        if avant is not None:
+            avant.duree += delta
+        if apres is not None:
+            apres.debut += delta
+            apres.entree += delta
+            apres.duree -= delta
+        c.debut += delta
+        p.trier()
+    return delta
+
+
+def rouler(projet: Projet, seq: Sequence, clip_id: str, delta: int,
+           inclure_lies: bool = True) -> int:
+    """Roll : déplace la coupe entre le clip et son voisin de droite ; la durée totale ne
+    change pas, l'un gagne ce que l'autre perd."""
+    ids = avec_lies(seq, {clip_id}) if inclure_lies else {clip_id}
+    paires = []
+    for p, c in seq.tous_les_clips():
+        if c.id in ids:
+            _, apres = _voisins(p, c)
+            if apres is None:
+                continue
+            if p.verrouillee:
+                raise EditionImpossible(f"La piste « {p.nom} » est verrouillée.")
+            paires.append((c, apres))
+    if not paires:
+        return 0
+    for c, apres in paires:
+        fin_media = projet.medias[c.media_id].nb_images(seq.fraction_cadence)
+        delta = max(min(delta, fin_media - c.entree - c.duree, apres.duree - 1),
+                    1 - c.duree, -apres.entree)
+    for c, apres in paires:
+        c.duree += delta
+        apres.debut += delta
+        apres.entree += delta
+        apres.duree -= delta
+    return delta
+
+
+def coupes(seq: Sequence) -> list[int]:
+    """Toutes les coupes de la séquence (débuts et fins de clips), triées."""
+    return sorted({f for _, c in seq.tous_les_clips() for f in (c.debut, c.fin)})
 
 
 def couper(seq: Sequence, f: int, ids: set[str] | None = None) -> list[str]:

@@ -154,6 +154,76 @@ def test_souris_sur_la_timeline(fenetre, medias):
     assert w.projet.sequence.pistes_video[0].clips[0].debut == 20
 
 
+def test_gestes_ripple_et_marqueurs(fenetre, medias):
+    """Fondu enchaîné en posant un clip sur un autre, slip avec Alt, ripple, marqueurs."""
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+    from remanence.projet import edition
+    from remanence.ui.timeline import HAUTEUR_REGLE
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.timeline.resize(1200, 400)
+    mid = next(iter(w.projet.medias))
+    w.poser_medias([mid], 0, "")
+    w.poser_medias([mid], 30, "")
+    vue = w.timeline.vue
+    vue.aimantation = False
+    vue.px_par_image = 10.0
+    vue.decalage_x = 0.0
+    vue.resize(1000, 300)
+    _, y, h = vue.lignes()[0]
+    milieu = y + h // 2
+
+    def glisser(x0, y0, x1, y1, mod=Qt.NoModifier):
+        QTest.mousePress(vue, Qt.LeftButton, mod, QPoint(x0, y0))
+        QTest.mouseMove(vue, QPoint(x1, y1))
+        QTest.mouseRelease(vue, Qt.LeftButton, mod, QPoint(x1, y1))
+
+    def video():
+        return sorted(w.projet.sequence.pistes_video[0].clips, key=lambda c: c.debut)
+
+    glisser(450, milieu, 400, milieu)
+    a, b = video()
+    assert b.debut == 25 and a.fondu_sortie == 5 and b.fondu_entree == 5, "fondu enchaîné"
+    w.annuler()
+
+    seq = w.projet.sequence
+    edition.rogner(w.projet, seq, video()[0].id, "debut", 10)
+    w.valider("Rognage")
+    glisser(200, milieu, 250, milieu, Qt.AltModifier)
+    a = video()[0]
+    assert (a.debut, a.entree, a.duree) == (10, 5, 20), "slip : seul le contenu glisse"
+
+    w.timeline.b_ripple.setChecked(True)
+    assert w.a_ripple.isChecked()
+    vue._choisir({video()[0].id})
+    w.supprimer()
+    assert [c.debut for c in video()] == [10], "le ripple referme le trou"
+    w.annuler()
+    w.timeline.b_ripple.setChecked(False)
+
+    w.aller_a(15)
+    w.marqueur()
+    w.aller_a(0)
+    w._aller_marqueur(1)
+    assert w.lecture.position == 15
+    w._aller_coupe(1)
+    assert w.lecture.position == 30
+    w._aller_coupe(-1)
+    assert w.lecture.position == 10
+    x = int(vue.x_de(15))
+    glisser(x + 4, HAUTEUR_REGLE + 10, x + 104, HAUTEUR_REGLE + 10)
+    assert w.projet.sequence.marqueurs[0].position == 25
+    w.annuler()
+    assert w.projet.sequence.marqueurs[0].position == 15
+
+    w.ajouter_piste("audio")
+    a1, a2 = w.projet.sequence.pistes_audio
+    w.piste_exclusive(a1.id, "solo")
+    assert _attendre(lambda: [p.solo for p in w.projet.sequence.pistes_audio] == [True, False], 2)
+
+
 def test_boutons_de_piste_et_zoom(fenetre, medias):
     from PySide6.QtWidgets import QToolButton
     w = fenetre
@@ -161,7 +231,8 @@ def test_boutons_de_piste_et_zoom(fenetre, medias):
     assert _attendre(lambda: len(w.projet.medias) == 1)
     w.poser_medias(list(w.projet.medias), 0, "")
     entete = w.timeline._entetes[0]
-    {b.text(): b for b in entete.findChildren(QToolButton)}["M"].click()
+    next(b for b in entete.findChildren(QToolButton)
+         if b.accessibleName().startswith("Afficher ou masquer")).click()
     assert w.projet.sequence.pistes_video[0].masquee
     _attendre(lambda: w.timeline._entetes and w.timeline._entetes[0] is not entete, 2)
     entete = w.timeline._entetes[0]

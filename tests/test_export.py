@@ -147,3 +147,35 @@ def test_niveau_et_solo_de_piste(medias, tmp_path):
     rapport = exporter(projet, seq, sortie)
     assert rapport.images_calculees == 0
     assert empreintes_images(str(sortie)) == empreintes_images(str(medias["prores_hq"]))
+
+
+def test_fondu_enchaine_exporte(medias, tmp_path):
+    """À mi-fondu, l'image vaut la moyenne des deux plans."""
+    from remanence.rendu.composition import Compositeur
+    projet = Projet.nouveau()
+    infos, _ = analyser(str(medias["prores_hq"]))
+    m = Media(nouvel_id(), str(medias["prores_hq"]), infos)
+    projet.medias[m.id] = m
+    seq = projet.sequence
+    edition.ajouter_media(projet, seq, m, 0, entree=0, duree=20)
+    edition.ajouter_media(projet, seq, m, 20, entree=10, duree=20)
+    pv = seq.pistes_video[0]
+    edition.deplacer(seq, {pv.clips[1].id}, -9, fondus_auto=True)
+    a, b = pv.clips
+    assert (a.fondu_sortie, b.fondu_entree) == (9, 9)
+    c = Compositeur(projet)
+    f = 15  # 5e image du fondu de 9 : poids 5/10
+    melange = c.image(seq, f)
+    projet_a = Projet.depuis_dict(projet.vers_dict())
+    projet_a.sequence.pistes_video[0].clips.pop(1)
+    projet_a.sequence.pistes_video[0].clips[0].fondu_sortie = 0
+    projet_b = Projet.depuis_dict(projet.vers_dict())
+    projet_b.sequence.pistes_video[0].clips.pop(0)
+    projet_b.sequence.pistes_video[0].clips[0].fondu_entree = 0
+    ia = Compositeur(projet_a).image(projet_a.sequence, f)
+    ib = Compositeur(projet_b).image(projet_b.sequence, f)
+    poids = b.facteur(f)
+    assert poids == pytest.approx(0.5)
+    assert np.abs(melange - (ia * (1 - poids) + ib * poids)).max() < 1e-4
+    rapport = exporter(projet, seq, tmp_path / "fondu.mov")
+    assert rapport.conforme and rapport.images_calculees == 9

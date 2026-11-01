@@ -144,3 +144,48 @@ def test_chutiers(medias):
     assert [c.nom for c in relu.chutiers] == ["Rushs", "Glitch"]
     assert relu.medias[m.id].chutier == glitch.id
     assert relu.clips_du_media(m.id) == 0
+
+
+def _deux_clips(medias):
+    projet, m = _projet_avec(medias)
+    seq = projet.sequence
+    edition.ajouter_media(projet, seq, m, 0, duree=20)
+    edition.ajouter_media(projet, seq, m, 20, entree=5, duree=20)
+    return projet, seq, seq.pistes_video[0]
+
+
+def test_fondu_enchaine_au_chevauchement(medias):
+    projet, seq, pv = _deux_clips(medias)
+    b = pv.clips[1]
+    edition.deplacer(seq, {b.id}, -6, fondus_auto=True)
+    a, b = pv.clips
+    assert (a.fin, b.debut, a.fondu_sortie, b.fondu_entree) == (20, 14, 6, 6)
+    pa = seq.pistes_audio[0].clips
+    assert (pa[0].fondu_sortie, pa[1].fondu_entree) == (6, 6), "le son se fond aussi"
+    # Sans fondus automatiques, le clip posé écrase la fin du précédent.
+    projet, seq, pv = _deux_clips(medias)
+    edition.deplacer(seq, {pv.clips[1].id}, -6)
+    assert [(c.debut, c.duree) for c in pv.clips] == [(0, 14), (14, 20)]
+
+
+def test_ripple_slip_slide_roll(medias):
+    projet, seq, pv = _deux_clips(medias)
+    a, b = pv.clips
+    assert edition.rogner(projet, seq, a.id, "fin", -5, ripple=True) == -5
+    assert [(c.debut, c.duree) for c in pv.clips] == [(0, 15), (15, 20)]
+    edition.supprimer_ripple(seq, {pv.clips[0].id})
+    assert [(c.debut, c.entree) for c in pv.clips] == [(0, 5)]
+    assert len(seq.pistes_audio[0].clips) == 1
+
+    projet, seq, pv = _deux_clips(medias)
+    a, b = pv.clips
+    assert edition.glisser_contenu(projet, seq, b.id, 3) == 3
+    assert (b.debut, b.entree, b.duree) == (20, 8, 20)
+    assert edition.rouler(projet, seq, a.id, 4) == 4
+    assert [(c.debut, c.entree, c.duree) for c in pv.clips] == [(0, 0, 24), (24, 12, 16)]
+    edition.ajouter_media(projet, seq, projet.medias[a.media_id], 40, entree=0, duree=10)
+    milieu = pv.clips[1]
+    assert edition.faire_glisser(projet, seq, milieu.id, 2) == 2
+    assert [(c.debut, c.entree, c.duree) for c in pv.clips] == \
+        [(0, 0, 26), (26, 12, 16), (42, 2, 8)]
+    assert edition.coupes(seq)[:3] == [0, 26, 42]
