@@ -197,7 +197,8 @@ def _cadence(stream) -> Fraction:
 def _lire_timecode(conteneur, flux_video) -> str | None:
     for meta in [flux_video.metadata] + [s.metadata for s in conteneur.streams
                                          if s.type == "data"] + [conteneur.metadata]:
-        tc = meta.get("timecode")
+        # MOV écrit « timecode », Matroska et WebM « TIMECODE ».
+        tc = next((v for k, v in meta.items() if k.lower() == "timecode"), None)
         if tc:
             return tc
     return None

@@ -524,6 +524,8 @@ def _renouveler_effets(c: Clip):
     """Un clip dupliqué (coupe) reçoit ses propres effets, indépendants de ceux de l'original."""
     for e in c.effets:
         e.id = nouvel_id()
+        for m in e.masques:
+            m.id = nouvel_id()
 
 
 def porteurs_effets(seq: Sequence):

@@ -222,3 +222,72 @@ def test_rogner_le_debut_garde_les_cles_en_place(medias):
     edition.couper(projet.sequence, 8)
     droite = projet.sequence.pistes_video[0].clips[1]
     assert droite.effets[0].cles["force"][0][0] == 2
+
+
+def _masque_effet(projet, clip, *masques):
+    e = nouvel_effet("decalage_rvb", "Anaglyphe")
+    e.masques = list(masques)
+    clip.effets = [e]
+    return e
+
+
+@pytest.mark.parametrize("forme", ["rectangle", "ellipse", "courbe"])
+def test_hors_masque_l_image_est_la_source(medias, forme):
+    """Validation de l'étape 2 : hors masque, image identique à la source au pixel près."""
+    from remanence.effets.masques import nouveau_masque
+    projet, clip = _projet(medias)
+    source = _image(projet)
+    clip.effets = [nouvel_effet("decalage_rvb", "Anaglyphe")]
+    plein = _image(projet)
+    m = nouveau_masque(forme)
+    m.adoucissement = 2.0
+    _masque_effet(projet, clip, m)
+    img = _image(projet)
+    h, l = img.shape[:2]
+    y, x = np.mgrid[0:h, 0:l]
+    loin = (np.abs(x / l - 0.5) > 0.32) | (np.abs(y / h - 0.5) > 0.32)
+    centre = (np.abs(x / l - 0.5) < 0.08) & (np.abs(y / h - 0.5) < 0.08)
+    assert np.array_equal(img[loin], source[loin]), "hors masque : la source, exactement"
+    assert np.abs(img[centre] - plein[centre]).max() < 1e-5, "dans le masque : l'effet entier"
+    m.inverse = True
+    inv = _image(projet)
+    assert np.array_equal(inv[centre], source[centre])
+
+
+def test_combinaison_et_adoucissement(medias):
+    from remanence.effets.masques import nouveau_masque
+    projet, clip = _projet(medias)
+    source = _image(projet)
+    grand, trou = nouveau_masque("rectangle"), nouveau_masque("ellipse")
+    trou.points = [[0.4, 0.4], [0.6, 0.6]]
+    trou.mode = "soustraction"
+    _masque_effet(projet, clip, grand, trou)
+    img = _image(projet)
+    h, l = img.shape[:2]
+    assert np.array_equal(img[h // 2, l // 2], source[h // 2, l // 2]), "le trou est soustrait"
+    assert not np.array_equal(img[int(h * 0.3), int(l * 0.3)], source[int(h * 0.3), int(l * 0.3)])
+    grand.mode, trou.mode = "addition", "intersection"
+    img = _image(projet)
+    assert np.array_equal(img[int(h * 0.3), int(l * 0.3)], source[int(h * 0.3), int(l * 0.3)])
+    # Adoucissement : une rampe, ni 0 ni 1, de part et d'autre du bord.
+    seul = nouveau_masque("rectangle")
+    seul.adoucissement = 10.0
+    _masque_effet(projet, clip, seul)
+    clip.effets[0].params["force"] = 100
+    clip.effets[0].fusion = "difference"
+    a = _image(projet)
+    bord = a[h // 2, int(l * 0.22):int(l * 0.28), 0]
+    assert len(np.unique(np.round(bord, 4))) > 2
+
+
+def test_masques_enregistres(medias):
+    from remanence.effets.masques import contour, nouveau_masque
+    projet, clip = _projet(medias)
+    e = _masque_effet(projet, clip, nouveau_masque("courbe"))
+    e.masques[0].expansion = -3.0
+    relu = Projet.depuis_dict(projet.vers_dict()).sequence.pistes_video[0].clips[0].effets[0]
+    assert relu.masques[0].forme == "courbe" and relu.masques[0].expansion == -3.0
+    assert len(contour(relu.masques[0].points)) <= 128
+    edition.couper(projet.sequence, 10)
+    a, b = projet.sequence.pistes_video[0].clips
+    assert a.effets[0].masques[0].id != b.effets[0].masques[0].id

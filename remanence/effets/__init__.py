@@ -137,7 +137,7 @@ def instantane(effet: Effet, t: float) -> Effet:
         if p.cle in effet.cles:
             params[p.cle] = valeur_a(effet, p.cle, t)
     return Effet(effet.id, effet.type, params, effet.actif, effet.graine,
-                 valeur_a(effet, "opacite", t), effet.fusion)
+                 valeur_a(effet, "opacite", t), effet.fusion, masques=effet.masques)
 
 
 def poser_cle(effet: Effet, cle: str, t: int, v: float, mode: str | None = None):

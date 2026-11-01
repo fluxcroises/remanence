@@ -3,15 +3,18 @@ défilement, transport et timecode."""
 
 from __future__ import annotations
 
+import copy
+import math
 from fractions import Fraction
 
 import numpy as np
 from PySide6.QtCore import QMimeData, QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QDrag, QImage, QPainter
+from PySide6.QtGui import QDrag, QImage, QPainter, QPainterPath, QPen, QPolygonF
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QMenu, QSizePolicy, QToolButton,
                                QVBoxLayout, QWidget)
 
+from remanence.effets.masques import contour
 from remanence.ui import charte
 from remanence.ui.composants import ChampTimecode, bouton_icone, poser_icone
 from remanence.ui.lecture import QUALITES
@@ -60,6 +63,7 @@ class ZoneImage(QOpenGLWidget):
         self._decalage = QPointF(0, 0)
         self._clic = None
         self.glissable = False
+        self.calque: CalqueMasques | None = None
         self.setMinimumSize(160, 90)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
@@ -72,6 +76,13 @@ class ZoneImage(QOpenGLWidget):
         self._a_envoyer = True
         self._message = ""
         self.update()
+        if self.calque is not None and self.calque.isVisible():
+            self.calque.update()
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        if self.calque is not None:
+            self.calque.setGeometry(self.rect())
 
     def montrer_message(self, texte: str):
         self._image = None
@@ -82,6 +93,8 @@ class ZoneImage(QOpenGLWidget):
         self.zoom = zoom
         self._decalage = QPointF(0, 0)
         self.update()
+        if self.calque is not None:
+            self.calque.update()
 
     def initializeGL(self):
         if self._echec_gl:
@@ -169,6 +182,8 @@ class ZoneImage(QOpenGLWidget):
         if self.zoom is not None:
             self._decalage = self._decalage_depart + delta
             self.update()
+            if self.calque is not None:
+                self.calque.update()
         elif self.glissable and delta.manhattanLength() > 10:
             self._clic = None
             self.glisser_depart.emit()
@@ -176,6 +191,169 @@ class ZoneImage(QOpenGLWidget):
     def mouseReleaseEvent(self, e):
         self._clic = None
         super().mouseReleaseEvent(e)
+
+
+class CalqueMasques(QWidget):
+    """Contours des masques de l'effet en cours de modification, posés sur l'image. Poignées :
+    les quatre coins d'un rectangle ou d'une ellipse, les points d'une forme libre. Glisser
+    dedans déplace le masque ; double-clic sur une forme libre : un point de plus ; clic droit
+    sur un point : le retirer. Inactif, il laisse passer la souris vers l'image."""
+    modifie = Signal(str, list)  # identifiant du masque, nouveaux points
+
+    RAYON = 6
+
+    def __init__(self, zone: "ZoneImage"):
+        super().__init__(zone)
+        self.zone = zone
+        self.masques: list = []
+        self._prise = None
+        self.setMouseTracking(True)
+        self.montrer_masques(None)
+
+    def montrer_masques(self, masques: list | None):
+        """masques : ceux de l'effet modifié (copiés), None pour cacher le calque."""
+        self.masques = copy.deepcopy(masques) if masques else []
+        actif = masques is not None
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, not actif)
+        self.setVisible(actif)
+        self.setGeometry(self.zone.rect())
+        self.update()
+
+    def _rect(self) -> QRectF | None:
+        if self.zone._image is None:
+            return None
+        return self.zone._rect_image(self.zone.width(), self.zone.height())
+
+    def _ecran(self, r: QRectF, pt) -> QPointF:
+        return QPointF(r.x() + pt[0] * r.width(), r.y() + pt[1] * r.height())
+
+    def _image(self, r: QRectF, pos: QPointF) -> list[float]:
+        return [(pos.x() - r.x()) / r.width(), (pos.y() - r.y()) / r.height()]
+
+    @staticmethod
+    def _poignees(m) -> list:
+        if m.forme == "courbe":
+            return m.points
+        (ax, ay), (bx, by) = m.points
+        return [[ax, ay], [bx, ay], [bx, by], [ax, by]]
+
+    def _chemin(self, r: QRectF, m) -> QPainterPath:
+        chemin = QPainterPath()
+        if m.forme == "courbe":
+            sommets = contour(m.points)
+            chemin.addPolygon(QPolygonF([self._ecran(r, s) for s in sommets]))
+            chemin.closeSubpath()
+        else:
+            zone = QRectF(self._ecran(r, m.points[0]), self._ecran(r, m.points[1])).normalized()
+            if m.forme == "ellipse":
+                chemin.addEllipse(zone)
+            else:
+                chemin.addRect(zone)
+        return chemin
+
+    def paintEvent(self, _e):
+        r = self._rect()
+        if r is None:
+            return
+        c = charte.actuelle()
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        for m in self.masques:
+            p.setBrush(Qt.NoBrush)
+            p.setPen(QPen(c.c("accent" if m.actif else "ink-muted"), 1.5,
+                          Qt.DashLine if m.inverse else Qt.SolidLine))
+            p.drawPath(self._chemin(r, m))
+            p.setPen(QPen(c.c("bg-app"), 1))
+            p.setBrush(c.c("ink"))
+            for pt in self._poignees(m):
+                e = self._ecran(r, pt)
+                p.drawRect(QRectF(e.x() - 3.5, e.y() - 3.5, 7, 7))
+        p.end()
+
+    def _trouver(self, pos: QPointF):
+        r = self._rect()
+        if r is None:
+            return None
+        for m in reversed(self.masques):
+            for i, pt in enumerate(self._poignees(m)):
+                e = self._ecran(r, pt)
+                if abs(e.x() - pos.x()) <= self.RAYON and abs(e.y() - pos.y()) <= self.RAYON:
+                    return m, i
+        for m in reversed(self.masques):
+            if self._chemin(r, m).contains(pos):
+                return m, -1
+        return None
+
+    def mouseMoveEvent(self, e):
+        pos = e.position()
+        if self._prise is None:
+            trouve = self._trouver(pos)
+            self.setCursor(Qt.ArrowCursor if trouve is None else
+                           Qt.SizeAllCursor if trouve[1] < 0 else Qt.CrossCursor)
+            return
+        m, i, depart, points = self._prise
+        r = self._rect()
+        dx = (pos.x() - depart.x()) / r.width()
+        dy = (pos.y() - depart.y()) / r.height()
+        if i < 0:
+            m.points = [[x + dx, y + dy] for x, y in points]
+        elif m.forme == "courbe":
+            m.points = [list(p) for p in points]
+            m.points[i] = [points[i][0] + dx, points[i][1] + dy]
+        else:
+            # Coins 0 à 3 : (a.x, a.y), (b.x, a.y), (b.x, b.y), (a.x, b.y).
+            (ax, ay), (bx, by) = points
+            if i in (0, 3):
+                ax += dx
+            else:
+                bx += dx
+            if i in (0, 1):
+                ay += dy
+            else:
+                by += dy
+            m.points = [[ax, ay], [bx, by]]
+        self.update()
+
+    def mousePressEvent(self, e):
+        trouve = self._trouver(e.position())
+        if trouve is None:
+            return
+        m, i = trouve
+        if e.button() == Qt.RightButton:
+            if m.forme == "courbe" and i >= 0 and len(m.points) > 3:
+                del m.points[i]
+                self.modifie.emit(m.id, m.points)
+            return
+        if e.button() == Qt.LeftButton:
+            self._prise = (m, i, e.position(), copy.deepcopy(m.points))
+
+    def mouseReleaseEvent(self, e):
+        if self._prise is None:
+            return
+        m, _, depart, _ = self._prise
+        self._prise = None
+        if (e.position() - depart).manhattanLength() > 0:
+            self.modifie.emit(m.id, m.points)
+
+    def mouseDoubleClickEvent(self, e):
+        """Forme libre : un point de plus sur le côté le plus proche."""
+        r = self._rect()
+        if r is None:
+            return
+        pos = self._image(r, e.position())
+        for m in reversed(self.masques):
+            if m.forme != "courbe":
+                continue
+            n = len(m.points)
+            meilleur, rang = None, 0
+            for k in range(n):
+                (x0, y0), (x1, y1) = m.points[k], m.points[(k + 1) % n]
+                d = math.dist(pos, [(x0 + x1) / 2, (y0 + y1) / 2])
+                if meilleur is None or d < meilleur:
+                    meilleur, rang = d, k + 1
+            m.points.insert(rang, pos)
+            self.modifie.emit(m.id, m.points)
+            return
 
 
 class BarreDefilement(QWidget):

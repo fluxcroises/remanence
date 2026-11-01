@@ -591,3 +591,36 @@ def test_images_cles_depuis_l_inspecteur(fenetre, medias):
     assert _attendre(lambda: "force" not in effet().cles, 2)
     w._reglage_clip(clip.id, "fusion", "produit")
     assert _attendre(lambda: w.projet.sequence.pistes_video[0].clips[0].fusion == "produit", 2)
+
+
+def test_masques_depuis_l_interface(fenetre, medias):
+    """Ajouter un masque, le régler, le déplacer à la souris sur le programme, le retirer."""
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+    from remanence.effets import nouvel_effet
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    w.timeline.vue._choisir({clip.id})
+    w.ajouter_effet("clip", clip.id, [nouvel_effet("vhs")])
+
+    def effet():
+        return w.projet.sequence.pistes_video[0].clips[0].effets[0]
+    w.reglage_masque(effet().id, "", "ajouter", "rectangle")
+    assert _attendre(lambda: len(effet().masques) == 1, 2)
+    calque = w.visionneuse.zone.calque
+    assert w._masques_effet == effet().id and calque.isVisible()
+    m = effet().masques[0]
+    w.reglage_masque(effet().id, m.id, "adoucissement", 4.0)
+    assert _attendre(lambda: effet().masques[0].adoucissement == 4.0, 2)
+    assert _attendre(lambda: w.visionneuse.zone._image is not None, 5)
+    r = calque._rect()
+    centre = QPoint(int(r.center().x()), int(r.center().y()))
+    QTest.mousePress(calque, Qt.LeftButton, Qt.NoModifier, centre)
+    QTest.mouseMove(calque, centre + QPoint(int(r.width() * 0.1), 0))
+    QTest.mouseRelease(calque, Qt.LeftButton, Qt.NoModifier, centre + QPoint(int(r.width() * 0.1), 0))
+    assert _attendre(lambda: abs(effet().masques[0].points[0][0] - 0.35) < 0.02, 2), "déplacé"
+    w.reglage_masque(effet().id, effet().masques[0].id, "retirer", None)
+    assert _attendre(lambda: not effet().masques and not calque.isVisible(), 2)

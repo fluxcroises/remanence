@@ -9,6 +9,9 @@ Remanence est distribué en code source, sans but commercial. Ce fichier liste c
 | PyAV | 19.0.2 | Lecture et écriture des médias | BSD 3 clauses |
 | FFmpeg (embarqué dans PyAV) | libavcodec 63.1 | Décodeurs, encodeurs, conteneurs | LGPL 3 ou ultérieure |
 | x264 et x265 (embarqués dans PyAV) | fournis par PyAV | Encodage H.264 et HEVC | GPL 2 ou ultérieure |
+| SVT-AV1 (embarqué dans PyAV) | fourni par PyAV | Encodage AV1 | BSD 3 clauses (avec licence de brevets AOM) |
+| libvpx (embarqué dans PyAV) | fourni par PyAV | Encodage VP9 (WebM) | BSD 3 clauses |
+| Opus (embarqué dans PyAV) | fourni par PyAV | Son des fichiers WebM | BSD 3 clauses |
 | NumPy | 2.5.4 | Tampons d'images et de son | BSD 3 clauses (et 0BSD, MIT, Zlib, CC0 pour des parties) |
 | moderngl et glcontext | 5.13.0 et 3.1.0 | Affichage OpenGL de la visionneuse | MIT |
 | sounddevice (et PortAudio) | 0.5.6 | Lecture du son | MIT |

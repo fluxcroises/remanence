@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QFileDial
 
 from remanence.config import reglages_interface
 from remanence.effets import EFFETS, poser_cle, retirer_cle, valeur_a
+from remanence.effets.masques import nouveau_masque
 from remanence.effets import prereglages
 from remanence.media import intermediaire
 from remanence.media.lecteur import LecteurVideo, generer_cache_audio
@@ -40,8 +41,8 @@ from remanence.ui.menu_effets import remplir_menu_effets
 from remanence.ui.panneau_export import FileExport, FormulaireExport
 from remanence.ui.taches import GestionnaireTaches, Tache
 from remanence.ui.timeline import Timeline
-from remanence.ui.visionneuse import (LIBELLES_QUALITE, Moniteur, ZoneImage, glisser_source,
-                                      peindre_cadre_actif)
+from remanence.ui.visionneuse import (LIBELLES_QUALITE, CalqueMasques, Moniteur, ZoneImage,
+                                      glisser_source, peindre_cadre_actif)
 
 INTERVALLE_AUTO_MS = 2 * 60 * 1000
 EXTENSIONS_MEDIAS = ("*.mov *.mp4 *.mxf *.mkv *.avi *.webm *.mts *.m2ts *.m4v *.mpg *.mpeg "
@@ -122,6 +123,8 @@ class FenetrePrincipale(QMainWindow):
         self._actif = "programme"
         # Piste dont l'inspecteur montre les effets (clic sur son en-tête).
         self._piste_choisie: str | None = None
+        # Effet dont les masques se modifient sur l'image du programme.
+        self._masques_effet = ""
         self._un_seul = False
         self._double_ecran: QMainWindow | None = None
         # Double écran : None, "panneaux" (comme Resolve) ou "timeline" (timeline seule à côté).
@@ -723,6 +726,12 @@ class FenetrePrincipale(QMainWindow):
         self.inspecteur.reglage_effet.connect(self.reglage_effet)
         self.inspecteur.ajout_effet.connect(self.ajouter_effet)
         self.inspecteur.enregistrer_prereglage.connect(self.enregistrer_prereglage)
+        self.inspecteur.reglage_masque.connect(self.reglage_masque)
+        self.inspecteur.edition_masques.connect(self.modifier_masques)
+        self.visionneuse.zone.calque = CalqueMasques(self.visionneuse.zone)
+        self.visionneuse.zone.calque.modifie.connect(
+            lambda masque_id, points: self.reglage_masque(self._masques_effet, masque_id,
+                                                          "points", points))
         self.bibliotheque.appliquer.connect(self.appliquer_prereglage)
         self.bibliotheque.personnels_changes.connect(self._remplir_menus_effets)
         vue.prereglage_depose.connect(self._prereglage_depose)
@@ -817,6 +826,7 @@ class FenetrePrincipale(QMainWindow):
         if self.historique.valider(self.projet, libelle, fusionner):
             self.modifie = True
         self._afficher_tout()
+        self._actualiser_calque()
 
     def _remplacer_projet(self, projet: Projet):
         hors_ligne = {m.id: m.hors_ligne for m in self.projet.medias.values()}
@@ -1022,6 +1032,48 @@ class FenetrePrincipale(QMainWindow):
         # Différé : l'inspecteur est reconstruit, le réglage qui a parlé ne doit pas disparaître
         # pendant son propre signal.
         QTimer.singleShot(0, lambda: self.valider(libelle))
+
+    # Masques
+
+    def reglage_masque(self, effet_id: str, masque_id: str, champ: str, valeur):
+        _, e = edition.trouver_effet(self.projet.sequence, effet_id)
+        if e is None:
+            return
+        if champ == "ajouter":
+            e.masques.append(nouveau_masque(valeur))
+            # Le masque neuf se règle tout de suite sur l'image.
+            self._masques_effet = e.id
+            self.activer_moniteur("programme")
+            libelle = "Masque ajouté"
+        else:
+            m = next((m for m in e.masques if m.id == masque_id), None)
+            if m is None:
+                return
+            if champ == "retirer":
+                e.masques.remove(m)
+                libelle = "Masque retiré"
+            else:
+                if getattr(m, champ) == valeur:
+                    return
+                setattr(m, champ, valeur)
+                libelle = "Masque"
+        QTimer.singleShot(0, lambda: self.valider(libelle))
+
+    def modifier_masques(self, effet_id: str):
+        self._masques_effet = effet_id
+        self.inspecteur.masques_edites = effet_id
+        if effet_id:
+            self.activer_moniteur("programme")
+        self._actualiser_calque()
+
+    def _actualiser_calque(self):
+        """Le calque du programme montre les masques de l'effet modifié, s'il existe encore."""
+        _, e = edition.trouver_effet(self.projet.sequence, self._masques_effet) \
+            if self._masques_effet else (None, None)
+        if e is None or not e.masques:
+            self._masques_effet = ""
+        self.inspecteur.masques_edites = self._masques_effet
+        self.visionneuse.zone.calque.montrer_masques(e.masques if self._masques_effet else None)
 
     def _media_choisi(self, media):
         if media is not None:

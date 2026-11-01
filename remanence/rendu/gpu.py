@@ -17,6 +17,7 @@ import av
 import numpy as np
 
 from remanence.effets import COMMUN, EFFETS, valeur
+from remanence.effets.masques import contour
 from remanence.media.sonde import Couleur
 from remanence.projet.modele import Effet
 from remanence.rendu.couleur import _est_yuv, _plage_complete, _plans, coefficients
@@ -85,6 +86,8 @@ uniform sampler2D dessous;
 uniform float opacite;
 uniform int dosage;
 uniform int mode;
+uniform sampler2D masque;
+uniform int a_masque;
 out vec4 sortie;
 
 float lum(vec3 c) { return dot(c, vec3(0.3, 0.59, 0.11)); }
@@ -112,6 +115,8 @@ void main() {
     ivec2 p = ivec2(gl_FragCoord.xy);
     vec4 c = texelFetch(couche, p, 0);
     vec4 d = texelFetch(dessous, p, 0);
+    // Hors du masque, l'opacité vaut 0 : mix() rend exactement l'image reçue.
+    float opacite = opacite * (a_masque == 1 ? texelFetch(masque, p, 0).r : 1.0);
     if (mode == 0) {
         if (dosage == 1) {
             sortie = mix(d, c, opacite);
@@ -131,6 +136,66 @@ void main() {
     sortie = dosage == 1 ? mix(d, r, opacite) : r;
 }
 """
+
+# Un masque : couverture de 0 à 1 par pixel, combinée à celle des masques précédents.
+# Distance signée au bord (négative dedans), puis rampe d'adoucissement centrée sur le bord.
+MASQUE = """
+#version 430
+uniform sampler2D avant;
+uniform int premier;
+uniform int forme;          // 0 rectangle, 1 ellipse, 2 contour (forme libre)
+uniform vec2 a;
+uniform vec2 b;
+uniform int n;
+uniform vec2 sommets[128];
+uniform float adouci;
+uniform float expansion;
+uniform int inverse;
+uniform int mode;           // 0 addition, 1 soustraction, 2 intersection
+out vec4 sortie;
+
+float distance_contour(vec2 p) {
+    float d = dot(p - sommets[0], p - sommets[0]);
+    float s = 1.0;
+    for (int i = 0, j = n - 1; i < n; j = i, i++) {
+        vec2 e = sommets[j] - sommets[i];
+        vec2 w = p - sommets[i];
+        vec2 q = w - e * clamp(dot(w, e) / max(dot(e, e), 1e-9), 0.0, 1.0);
+        d = min(d, dot(q, q));
+        bvec3 c = bvec3(p.y >= sommets[i].y, p.y < sommets[j].y, e.x * w.y > e.y * w.x);
+        if (all(c) || all(not(c))) s = -s;
+    }
+    return s * sqrt(d);
+}
+
+void main() {
+    vec2 p = gl_FragCoord.xy;
+    float d;
+    if (forme == 0) {
+        vec2 q = abs(p - (a + b) * 0.5) - abs(b - a) * 0.5;
+        d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
+    } else if (forme == 1) {
+        vec2 h = max(abs(b - a) * 0.5, vec2(1.0));
+        d = (length((p - (a + b) * 0.5) / h) - 1.0) * min(h.x, h.y);
+    } else {
+        d = distance_contour(p);
+    }
+    d -= expansion;
+    float v = adouci > 0.0 ? clamp(0.5 - d / adouci, 0.0, 1.0) : (d < 0.0 ? 1.0 : 0.0);
+    if (inverse == 1) v = 1.0 - v;
+    float m;
+    if (premier == 1) {
+        m = mode == 0 ? v : mode == 1 ? 1.0 - v : v;
+    } else {
+        float avant_m = texelFetch(avant, ivec2(p), 0).r;
+        m = mode == 0 ? max(avant_m, v) : mode == 1 ? avant_m * (1.0 - v) : avant_m * v;
+    }
+    sortie = vec4(m);
+}
+"""
+
+FORMES = {"rectangle": 0, "ellipse": 1, "courbe": 2}
+MODES_MASQUE = {"addition": 0, "soustraction": 1, "intersection": 2}
 
 INDEX_MODES = {"normal": 0, "addition": 1, "ecran": 2, "produit": 3, "difference": 4,
                "luminosite": 5, "couleur": 6}
@@ -156,6 +221,10 @@ class RenduGPU:
             self._conv[nom].value = unite
         self._fusion["couche"].value = 0
         self._fusion["dessous"].value = 1
+        self._fusion["masque"].value = 2
+        self._prog_masque = self.ctx.program(vertex_shader=SOMMETS, fragment_shader=MASQUE)
+        self._vao_masque = self.ctx.vertex_array(self._prog_masque, [(self._vbo, "2f", "pos")])
+        self._prog_masque["avant"].value = 0
         self._textures: dict[tuple, moderngl.Texture] = {}
         self._cibles: dict[tuple, tuple] = {}
         self._programmes: dict[str, tuple] = {}
@@ -216,13 +285,16 @@ class RenduGPU:
         self._courant = 1 - self._courant
 
     def _melanger(self, nom_couche: str, nom_dessous: str, fbo, opacite: float, dosage: bool,
-                  fusion: str):
+                  fusion: str, masque: str | None = None):
         couche, _ = self._cible(nom_couche, self._taille)
         dessous, _ = self._cible(nom_dessous, self._taille)
         fbo.use()
         self.ctx.viewport = (0, 0, *self._taille)
         couche.use(0)
         dessous.use(1)
+        self._fusion["a_masque"].value = int(masque is not None)
+        if masque is not None:
+            self._cible(masque, self._taille)[0].use(2)
         self._fusion["opacite"].value = float(opacite)
         self._fusion["dosage"].value = int(dosage)
         self._fusion["mode"].value = INDEX_MODES.get(fusion, 0)
@@ -244,12 +316,47 @@ class RenduGPU:
                 continue
             sortie = next(n for n in noms if n != courant)
             self._effet(effet, courant, sortie, numero)
-            if effet.opacite < 1.0 or effet.fusion != "normal":
-                # L'effet dosé ou mêlé à l'image qu'il a reçue.
+            masques = [m for m in effet.masques if m.actif]
+            if effet.opacite < 1.0 or effet.fusion != "normal" or masques:
+                # L'effet dosé, mêlé à l'image qu'il a reçue, ou limité à ses masques.
+                masque = self._masque(masques) if masques else None
                 melange = next(n for n in noms if n not in (courant, sortie))
                 _, fbo = self._cible(melange, self._taille)
-                self._melanger(sortie, courant, fbo, effet.opacite, True, effet.fusion)
+                self._melanger(sortie, courant, fbo, effet.opacite, True, effet.fusion, masque)
                 sortie = melange
+            courant = sortie
+        return courant
+
+    def _masque(self, masques: list) -> str:
+        """Couverture des masques combinés, dans la texture renvoyée (canal rouge)."""
+        l, h = self._taille
+        prog = self._prog_masque
+        courant = None
+        for m in masques:
+            sortie = "masque_b" if courant == "masque_a" else "masque_a"
+            if courant is not None:
+                self._cible(courant, self._taille)[0].use(0)
+            pts = np.asarray(m.points, dtype=np.float32).reshape(-1, 2) * (l, h)
+            prog["premier"].value = int(courant is None)
+            prog["forme"].value = FORMES.get(m.forme, 0)
+            prog["mode"].value = MODES_MASQUE.get(m.mode, 0)
+            prog["inverse"].value = int(m.inverse)
+            prog["adouci"].value = float(m.adoucissement) / 100.0 * l
+            prog["expansion"].value = float(m.expansion) / 100.0 * l
+            if m.forme == "courbe":
+                sommets = contour(m.points) * (l, h)
+                tampon = np.zeros((128, 2), np.float32)
+                tampon[:len(sommets)] = sommets
+                prog["sommets"].write(tampon.tobytes())
+                prog["n"].value = len(sommets)
+            else:
+                prog["a"].value = tuple(pts[0])
+                prog["b"].value = tuple(pts[1])
+                prog["n"].value = 0
+            _, fbo = self._cible(sortie, self._taille)
+            fbo.use()
+            self.ctx.viewport = (0, 0, l, h)
+            self._vao_masque.render(moderngl.TRIANGLE_STRIP)
             courant = sortie
         return courant
 

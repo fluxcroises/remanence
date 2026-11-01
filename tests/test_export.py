@@ -179,3 +179,23 @@ def test_fondu_enchaine_exporte(medias, tmp_path):
     assert np.abs(melange - (ia * (1 - poids) + ib * poids)).max() < 1e-4
     rapport = exporter(projet, seq, tmp_path / "fondu.mov")
     assert rapport.conforme and rapport.images_calculees == 9
+
+
+@pytest.mark.parametrize("cle", ["av1", "webm", "gif", "dpx10", "exr", "tiff16"])
+def test_nouveaux_formats(medias, tmp_path, cle):
+    """Les formats ajoutés à l'étape 2 : fichier lisible, bonne durée, rapport conforme."""
+    from remanence.rendu.export import FORMATS, chemin_image
+    projet, _ = _projet(medias, "prores_hq")
+    seq = projet.sequence
+    fmt = FORMATS[cle]
+    sortie = tmp_path / ("plan" + fmt.extension)
+    rapport = exporter(projet, seq, sortie, cle, debut=0, fin=6)
+    assert rapport.conforme, [(v.critere, v.attendu, v.obtenu) for v in rapport.verifications
+                              if not v.ok]
+    assert rapport.images_calculees == 6
+    if fmt.sequence:
+        premier = chemin_image(sortie, seq.tc_debut)
+        assert rapport.chemin == premier and premier.exists()
+        assert len(list(tmp_path.glob("plan_*" + fmt.extension))) == 6
+    else:
+        assert sortie.exists()

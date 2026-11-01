@@ -63,6 +63,25 @@ class Media:
 
 
 @dataclass
+class Masque:
+    """Zone de l'image où agit un effet. Coordonnées de 0 à 1 sur l'image de la séquence,
+    depuis le coin haut gauche. Rectangle et ellipse : deux coins opposés ; forme libre : les
+    points d'une courbe fermée qui passe par chacun d'eux."""
+    id: str
+    forme: str  # "rectangle" | "ellipse" | "courbe"
+    points: list = field(default_factory=list)
+    adoucissement: float = 0.0  # en % de la largeur de l'image
+    expansion: float = 0.0      # idem ; négatif : le masque se resserre
+    inverse: bool = False
+    mode: str = "addition"      # avec les masques précédents : addition, soustraction, intersection
+    actif: bool = True
+
+
+MODES_MASQUE = {"addition": "Addition", "soustraction": "Soustraction",
+                "intersection": "Intersection"}
+
+
+@dataclass
 class Effet:
     """Un effet posé sur un clip, une piste ou la séquence. type : clé d'une description de
     `remanence.effets` ; params : valeur de chaque paramètre ; graine : tirage du hasard."""
@@ -78,6 +97,8 @@ class Effet:
     # triées. Temps en images depuis le début du clip, ou de la séquence pour un effet de piste
     # ou de séquence. Un paramètre sans image clé garde sa valeur fixe.
     cles: dict = field(default_factory=dict)
+    # Sans masque, l'effet couvre toute l'image.
+    masques: list[Masque] = field(default_factory=list)
 
 
 # Modes de fusion du cahier des charges : clé enregistrée -> nom affiché.
@@ -328,4 +349,9 @@ class Projet:
 
 def _effets(liste: list[dict] | None) -> list[Effet]:
     """Les effets enregistrés ; absents des projets d'avant l'étape 2."""
-    return [Effet(**e) for e in (liste or [])]
+    effets = []
+    for e in liste or []:
+        e = dict(e)
+        masques = [Masque(**m) for m in e.pop("masques", [])]
+        effets.append(Effet(**e, masques=masques))
+    return effets

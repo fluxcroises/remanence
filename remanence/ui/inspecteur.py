@@ -11,7 +11,8 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QGridLayout, QHBoxLayout, Q
 
 from remanence.effets import EFFETS, valeur_a
 from remanence.media.timecode import images_vers_tc
-from remanence.projet.modele import MODES_FUSION, Media, Projet
+from remanence.effets.masques import NOMS_FORMES
+from remanence.projet.modele import MODES_FUSION, MODES_MASQUE, Media, Projet
 from remanence.ui.composants import (BoutonCle, LigneParametre, SectionRepliable, bouton_icone,
                                      etiquette, poser_icone)
 from remanence.ui.menu_effets import remplir_menu_effets
@@ -190,6 +191,11 @@ class Inspecteur(PanneauFiche):
     reglage_effet = Signal(str, str, object)
     # (genre "clip" | "piste" | "sequence", identifiant, liste d'effets neufs)
     ajout_effet = Signal(str, str, object)
+    # (effet_id, masque_id, champ, valeur) ; champ "ajouter" (valeur : la forme), "retirer",
+    # "mode", "inverse", "adoucissement", "expansion", "points".
+    reglage_masque = Signal(str, str, str, object)
+    # Effet dont les masques se modifient sur l'image du programme ("" : aucun).
+    edition_masques = Signal(str)
     # Effets à enregistrer comme préréglage personnel (un seul, ou toute la pile).
     enregistrer_prereglage = Signal(object)
     # Texte du badge de l'en-tête (« Clip vidéo », « Clip audio »), vide sans sélection.
@@ -199,6 +205,7 @@ class Inspecteur(PanneauFiche):
         super().__init__(parent)
         # Tête de lecture du programme : les réglages animés montrent leur valeur à cet instant.
         self.temps = 0
+        self.masques_edites = ""
         self._animes: list[tuple] = []
         self.vide()
 
@@ -355,6 +362,66 @@ class Inspecteur(PanneauFiche):
         if video:
             self._effets("clip", c.id, c.effets, "Effets", origine=c.debut)
 
+    def _masques(self, e):
+        """Masques de l'effet : forme, combinaison, inversion, adoucissement, expansion."""
+        for m in e.masques:
+            rang = QHBoxLayout()
+            rang.setSpacing(8)
+            rang.addSpacing(RETRAIT_LOSANGE)
+            nom = etiquette(NOMS_FORMES.get(m.forme, m.forme), "libelle")
+            nom.setFixedWidth(100)
+            rang.addWidget(nom)
+            mode = QComboBox()
+            mode.setAccessibleName("Combinaison du masque")
+            for cle, texte in MODES_MASQUE.items():
+                mode.addItem(texte, cle)
+            mode.setCurrentIndex(max(0, mode.findData(m.mode)))
+            mode.activated.connect(lambda i, m=m, mode=mode: self.reglage_masque.emit(
+                e.id, m.id, "mode", mode.itemData(i)))
+            rang.addWidget(mode, 1)
+            inverse = QCheckBox("Inverser")
+            inverse.setChecked(m.inverse)
+            inverse.toggled.connect(lambda v, m=m: self.reglage_masque.emit(e.id, m.id,
+                                                                            "inverse", v))
+            rang.addWidget(inverse)
+            retirer = bouton_icone("x", "Retirer le masque", taille=14)
+            retirer.clicked.connect(lambda _=False, m=m: self.reglage_masque.emit(
+                e.id, m.id, "retirer", None))
+            rang.addWidget(retirer)
+            self._cible.addLayout(rang)
+            for champ, nom_reglage, mini in (("adoucissement", "Adoucissement", 0),
+                                             ("expansion", "Expansion", -25)):
+                vide = QWidget()
+                vide.setFixedSize(18, 18)
+                ligne = LigneParametre(nom_reglage, mini, 25, getattr(m, champ), "%", 0, 1,
+                                       cle=vide)
+                ligne.valeur_finale.connect(lambda v, m=m, champ=champ: self.reglage_masque.emit(
+                    e.id, m.id, champ, v))
+                self._cible.addWidget(ligne)
+        rang = QHBoxLayout()
+        rang.setSpacing(8)
+        rang.addSpacing(RETRAIT_LOSANGE)
+        ajout = QToolButton()
+        ajout.setText("Ajouter un masque")
+        poser_icone(ajout, "plus", 14)
+        ajout.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        ajout.setPopupMode(QToolButton.InstantPopup)
+        menu = QMenu(ajout)
+        for forme, texte in NOMS_FORMES.items():
+            menu.addAction(texte, lambda forme=forme: self.reglage_masque.emit(
+                e.id, "", "ajouter", forme))
+        ajout.setMenu(menu)
+        rang.addWidget(ajout)
+        if e.masques:
+            modifier = QPushButton("Sur l'image")
+            modifier.setCheckable(True)
+            modifier.setToolTip("Modifier les masques sur le moniteur Programme")
+            modifier.setChecked(self.masques_edites == e.id)
+            modifier.toggled.connect(lambda v: self.edition_masques.emit(e.id if v else ""))
+            rang.addWidget(modifier)
+        rang.addStretch(1)
+        self._cible.addLayout(rang)
+
     def _choix_fusion(self, actuel: str, choisir, retrait: bool = False) -> QHBoxLayout:
         """Ligne « Fusion » : les sept modes du cahier des charges. retrait : alignée sur les
         réglages précédés d'un losange."""
@@ -431,6 +498,7 @@ class Inspecteur(PanneauFiche):
             self._cible.addLayout(self._choix_fusion(
                 e.fusion, lambda mode, e=e: self.reglage_effet.emit(e.id, "fusion", mode),
                 retrait=True))
+            self._masques(e)
             rang = QHBoxLayout()
             rang.setSpacing(8)
             rang.addSpacing(RETRAIT_LOSANGE)

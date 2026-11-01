@@ -36,6 +36,8 @@ class FormatExport:
     famille: str
     profil: str = ""
     options: dict = field(default_factory=dict)
+    # Une image par fichier, numérotée (DPX, EXR, TIFF) ; pas de son ni de timecode.
+    sequence: bool = False
 
 
 FORMATS = {f.cle: f for f in [
@@ -65,7 +67,59 @@ FORMATS = {f.cle: f for f in [
                  {"crf": "12", "preset": "slow"}),
     FormatExport("hevc10", "H.265 10 bits (MP4)", "libx265", "yuv420p10le", ".mp4", "hevc", "",
                  {"crf": "12", "preset": "slow", "x265-params": "log-level=error"}),
+    FormatExport("av1", "AV1 10 bits (MP4)", "libsvtav1", "yuv420p10le", ".mp4", "av1", "",
+                 {"crf": "20", "preset": "6"}),
+    FormatExport("webm", "WebM VP9 avec alpha", "libvpx-vp9", "yuva420p", ".webm", "vp9", "",
+                 {"crf": "18", "b": "0", "row-mt": "1", "auto-alt-ref": "0"}),
+    FormatExport("gif", "GIF animé", "gif", "pal8", ".gif", "gif"),
+    FormatExport("dpx10", "Séquence DPX 10 bits", "dpx", "gbrp10le", ".dpx", "dpx",
+                 sequence=True),
+    FormatExport("exr", "Séquence EXR demi-flottant", "exr", "gbrapf32le", ".exr", "exr", "",
+                 {"format": "half", "compression": "zip16"}, sequence=True),
+    FormatExport("tiff16", "Séquence TIFF 16 bits", "tiff", "rgb48le", ".tif", "tiff",
+                 sequence=True),
 ]}
+
+
+def chemin_image(chemin: Path, numero: int) -> Path:
+    """Fichier d'une image d'une séquence : nom_0086400.dpx, numéroté comme le timecode."""
+    return chemin.with_name(f"{chemin.stem}_{numero:07d}{chemin.suffix}")
+
+
+def _trame_flottante(rvba: np.ndarray) -> av.VideoFrame:
+    """EXR : les valeurs flottantes telles quelles (surblancs compris), sans prémultiplication."""
+    a = rvba[..., 3:4]
+    droit = np.where(a > 1e-6, rvba[..., :3] / np.maximum(a, 1e-6), 0.0)
+    return av.VideoFrame.from_ndarray(
+        np.ascontiguousarray(np.concatenate([droit, a], axis=2), dtype=np.float32),
+        format="gbrapf32le")
+
+
+class _PaletteGif:
+    """Une palette de 256 couleurs par image (palettegen puis paletteuse de FFmpeg)."""
+
+    def __init__(self, largeur: int, hauteur: int, cadence: Fraction):
+        g = self.graphe = av.filter.Graph()
+        self._entree = g.add_buffer(width=largeur, height=hauteur, format="rgb24",
+                                    time_base=1 / cadence)
+        separe = g.add("split")
+        palette = g.add("palettegen", "stats_mode=single")
+        usage = g.add("paletteuse", "new=1")
+        sortie = g.add("buffersink")
+        self._entree.link_to(separe)
+        separe.link_to(usage, 0, 0)
+        separe.link_to(palette, 1, 0)
+        palette.link_to(usage, 0, 1)
+        usage.link_to(sortie)
+        g.configure()
+
+    def convertir(self, rvba: np.ndarray, pts: int) -> av.VideoFrame:
+        rvb = np.clip(rvba[..., :3], 0.0, 1.0) * 255.0 + 0.5
+        trame = av.VideoFrame.from_ndarray(np.ascontiguousarray(rvb.astype(np.uint8)),
+                                           format="rgb24")
+        trame.pts = pts
+        self.graphe.push(trame)
+        return self.graphe.pull()
 
 PROFILS_PRORES = {"proxy": "prores_proxy", "lt": "prores_lt", "standard": "prores_422",
                   "hq": "prores_hq", "4444": "prores_4444", "xq": "prores_xq", "4444xq": "prores_xq"}
@@ -184,14 +238,30 @@ def exporter(projet: Projet, seq: Sequence, chemin: Path, cle_format: str = "sou
         and _compatible(ref.infos.video, fmt, seq))
     mode_audio, media_audio = _plan_audio(projet, seq, debut, fin)
 
+    if fmt.sequence or fmt.famille == "gif":
+        # Ni son ni recopie : chaque image est calculée.
+        mode_audio, media_audio = None, None
+        remux_total = False
+        idents = [None] * n_images
+    elif mode_audio == "copie" and chemin.suffix.lower() == ".webm":
+        mode_audio = "mix"  # WebM n'accepte pas le son des sources de montage : il est réencodé.
+    if fmt.famille == "gif":
+        avertissements.append("GIF : durée de chaque image arrondie au centième de seconde.")
+    numero_depart = seq.tc_debut + debut
     partiel = chemin.with_name(chemin.stem + ".partiel" + chemin.suffix)
     compositeur = Compositeur(projet)
     lecteurs_paquets: dict[str, LecteurPaquets] = {}
     sources_ouvertes = []
     copiees = calculees = 0
     sortie = None
+    palette = None
     try:
-        sortie = av.open(str(partiel), "w")
+        if fmt.sequence:
+            motif = chemin.with_name(f"{chemin.stem}_%07d{chemin.suffix}")
+            sortie = av.open(str(motif), "w", format="image2",
+                             options={"start_number": str(numero_depart)})
+        else:
+            sortie = av.open(str(partiel), "w")
         # Une source sans timecode (téléphone, web) donne un export sans timecode.
         sans_tc = ref is not None and ref.infos.video.tc_debut is None and seq.tc_debut == 0
         tc = None if sans_tc else tcmod.images_vers_tc(seq.tc_debut + debut, cadence, seq.tc_drop)
@@ -233,10 +303,11 @@ def exporter(projet: Projet, seq: Sequence, chemin: Path, cle_format: str = "sou
                 flux_audio_copie.append((a, sortie.add_stream_from_template(a)))
             iter_audio = src_a.demux([a for a, _ in flux_audio_copie])
         elif mode_audio == "mix":
-            codec_audio = "aac" if chemin.suffix.lower() in (".mp4", ".m4v") else "pcm_s24le"
+            codec_audio = {".mp4": "aac", ".m4v": "aac", ".webm": "libopus"}.get(
+                chemin.suffix.lower(), "pcm_s24le")
             fa = sortie.add_stream(codec_audio, rate=FREQUENCE_MIXAGE)
             fa.layout = "stereo"
-            if codec_audio == "aac":
+            if codec_audio in ("aac", "libopus"):
                 fa.bit_rate = 320000
         audio_attente = None
         echantillons_ecrits = 0
@@ -265,7 +336,7 @@ def exporter(projet: Projet, seq: Sequence, chemin: Path, cle_format: str = "sou
                 bloc = compositeur.audio(seq, debut_seq + echantillons_ecrits,
                                          cible - echantillons_ecrits)
                 bloc = np.clip(bloc, -1.0, 1.0)
-                if fa.codec_context.name == "aac":
+                if fa.codec_context.name in ("aac", "libopus"):
                     trame = av.AudioFrame.from_ndarray(np.ascontiguousarray(bloc.T), format="fltp",
                                                        layout="stereo")
                 else:
@@ -313,7 +384,14 @@ def exporter(projet: Projet, seq: Sequence, chemin: Path, cle_format: str = "sou
                     copiees += 1
                 else:
                     rvba = compositeur.image(seq, debut + i)
-                    trame = depuis_rvba(rvba, fmt.pix_fmt, couleur)
+                    if fmt.famille == "gif":
+                        if palette is None:
+                            palette = _PaletteGif(seq.largeur, seq.hauteur, cadence)
+                        trame = palette.convertir(rvba, i)
+                    elif fmt.pix_fmt.endswith("f32le"):
+                        trame = _trame_flottante(rvba)
+                    else:
+                        trame = depuis_rvba(rvba, fmt.pix_fmt, couleur)
                     trame.pts = i
                     trame.time_base = base_temps
                     for p in fv.encode(trame):
@@ -337,6 +415,10 @@ def exporter(projet: Projet, seq: Sequence, chemin: Path, cle_format: str = "sou
             except Exception:
                 pass
         partiel.unlink(missing_ok=True)
+        if fmt.sequence:
+            # Rien de la séquence interrompue ne reste sur le disque.
+            for k in range(n_images):
+                chemin_image(chemin, numero_depart + k).unlink(missing_ok=True)
         raise
     finally:
         compositeur.fermer()
@@ -344,12 +426,19 @@ def exporter(projet: Projet, seq: Sequence, chemin: Path, cle_format: str = "sou
             lp.fermer()
         for s in sources_ouvertes:
             s.close()
-    partiel.replace(chemin)
-
-    infos_sortie, _ = analyser(str(chemin))
+    if fmt.sequence:
+        chemin = chemin_image(chemin, numero_depart)
+        infos_sortie, _ = analyser(str(chemin), str(cadence))
+    else:
+        partiel.replace(chemin)
+        infos_sortie, _ = analyser(str(chemin))
+    rvb = fmt.sequence or fmt.famille == "gif"
     attendu = {
         "nb_images": n_images, "cadence": cadence, "largeur": seq.largeur, "hauteur": seq.hauteur,
-        "tc_debut": None if tc is None else seq.tc_debut + debut, "couleur": couleur,
+        # Séquences d'images et GIF : ni timecode ni métadonnées couleur dans ces fichiers.
+        "tc_debut": None if tc is None or rvb else seq.tc_debut + debut,
+        "couleur": None if rvb else couleur,
+        "cadence_exacte": fmt.famille != "gif",
         "rapport_pixel": ref.infos.video.rapport_pixel if ref else "1:1",
     }
     return Rapport(chemin, copiees, calculees,

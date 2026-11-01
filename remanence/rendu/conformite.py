@@ -28,21 +28,28 @@ def verifier(sortie: InfosMedia, attendu: dict) -> list[Verification]:
               else "absent")
     tc_obt = tcmod.images_vers_tc(v.tc_debut, cad) if v.tc_debut is not None else "absent"
     c_att, c_obt = attendu["couleur"], v.couleur
-    return [
+    lignes = [
         Verification("Durée en images", str(attendu["nb_images"]), str(v.nb_images),
-                     v.nb_images == attendu["nb_images"]),
-        Verification("Cadence", str(cad), v.cadence, Fraction(v.cadence) == cad),
+                     v.nb_images == attendu["nb_images"])]
+    # Un GIF compte en centièmes de seconde : sa cadence n'est jamais exacte.
+    if attendu.get("cadence_exacte", True):
+        lignes.append(Verification("Cadence", str(cad), v.cadence, Fraction(v.cadence) == cad))
+    lignes += [
         Verification("Résolution", f"{attendu['largeur']} × {attendu['hauteur']}",
                      f"{v.largeur} × {v.hauteur}",
                      (v.largeur, v.hauteur) == (attendu["largeur"], attendu["hauteur"])),
         Verification("Rapport de pixel", attendu["rapport_pixel"], v.rapport_pixel,
                      v.rapport_pixel == attendu["rapport_pixel"]),
         Verification("Timecode de départ", tc_att, tc_obt, v.tc_debut == attendu["tc_debut"]),
-        Verification("Métadonnées couleur", c_att.decrire(), c_obt.decrire(),
-                     (c_att.primaires, c_att.transfert, c_att.matrice) ==
-                     (c_obt.primaires, c_obt.transfert, c_obt.matrice)
-                     and (c_att.plage or 1) == (c_obt.plage or 1)),
     ]
+    # Séquences d'images et GIF ne portent pas de métadonnées couleur.
+    if c_att is not None:
+        lignes.append(Verification(
+            "Métadonnées couleur", c_att.decrire(), c_obt.decrire(),
+            (c_att.primaires, c_att.transfert, c_att.matrice) ==
+            (c_obt.primaires, c_obt.transfert, c_obt.matrice)
+            and (c_att.plage or 1) == (c_obt.plage or 1)))
+    return lignes
 
 
 def empreintes_images(chemin: str, sequence_images: dict | None = None) -> list[bytes]:
