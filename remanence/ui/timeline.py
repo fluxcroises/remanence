@@ -507,14 +507,17 @@ class VueTimeline(QWidget):
             return
         c = charte.actuelle()
         p.save()
+        # Bande sombre sous les losanges : ils restent lisibles sur les vignettes.
+        p.fillRect(QRectF(r.left(), r.bottom() - 13, r.width(), 13), c.c("bg-app", 0.8))
         p.setRenderHint(QPainter.Antialiasing, True)
         p.setPen(QPen(c.c("bg-app"), 1))
         p.setBrush(c.c("keyframe"))
-        y = r.bottom() - 6
+        y = r.bottom() - 6.5
         for t in temps:
             x = self.x_de(clip.debut + t) + self.px_par_image / 2
-            p.drawPolygon(QPolygonF([QPointF(x, y - 4), QPointF(x + 4, y), QPointF(x, y + 4),
-                                     QPointF(x - 4, y)]))
+            x = min(max(x, r.left() + 6), r.right() - 6)
+            p.drawPolygon(QPolygonF([QPointF(x, y - 5), QPointF(x + 5, y), QPointF(x, y + 5),
+                                     QPointF(x - 5, y)]))
         p.restore()
 
     def oublier_ondes(self):
@@ -550,9 +553,10 @@ class VueTimeline(QWidget):
                 bord = self.x_de(clip.debut + min(clip.transition.duree, clip.duree))
                 if abs(pos.x() - bord) <= 5:
                     return "transition", piste, clip, -1
-            if pos.y() >= r.bottom() - 12:
+            if pos.y() >= r.bottom() - 13:
                 for t in self._temps_cles(clip):
                     x = self.x_de(clip.debut + t) + self.px_par_image / 2
+                    x = min(max(x, r.left() + 6), r.right() - 6)
                     if abs(pos.x() - x) <= 6:
                         return "cle_effet", piste, clip, t
             for rang, (x, v) in enumerate(clip.enveloppe):

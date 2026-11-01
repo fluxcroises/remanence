@@ -626,6 +626,30 @@ def test_effets_ffglitch_dans_l_inspecteur(fenetre, medias, monkeypatch):
     assert _attendre(lambda: "FFglitch absent : effet sans action" in textes(), 2)
 
 
+def test_l_inspecteur_ne_saute_pas_apres_un_reglage(fenetre, medias):
+    """Un clic sur un losange reconstruit l'inspecteur : il reste où il était."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from remanence.effets import nouvel_effet
+    from remanence.ui.composants import BoutonCle
+    w = fenetre
+    w.resize(1400, 700)
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    w.timeline.vue._choisir({clip.id})
+    w.ajouter_effet("clip", clip.id, [nouvel_effet("blocs_deplaces")])
+    barre = w.inspecteur._defil.verticalScrollBar()
+    assert _attendre(lambda: barre.maximum() > 40, 2)
+    for depart in (0, 40):
+        barre.setValue(depart)
+        b = [b for b in w.inspecteur.findChildren(BoutonCle) if b.isVisibleTo(w.inspecteur)][0]
+        QTest.mouseClick(b, Qt.LeftButton)
+        _attendre(lambda: False, 0.5)
+        assert barre.value() == depart
+
+
 def test_losanges_de_la_timeline_et_echap(fenetre, medias):
     """Clic sur un losange d'un clip : la tête y va ; le glisser déplace l'image clé.
     Échap quitte l'outil de coupe."""

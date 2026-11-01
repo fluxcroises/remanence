@@ -51,9 +51,6 @@ def principal() -> int:
                         detail)
     sys.excepthook = erreur_imprevue
 
-    if len(sys.argv) > 1 and sys.argv[1].endswith(".remanence"):
-        ecran.etape("Ouverture du projet…")
-        fenetre.ouvrir(sys.argv[1])
     ecran.etape("Prêt")
     # Laisse l'écran lisible au moins une seconde, même sur une machine rapide.
     while time.perf_counter() - debut < 1.0:
@@ -63,6 +60,10 @@ def principal() -> int:
     fenetre.showMaximized()
     QTimer.singleShot(0, fenetre.focus_initial)
     ecran.close()
+    if len(sys.argv) > 1 and sys.argv[1].endswith(".remanence"):
+        # Après l'écran de démarrage : une question (sauvegarde automatique plus récente) ne
+        # doit pas rester cachée derrière lui.
+        QTimer.singleShot(0, lambda: fenetre.ouvrir(sys.argv[1]))
     return app.exec()
 
 

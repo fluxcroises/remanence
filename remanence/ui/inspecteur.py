@@ -5,7 +5,7 @@ from __future__ import annotations
 import random
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QGridLayout, QHBoxLayout, QListWidget, QListWidgetItem,
+from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QGridLayout, QHBoxLayout, QListWidget, QListWidgetItem,
                                QMenu, QPushButton, QScrollArea, QSizePolicy, QToolButton,
                                QVBoxLayout, QWidget)
 
@@ -63,6 +63,13 @@ class PanneauFiche(QWidget):
         self._lay.setAlignment(Qt.AlignTop)
         defil.setWidget(contenu)
         racine.addWidget(defil, 1)
+        # Un réglage reconstruit le panneau : il garde sa position de défilement, sinon le
+        # clic suivant tombe à côté.
+        self._defil = defil
+        self._defil_garde: int | None = None
+        barre = defil.verticalScrollBar()
+        barre.rangeChanged.connect(self._retrouver_defilement)
+        barre.sliderMoved.connect(lambda _v: setattr(self, "_defil_garde", None))
         self._pied = QWidget()
         self._pied.setProperty("role", "pied")
         self._pied.setAttribute(Qt.WA_StyledBackground, True)
@@ -112,7 +119,18 @@ class PanneauFiche(QWidget):
         n.setWordWrap(True)
         self._cible.addWidget(n)
 
+    def _retrouver_defilement(self, _mini, maxi):
+        if self._defil_garde is not None:
+            self._defil.verticalScrollBar().setValue(min(self._defil_garde, maxi))
+            if self._defil_garde <= maxi:
+                self._defil_garde = None
+
     def _vider(self):
+        self._defil_garde = self._defil.verticalScrollBar().value()
+        # Le widget qui a le clavier va disparaître : Qt donnerait le clavier au suivant et
+        # ferait défiler le panneau jusqu'à lui.
+        if self._defil.isAncestorOf(QApplication.focusWidget()):
+            self._defil.setFocus()
         _effacer(self._lay)
         _effacer(self._lay_pied)
         self._pied.hide()
