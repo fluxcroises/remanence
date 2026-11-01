@@ -97,10 +97,8 @@ class EcranDemarrage(QWidget):
         nom.setLetterSpacing(QFont.AbsoluteSpacing, -0.8)
         p.setFont(nom)
         p.setPen(c.c("ink"))
-        p.drawText(QRectF(g + 80, haut + 4, 300, 44), Qt.AlignLeft | Qt.AlignVCenter, "Remanence")
-        p.setFont(c.police("body"))
-        p.setPen(c.c("ink-muted"))
-        p.drawText(QRectF(g + 80, haut + 46, 300, 18), Qt.AlignLeft, "Montage et datamosh")
+        # Nom centré verticalement sur le symbole de 64 px.
+        p.drawText(QRectF(g + 80, haut, 320, 64), Qt.AlignLeft | Qt.AlignVCenter, "Remanence")
 
         # Bas de la carte : l'étape de chargement, puis copyright et version ; l'éditeur à droite.
         gauche = QRectF(g, CARTE.bottom() - 58, CARTE.width() - 80, 18)
