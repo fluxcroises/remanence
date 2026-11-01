@@ -593,6 +593,39 @@ def test_images_cles_depuis_l_inspecteur(fenetre, medias):
     assert _attendre(lambda: w.projet.sequence.pistes_video[0].clips[0].fusion == "produit", 2)
 
 
+def test_effets_ffglitch_dans_l_inspecteur(fenetre, medias, monkeypatch):
+    """Vecteurs de mouvement : losanges d'images clés (le script suit l'animation) ; transfert :
+    la source affichée ; sans FFglitch, l'avertissement."""
+    from PySide6.QtWidgets import QLabel
+    from remanence.effets import nouvel_effet
+    from remanence.moteurs.codec import ffglitch
+    from remanence.ui.composants import BoutonCle
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    w.timeline.vue._choisir({clip.id})
+    w.ajouter_effet("clip", clip.id, [nouvel_effet("vecteurs"),
+                                      nouvel_effet("transfert_mouvement")])
+    textes = lambda: [l.text() for l in w.inspecteur.findChildren(QLabel)
+                      if l.isVisibleTo(w.inspecteur)]
+    assert _attendre(lambda: "aucun clip au-dessus" in textes(), 2)
+    # Vecteurs : 7 réglages et l'opacité ; transfert : 2 réglages et l'opacité.
+    assert _attendre(lambda: len([b for b in w.inspecteur.findChildren(BoutonCle)
+                                  if b.isVisibleTo(w.inspecteur)]) == 11, 2)
+    effet_id = w.projet.sequence.pistes_video[0].clips[0].effets[0].id
+    w.aller_a(4)
+    w.reglage_effet(effet_id, "cle:horizontal", None)
+    assert _attendre(lambda: "horizontal" in
+                     w.projet.sequence.pistes_video[0].clips[0].effets[0].cles, 2)
+    assert _attendre(lambda: not w._prerendus, 30), "calcul en arrière-plan terminé"
+    monkeypatch.setenv(ffglitch.VARIABLE, "")
+    w.timeline.vue._choisir(set())
+    w.timeline.vue._choisir({clip.id})
+    assert _attendre(lambda: "FFglitch absent : effet sans action" in textes(), 2)
+
+
 def test_masques_depuis_l_interface(fenetre, medias):
     """Ajouter un masque, le régler, le déplacer à la souris sur le programme, le retirer."""
     from PySide6.QtCore import QPoint, Qt

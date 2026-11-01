@@ -341,7 +341,18 @@ def _deux_plans(medias):
     return projet, seq, seq.pistes_video[0].clips[0], seq.pistes_video[0].clips[1]
 
 
-def test_transition_datamosh(medias, tmp_path):
+@pytest.fixture(params=["ffglitch", "bavure"])
+def moteur(request, monkeypatch):
+    """Les deux moteurs codec : FFglitch (s'il est installé) et Bavure, le moteur de secours."""
+    from remanence.moteurs.codec import ffglitch
+    if request.param == "bavure":
+        monkeypatch.setenv(ffglitch.VARIABLE, "")
+    elif not ffglitch.disponible():
+        pytest.skip("FFglitch n'est pas installé")
+    return request.param
+
+
+def test_transition_datamosh(medias, tmp_path, moteur):
     """Validation de l'étape 3 : deux plans ProRes enchaînés produisent une transition qui
     bave, et le plan exporté se réintègre au montage sans décalage."""
     from remanence.moteurs.codec import prerendu
@@ -381,3 +392,62 @@ def test_transition_et_coupes_au_montage(medias):
     assert relu.transition.duree == gauche.transition.duree and relu.cles_supprimees == [2]
     edition.basculer_transition(seq, gauche.id)
     assert seq.trouver(gauche.id)[1].transition is None
+
+
+def test_vecteurs_animes(medias, monkeypatch):
+    """FFglitch : le script généré reçoit la valeur de chaque image ; sans FFglitch, l'effet
+    reste sans action."""
+    from remanence.effets import poser_cle
+    from remanence.effets.vecteurs import script
+    from remanence.moteurs.codec import ffglitch, prerendu
+    if not ffglitch.disponible():
+        pytest.skip("FFglitch n'est pas installé")
+    projet, clip = _projet(medias)
+    seq = projet.sequence
+    source = _image(projet, 20)
+    effet = nouvel_effet("vecteurs")
+    clip.effets = [effet]
+    neutre = prerendu.calculer(projet, seq, clip)
+    ecart = lambda x, y: float(np.abs(x[..., :3] - y[..., :3]).mean())
+    assert ecart(_image(projet, 20), source) < 0.02, "réglages neutres : presque la source"
+    poser_cle(effet, "horizontal", 0, 100)
+    poser_cle(effet, "horizontal", clip.duree - 1, -400)
+    assert EFFETS["vecteurs"].animable and not EFFETS["bloom"].animable
+    js = script([{p.cle: 1.0 for p in EFFETS["vecteurs"].parametres}] * 3, 7)
+    assert "glitch_frame" in js and "let graine = 7" in js
+    anime = prerendu.calculer(projet, seq, clip)
+    assert anime != neutre, "une image clé change le pré-rendu"
+    assert ecart(_image(projet, 3), source) < ecart(_image(projet, clip.duree - 1), source),         "l'effet grandit avec l'animation"
+    monkeypatch.setenv(ffglitch.VARIABLE, "")
+    assert prerendu.cle(projet, seq, clip) != anime.stem.split("_")[1], "autre moteur"
+    prerendu.calculer(projet, seq, clip)
+    assert ecart(_image(projet, 20), source) < 0.02, "sans FFglitch, sans action"
+
+
+def test_transfert_mouvement(medias):
+    """Les vecteurs du clip de la piste au-dessus remplacent ceux du clip."""
+    from remanence.moteurs.codec import ffglitch, prerendu
+    if not ffglitch.disponible():
+        pytest.skip("FFglitch n'est pas installé")
+    projet, clip = _projet(medias)
+    seq = projet.sequence
+    effet = nouvel_effet("transfert_mouvement")
+    effet.params["force"] = 0
+    clip.effets = [effet]
+    assert edition.clip_au_dessus(seq, clip) is None
+    seul = prerendu.calculer(projet, seq, clip)
+    dessus = edition.ajouter_piste(seq, "video")
+    infos, _ = analyser(str(medias["h264"]))
+    m = Media(nouvel_id(), str(medias["h264"]), infos)
+    projet.medias[m.id] = m
+    edition.ajouter_media(projet, seq, m, 0, piste=dessus)
+    autre = edition.clip_au_dessus(seq, clip)
+    assert autre is not None and autre.media_id == m.id
+    sans = prerendu.calculer(projet, seq, clip)
+    assert sans != seul, "le clip au-dessus entre dans l'empreinte"
+    dessus.masquee = True  # la piste source se cache, son mouvement reste
+    a = _image(projet, 20)
+    effet.params["force"] = 100
+    prerendu.calculer(projet, seq, clip)
+    b = _image(projet, 20)
+    assert np.abs(a - b).max() > 0.02, "le mouvement emprunté se voit"

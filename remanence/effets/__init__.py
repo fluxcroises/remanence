@@ -44,10 +44,25 @@ class DescriptionEffet:
     # graine) qui abîme le flux MPEG-4 du clip ; calculé en arrière-plan, gardé en cache.
     moteur: str = "temps_reel"
     traiter: object = None
+    # Effets codec FFglitch : script(valeurs de chaque image, graine) rend le script
+    # JavaScript qui réécrit les vecteurs de mouvement ; transfert : les vecteurs viennent du
+    # clip de la piste au-dessus. Sans FFglitch, ils restent sans action.
+    script: object = None
+    transfert: bool = False
 
     @property
     def codec(self) -> bool:
         return self.moteur == "codec"
+
+    @property
+    def ffglitch(self) -> bool:
+        return self.script is not None or self.transfert
+
+    @property
+    def animable(self) -> bool:
+        """Images clés possibles : en temps réel, et pour les effets FFglitch (le script
+        reçoit la valeur de chaque image)."""
+        return not self.codec or self.ffglitch
 
     def valeurs(self, prereglage: str | None = None) -> dict:
         v = {p.cle: p.defaut for p in self.parametres}

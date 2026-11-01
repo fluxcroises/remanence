@@ -35,6 +35,22 @@ def type_image(paquet: bytes) -> str:
 SEUIL_COUPE = 0.12
 
 
+class DetecteurCoupes:
+    """Repère les changements de plan d'une suite d'images : écart moyen de luminosité de deux
+    images réduites à 32 × 18 au-delà de SEUIL_COUPE."""
+
+    def __init__(self):
+        self._precedente: np.ndarray | None = None
+
+    def __call__(self, image: av.VideoFrame) -> bool:
+        reduite = image.reformat(width=32, height=18, format="gray").to_ndarray()
+        reduite = reduite.astype(np.float32)
+        coupe = (self._precedente is not None
+                 and np.abs(reduite - self._precedente).mean() / 255.0 > SEUIL_COUPE)
+        self._precedente = reduite
+        return coupe
+
+
 class Encodeur:
     """Encodeur MPEG-4 à quantification fixe : 1 propre, 31 très gros blocs. Il ne place
     d'images clés qu'au début et aux changements de plan. Ceux-ci sont repérés ici : livré à
@@ -53,16 +69,7 @@ class Encodeur:
         cc.bit_rate = 400_000_000
         cc.open()
         self._n = 0
-        self._precedente: np.ndarray | None = None
-
-    def est_coupe(self, image: av.VideoFrame) -> bool:
-        """Vrai si cette image commence un nouveau plan (et la retient pour la suivante)."""
-        reduite = image.reformat(width=32, height=18, format="gray").to_ndarray()
-        reduite = reduite.astype(np.float32)
-        coupe = (self._precedente is not None
-                 and np.abs(reduite - self._precedente).mean() / 255.0 > SEUIL_COUPE)
-        self._precedente = reduite
-        return coupe
+        self.est_coupe = DetecteurCoupes()
 
     def encoder(self, image: av.VideoFrame, cle: bool = False) -> list[bytes]:
         """cle : image clé forcée (raccord d'une transition, retour au net)."""
@@ -184,15 +191,11 @@ def coupes_du_media(chemin: str, sequence_images: dict | None = None,
     celles que l'on peut supprimer pour faire baver un plan dans le suivant."""
     from remanence.media.sonde import ouvrir_conteneur
     coupes = []
-    precedente = None
+    detecteur = DetecteurCoupes()
     with ouvrir_conteneur(chemin, sequence_images, cadence) as c:
         for i, image in enumerate(c.decode(c.streams.video[0])):
             if annule is not None and annule.is_set():
                 raise InterruptedError
-            reduite = image.reformat(width=32, height=18, format="gray").to_ndarray()
-            reduite = reduite.astype(np.float32)
-            if precedente is not None and \
-                    np.abs(reduite - precedente).mean() / 255.0 > SEUIL_COUPE:
+            if detecteur(image):
                 coupes.append(i)
-            precedente = reduite
     return coupes

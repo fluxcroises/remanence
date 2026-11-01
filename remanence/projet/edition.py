@@ -624,3 +624,17 @@ def basculer_cle(seq: Sequence, clip_id: str, t: int):
         c.cles_supprimees.remove(t)
     else:
         c.cles_supprimees = sorted(c.cles_supprimees + [t])
+
+
+def clip_au_dessus(seq: Sequence, clip: Clip) -> Clip | None:
+    """Le clip de média de la piste vidéo la plus proche au-dessus qui chevauche le clip
+    (source du transfert de mouvement)."""
+    piste, _ = seq.trouver(clip.id)
+    pistes = seq.pistes_video
+    if piste not in pistes:
+        return None
+    for p in reversed(pistes[:pistes.index(piste)]):
+        for c in sorted(p.clips, key=lambda c: c.debut):
+            if not c.est_effet and c.debut < clip.fin and c.fin > clip.debut:
+                return c
+    return None

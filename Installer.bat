@@ -29,6 +29,7 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
+.venv\Scripts\python.exe -m remanence.moteurs.codec.installation
 echo.
 echo Remanence est installé. Double-cliquez sur Remanence.bat pour le lancer.
 pause

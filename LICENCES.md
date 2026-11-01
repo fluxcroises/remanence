@@ -18,6 +18,7 @@ Remanence est distribué en code source, sans but commercial. Ce fichier liste c
 | cffi | 2.1.1 | Dépendance de sounddevice | MIT-0 |
 | IBM Plex Sans et IBM Plex Mono | 1.1.0 et 2.5.0 | Polices de l'interface, embarquées dans `remanence/ressources/polices` | SIL Open Font License 1.1 (texte joint : `OFL-IBM-Plex.txt`) |
 | Lucide (lucide-static) | 1.66.0 | Icônes de l'interface, dans `remanence/ressources/icones` | ISC (texte joint : `LICENCE-Lucide.txt`) |
+| FFglitch (ffgac, ffedit), avec Xvid, QuickJS, zlib-ng, SDL2, RtMidi, ZeroMQ | 0.10.2 | Moteur codec : encodage MPEG-4 sans macroblocs intra, réécriture des vecteurs de mouvement. Programme externe, téléchargé par `Installer.bat` dans `outils/` (empreinte SHA-256 vérifiée), non modifié | GPL 2 ou ultérieure |
 | pytest | 9.2.0 | Tests automatiques (développement seulement) | MIT |
 | uv | 0.13.6 | Installation de l'environnement (outil, non embarqué) | MIT ou Apache 2.0 |
 
@@ -29,4 +30,6 @@ Remanence est distribué en code source, sans but commercial. Ce fichier liste c
 - Remanence fait partie de Creative Orbit, la famille de logiciels de Flux Croisés ; le logo
   Creative Orbit (`UI/charte/assets/Logos/creative-orbit-sombre.*`) lui appartient. Il s'utilise
   selon les règles de son kit : 24 px de haut au moins, espace libre autour, jamais recoloré.
-- Aucun shader et aucun script tiers n'est inclus à ce stade.
+- Le script des vecteurs de mouvement (`remanence/effets/vecteurs.py`) reprend les idées des
+  scripts du tutoriel de ffglitch-scripts (Ramiro Polla, domaine public, Unlicense) :
+  `mv_pan`, `mv_average`, `mv_sink_and_rise`. Aucun shader tiers n'est inclus.

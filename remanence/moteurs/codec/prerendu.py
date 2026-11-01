@@ -1,13 +1,14 @@
 """Pré-rendu des effets codec d'un clip, gardé en cache en FFV1 sans perte.
 
-Les effets codec d'un clip s'enchaînent : chacun encode en MPEG-4 les images qu'il reçoit,
-abîme le flux, puis le décode pour le suivant. Tout passe d'une étape à l'autre image par image :
+Les effets codec d'un clip s'enchaînent : chacun encode en MPEG-4 les images qu'il reçoit
+(par FFglitch s'il est installé, sinon par Bavure), abîme le flux, puis le décode pour le
+suivant. Tout passe d'une étape à l'autre image par image :
 seuls les paquets compressés restent en mémoire, même en UHD. Le résultat est un fichier de même
 durée que le clip, que la composition lit à la place de la source ; opacité, masques et mode
 de fusion de l'effet le recomposent ensuite sur l'original.
 
 Le nom du fichier est l'empreinte de tout ce qui change le résultat (source, partie du média,
-cadence, réglages) : changer un réglage ne recalcule que ce clip.
+cadence, réglages, moteur) : changer un réglage ne recalcule que ce clip.
 """
 
 from __future__ import annotations
@@ -25,7 +26,8 @@ from remanence.config import dossier_cache
 from remanence.effets import EFFETS
 from remanence.media.lecteur import LecteurVideo
 from remanence.media.sonde import analyser
-from remanence.moteurs.codec import bavure
+from remanence.effets import valeur_a
+from remanence.moteurs.codec import bavure, ffglitch
 from remanence.projet import edition
 from remanence.projet.modele import Clip, Effet, Projet, Sequence
 
@@ -71,9 +73,13 @@ def cle(projet: Projet, seq: Sequence, clip: Clip) -> str | None:
     media = projet.medias.get(clip.media_id)
     if not effets or media is None or media.infos.video is None:
         return None
+    dessus = edition.clip_au_dessus(seq, clip) \
+        if any(EFFETS[e.type].transfert for e in effets) else None
     donnees = {"source": _signature(projet, clip), "raccord": cle_source(projet, seq, clip),
-               "cadence": seq.cadence,
-               "effets": [[e.type, sorted(e.params.items()), e.graine] for e in effets]}
+               "cadence": seq.cadence, "ffglitch": ffglitch.disponible(),
+               "dessus": None if dessus is None else [_signature(projet, dessus),
+                                                      dessus.debut - clip.debut],
+               "effets": [[e.type, sorted(e.params.items()), e.graine, e.cles] for e in effets]}
     return _empreinte(donnees)
 
 
@@ -95,7 +101,7 @@ def cle_source(projet: Projet, seq: Sequence, clip: Clip) -> str | None:
     if a is None and not clip.cles_supprimees:
         return None
     donnees = {"source": _signature(projet, clip), "cadence": seq.cadence,
-               "cles": clip.cles_supprimees,
+               "cles": clip.cles_supprimees, "ffglitch": ffglitch.disponible(),
                "transition": None if a is None else [clip.transition.duree, clip.transition.blocs,
                                                      _signature(projet, a)]}
     return _empreinte(donnees)
@@ -165,25 +171,20 @@ def calculer_source(projet: Projet, seq: Sequence, clip: Clip, progression=None,
     cadence = Fraction(seq.cadence)
     a = _precedent(seq, clip)
     queue = min(a.duree, 4) if a is not None else 0
-    retour = queue + clip.transition.duree if a is not None else None
-    encodeur = bavure.Encodeur(largeur, hauteur, cadence,
-                               clip.transition.blocs if a is not None else 4)
-    paquets = []
-    images = []
+    cles = {queue + t for t in coupes_du_clip(projet, clip)}
     if a is not None:
-        images.append(_images(projet, a, a.duree - queue, queue))
-    images.append(_images(projet, clip, 0, clip.duree))
-    i = 0
+        cles |= {queue, queue + clip.transition.duree}
+
+    def images():
+        if a is not None:
+            yield from _images(projet, a, a.duree - queue, queue)
+        yield from _images(projet, clip, 0, clip.duree)
+
     total = queue + clip.duree
-    for source in images:
-        for image in source:
-            if annule is not None and annule.is_set():
-                raise InterruptedError
-            paquets += encodeur.encoder(image, cle=(i == queue and a is not None) or i == retour)
-            i += 1
-            if progression:
-                progression(i / total / 2)
-    paquets += encodeur.finir()
+    with ffglitch.dossier_travail(dossier()) as travail:
+        paquets = encoder(images(), total, largeur, hauteur, cadence,
+                          clip.transition.blocs if a is not None else 4, cles, Path(travail),
+                          _etape(progression, 0, 0.5), annule)
     supprimees = {queue + t for t in clip.cles_supprimees}
     if a is not None:
         supprimees.add(queue)
@@ -224,6 +225,77 @@ def _ecrire(final: Path, images, n: int, largeur: int, hauteur: int, cadence: Fr
     except BaseException:
         partiel.unlink(missing_ok=True)
         raise
+
+
+def coupes_du_clip(projet: Projet, clip: Clip) -> list[int]:
+    """Changements de plan du clip (images depuis son début). FFglitch ne place pas d'image
+    clé de lui-même : sans elles, chaque coupe baverait. Analysées ici si elles manquent."""
+    media = projet.medias[clip.media_id]
+    coupes = media.coupes
+    if coupes is None:
+        v = media.infos.video
+        coupes = bavure.coupes_du_media(media.chemin, media.infos.sequence_images,
+                                        v.cadence if media.infos.sequence_images else None)
+    return [m - clip.entree for m in coupes if 0 < m - clip.entree < clip.duree]
+
+
+def _etape(progression, debut: float, part: float):
+    if progression is None:
+        return None
+    return lambda x: progression(debut + part * x)
+
+
+def encoder(images, n: int, largeur: int, hauteur: int, cadence: Fraction, blocs: int,
+            cles: set[int], travail: Path, progression=None, annule=None,
+            effet: Effet | None = None, mouvement=None) -> list[bytes]:
+    """Les images en paquets MPEG-4, images clés au début et aux indices de `cles`. Avec
+    FFglitch, un effet à script réécrit ensuite les vecteurs de mouvement ; `mouvement`
+    (images) donne les vecteurs du transfert de mouvement."""
+    outils = ffglitch.dossier()
+    if outils is None:
+        e = bavure.Encodeur(largeur, hauteur, cadence, blocs)
+        paquets = []
+        for i, image in enumerate(images):
+            if annule is not None and annule.is_set():
+                raise InterruptedError
+            paquets += e.encoder(image, cle=i in cles)
+            if progression:
+                progression((i + 1) / n)
+        return paquets + e.finir()
+    flux = ffglitch.encoder(images, largeur, hauteur, cadence, blocs, cles, travail / "flux.avi",
+                            progression, n, annule, outils)
+    d = EFFETS[effet.type] if effet is not None else None
+    if d is not None and d.script is not None:
+        valeurs = [{p.cle: valeur_a(effet, p.cle, t) for p in d.parametres} for t in range(n)]
+        flux = ffglitch.appliquer_script(flux, d.script(valeurs, effet.graine),
+                                         travail / "script.avi", annule, outils)
+    elif d is not None and d.transfert and mouvement is not None:
+        autre = ffglitch.encoder(mouvement, largeur, hauteur, cadence, blocs, set(),
+                                 travail / "mouvement.avi", annule=annule, outils=outils)
+        forces = [valeur_a(effet, "force", t) / 100 for t in range(n)]
+        flux = ffglitch.transferer(flux, autre, forces, travail / "transfert.avi", annule, outils)
+    return ffglitch.paquets(flux)
+
+
+def _images_dessus(projet: Projet, seq: Sequence, clip: Clip):
+    """Pour le transfert de mouvement : les images du clip de la piste au-dessus, calées sur
+    celles du clip (la première ou la dernière là où il ne le couvre pas)."""
+    dessus = edition.clip_au_dessus(seq, clip)
+    if dessus is None:
+        return None
+    media = projet.medias[dessus.media_id]
+    v = media.infos.video
+
+    def images():
+        infos, index = analyser(media.chemin, v.cadence if media.infos.sequence_images else None)
+        lecteur = LecteurVideo(media.chemin, index, infos.sequence_images, v.cadence)
+        try:
+            for t in range(clip.duree):
+                k = max(0, min(clip.debut + t - dessus.debut, dessus.duree - 1))
+                yield lecteur.image(min(dessus.entree + k, v.nb_images - 1))
+        finally:
+            lecteur.fermer()
+    return images()
 
 
 def chemin(cle_prerendu: str) -> Path:
@@ -278,22 +350,22 @@ def calculer(projet: Projet, seq: Sequence, clip: Clip, progression=None,
     # MPEG-4 veut des dimensions paires : une ligne ou une colonne de moins si besoin.
     largeur, hauteur = v.largeur - v.largeur % 2, v.hauteur - v.hauteur % 2
     cadence = Fraction(seq.cadence)
-    effets = effets_codec(clip)
+    effets = [e for e in effets_codec(clip)
+              if ffglitch.disponible() or not EFFETS[e.type].ffglitch]
     n = clip.duree
     images = _images_source(projet, seq, clip)
+    cles = set(coupes_du_clip(projet, clip))
     for etape, effet in enumerate(effets):
         d = EFFETS[effet.type]
         valeurs = {**d.valeurs(), **effet.params}
-        encodeur = bavure.Encodeur(largeur, hauteur, cadence, valeurs.get("blocs", 4))
-        paquets = []
-        for i, image in enumerate(images):
-            if annule is not None and annule.is_set():
-                raise InterruptedError
-            paquets += encodeur.encoder(image)
-            if progression:
-                progression((etape + (i + 1) / n / 2) / len(effets))
-        paquets += encodeur.finir()
-        paquets = d.traiter(paquets, valeurs, effet.graine)
+        mouvement = _images_dessus(projet, seq, clip) if d.transfert else None
+        with ffglitch.dossier_travail(dossier()) as travail:
+            paquets = encoder(images, n, largeur, hauteur, cadence, valeurs.get("blocs", 4),
+                              cles, Path(travail), _etape(progression, etape / len(effets) / 2,
+                                                          0.5 / len(effets)),
+                              annule, effet, mouvement)
+        if d.traiter is not None:
+            paquets = d.traiter(paquets, valeurs, effet.graine)
         images = bavure.decoder(paquets, n)
     _ecrire(final, images, n, largeur, hauteur, cadence, v.couleur, progression, annule, 0.5)
     return final
@@ -304,11 +376,20 @@ def apercu(images: list[np.ndarray], effets: list[Effet], cadence: Fraction = Fr
     """Effets codec appliqués à une courte suite d'images RVB uint8 (vignettes)."""
     h, l = images[0].shape[:2]
     trames = [av.VideoFrame.from_ndarray(np.ascontiguousarray(i), format="rgb24") for i in images]
+    detecteur = bavure.DetecteurCoupes()
+    cles = {i for i, t in enumerate(trames) if detecteur(t)}
     for effet in effets:
-        if effet.type not in EFFETS or not EFFETS[effet.type].codec:
+        d = EFFETS.get(effet.type)
+        if d is None or not d.codec or (d.ffglitch and not ffglitch.disponible()):
             continue
-        d = EFFETS[effet.type]
         valeurs = {**d.valeurs(), **effet.params}
-        paquets = bavure.encoder(trames, l - l % 2, h - h % 2, cadence, valeurs.get("blocs", 4))
-        trames = list(bavure.decoder(d.traiter(paquets, valeurs, effet.graine), len(images)))
+        # Transfert : le mouvement de l'animation passée à l'envers.
+        mouvement = iter(trames[::-1]) if d.transfert else None
+        with ffglitch.dossier_travail(dossier()) as travail:
+            paquets = encoder(iter(trames), len(trames), l - l % 2, h - h % 2, cadence,
+                              valeurs.get("blocs", 4), cles, Path(travail), effet=effet,
+                              mouvement=mouvement)
+        if d.traiter is not None:
+            paquets = d.traiter(paquets, valeurs, effet.graine)
+        trames = list(bavure.decoder(paquets, len(images)))
     return [t.reformat(width=l, height=h, format="rgb24").to_ndarray() for t in trames]

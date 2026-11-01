@@ -10,6 +10,8 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QGridLayout, QHBoxLayout, Q
                                QVBoxLayout, QWidget)
 
 from remanence.effets import EFFETS, valeur_a
+from remanence.moteurs.codec import ffglitch
+from remanence.projet import edition
 from remanence.media.timecode import images_vers_tc
 from remanence.effets.masques import NOMS_FORMES
 from remanence.projet.modele import MODES_FUSION, MODES_MASQUE, Media, Projet
@@ -207,6 +209,9 @@ class Inspecteur(PanneauFiche):
         self.temps = 0
         self.masques_edites = ""
         self._animes: list[tuple] = []
+        # Clip affiché pendant la construction de ses effets (source du transfert).
+        self._clip_courant = None
+        self._projet_courant = None
         self.vide()
 
     def _vider(self):
@@ -372,7 +377,10 @@ class Inspecteur(PanneauFiche):
                     c.id, "transition_" + champ, v))
                 self._cible.addWidget(ligne)
         if video:
+            self._clip_courant = (seq, c)
+            self._projet_courant = projet
             self._effets("clip", c.id, c.effets, "Effets", origine=c.debut)
+            self._clip_courant = None
 
     def _masques(self, e):
         """Masques de l'effet : forme, combinaison, inversion, adoucissement, expansion."""
@@ -480,9 +488,17 @@ class Inspecteur(PanneauFiche):
             retirer.clicked.connect(lambda _=False, e=e: self.reglage_effet.emit(
                 e.id, "retirer", None))
             section.ajouter_outil(retirer)
+            if d.ffglitch and not ffglitch.disponible():
+                self._cible.addWidget(etiquette("FFglitch absent : effet sans action",
+                                                "avertissement"))
+            if d.transfert and self._clip_courant is not None:
+                seq, clip = self._clip_courant
+                dessus = edition.clip_au_dessus(seq, clip)
+                media = self._projet_courant.medias.get(dessus.media_id) if dessus else None
+                self._lignes([("Source", media.nom if media else "aucun clip au-dessus")])
             for p in d.parametres:
-                if d.codec:
-                    # Moteur codec : un seul calcul pour tout le clip, pas d'image clé.
+                if not d.animable:
+                    # Moteur codec Bavure : un seul calcul pour tout le clip, pas d'image clé.
                     bouton = QWidget()
                     bouton.setFixedSize(18, 18)
                 else:
@@ -497,7 +513,7 @@ class Inspecteur(PanneauFiche):
                     rang.addWidget(bouton)
                     rang.addWidget(case, 1)
                     self._cible.addLayout(rang)
-                    if not d.codec:
+                    if d.animable:
                         self._animes.append((e, p.cle, origine, case, bouton, 1.0))
                     continue
                 ligne = LigneParametre(p.nom, p.minimum, p.maximum, valeur_a(e, p.cle, t),
@@ -505,7 +521,7 @@ class Inspecteur(PanneauFiche):
                 ligne.valeur_finale.connect(lambda v, e=e, p=p: self.reglage_effet.emit(
                     e.id, p.cle, v))
                 self._cible.addWidget(ligne)
-                if not d.codec:
+                if d.animable:
                     self._animes.append((e, p.cle, origine, ligne, bouton, 1.0))
             bouton = self._bouton_cle(e, "opacite", origine)
             opacite = LigneParametre("Opacité", 0, 100, valeur_a(e, "opacite", t) * 100, "%",
