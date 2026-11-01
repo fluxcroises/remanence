@@ -185,8 +185,10 @@ class Inspecteur(PanneauFiche):
     timecode_demande = Signal()
     # (effet_id, champ, valeur) : un paramètre, "actif", "graine", "reinitialiser", "retirer".
     reglage_effet = Signal(str, str, object)
-    # (genre "clip" | "piste" | "sequence", identifiant, clé de l'effet, préréglage ou None)
-    ajout_effet = Signal(str, str, str, object)
+    # (genre "clip" | "piste" | "sequence", identifiant, liste d'effets neufs)
+    ajout_effet = Signal(str, str, object)
+    # Effets à enregistrer comme préréglage personnel (un seul, ou toute la pile).
+    enregistrer_prereglage = Signal(object)
     # Texte du badge de l'en-tête (« Clip vidéo », « Clip audio »), vide sans sélection.
     badge = Signal(str)
 
@@ -316,6 +318,9 @@ class Inspecteur(PanneauFiche):
             raz.clicked.connect(lambda _=False, e=e: self.reglage_effet.emit(
                 e.id, "reinitialiser", None))
             section.ajouter_outil(raz)
+            garder = bouton_icone("bookmark", "Enregistrer comme préréglage", taille=14)
+            garder.clicked.connect(lambda _=False, e=e: self.enregistrer_prereglage.emit([e]))
+            section.ajouter_outil(garder)
             retirer = bouton_icone("x", "Retirer l'effet", taille=14)
             retirer.clicked.connect(lambda _=False, e=e: self.reglage_effet.emit(
                 e.id, "retirer", None))
@@ -348,10 +353,15 @@ class Inspecteur(PanneauFiche):
         ajout.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         ajout.setPopupMode(QToolButton.InstantPopup)
         menu = QMenu(ajout)
-        remplir_menu_effets(menu, lambda cle, pr: self.ajout_effet.emit(genre, porteur_id,
-                                                                        cle, pr))
+        remplir_menu_effets(menu, lambda effets: self.ajout_effet.emit(genre, porteur_id,
+                                                                       effets))
         ajout.setMenu(menu)
         rang = QHBoxLayout()
         rang.addWidget(ajout)
+        if len(effets) > 1:
+            pile = QPushButton("Enregistrer la pile")
+            pile.setToolTip("Enregistrer les effets comme un seul préréglage")
+            pile.clicked.connect(lambda: self.enregistrer_prereglage.emit(list(effets)))
+            rang.addWidget(pile)
         rang.addStretch(1)
         self._lay.addLayout(rang)

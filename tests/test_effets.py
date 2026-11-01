@@ -10,7 +10,9 @@ from remanence.projet.modele import Media, Projet, nouvel_id
 from remanence.rendu.composition import Compositeur
 from remanence.rendu.export import exporter
 from tests.test_export import empreintes_images
-from tests.test_gpu import pytestmark  # noqa: F401  (sans OpenGL 4.3, pas de test d'effet)
+from tests import test_gpu
+
+pytestmark = test_gpu.pytestmark  # sans OpenGL 4.3, pas de test d'effet
 
 
 def _projet(medias, cle="prores_hq"):
@@ -55,7 +57,7 @@ def test_prereglages_et_animation(medias):
         for nom in d.prereglages:
             clip.effets = [nouvel_effet(cle, nom)]
             _image(projet)
-    clip.effets = [nouvel_effet("blocs_deplaces", "Chaos")]
+    clip.effets = [nouvel_effet("blocs_deplaces", "Mosaïque brisée")]
     assert not np.array_equal(_image(projet, 5), _image(projet, 6)), "le hasard change à chaque image"
     clip.effets[0].graine = 7
     sept = _image(projet, 5)
@@ -66,7 +68,7 @@ def test_prereglages_et_animation(medias):
 def test_clip_d_effet_et_effet_de_sequence(medias):
     """Un clip d'effet et un effet de séquence transforment l'image comme un effet de clip."""
     projet, clip = _projet(medias)
-    clip.effets = [nouvel_effet("decalage_rvb", "Fort")]
+    clip.effets = [nouvel_effet("decalage_rvb", "Anaglyphe")]
     reference = _image(projet)
     effet = clip.effets.pop()
     seq = projet.sequence
@@ -97,7 +99,7 @@ def test_hors_clip_d_effet_l_export_est_la_source(medias, tmp_path):
     source, au pixel près ; dessous, elles sont recalculées."""
     projet, _ = _projet(medias)
     seq = projet.sequence
-    edition.ajouter_clip_effet(seq, 10, 8, [nouvel_effet("vhs", "Fatiguée")])
+    edition.ajouter_clip_effet(seq, 10, 8, [nouvel_effet("vhs", "Copie de copie")])
     rapport = exporter(projet, seq, tmp_path / "fx.mov")
     assert rapport.images_calculees == 8 and rapport.images_recopiees == 22
     sortie = empreintes_images(str(tmp_path / "fx.mov"))
@@ -109,7 +111,7 @@ def test_hors_clip_d_effet_l_export_est_la_source(medias, tmp_path):
 def test_sauvegarde_coupe_et_retrait(medias):
     projet, clip = _projet(medias)
     seq = projet.sequence
-    edition.ajouter_effet(clip, nouvel_effet("tri_pixels", "Vertical"))
+    edition.ajouter_effet(clip, nouvel_effet("tri_pixels", "Coulure verticale"))
     edition.ajouter_effet(seq.pistes_video[0], nouvel_effet("scanlines"))
     seq.effets.append(nouvel_effet("vhs"))
     relu = Projet.depuis_dict(projet.vers_dict())
@@ -131,3 +133,21 @@ def test_sauvegarde_coupe_et_retrait(medias):
     assert not b.effets and a.effets
     with pytest.raises(edition.EditionImpossible):
         edition.ajouter_effet(seq.pistes_audio[0], nouvel_effet("vhs"))
+
+
+def test_prereglages_personnels():
+    from remanence.effets import prereglages as pr
+    assert len(pr.fournis()) == 15 and not pr.personnels()
+    a, b = nouvel_effet("vhs", "Copie de copie"), nouvel_effet("scanlines")
+    b.params["force"] = 33
+    pr.enregistrer("Ma pile", [a, b])
+    (p,) = pr.personnels()
+    assert p.famille == pr.FAMILLE_PERSONNELS and p.description.startswith("Cassette VHS + Scanlines")
+    poses = p.nouveaux_effets()
+    assert [e.type for e in poses] == ["vhs", "scanlines"] and poses[1].params["force"] == 33
+    assert p.correspond(poses) and not p.correspond(poses[:1])
+    assert pr.depuis_mime(pr.vers_mime(p)).effets == p.effets
+    pr.renommer("Ma pile", "Écran fatigué")
+    assert [x.nom for x in pr.personnels()] == ["Écran fatigué"]
+    pr.supprimer("Écran fatigué")
+    assert not pr.personnels()

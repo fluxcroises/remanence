@@ -483,6 +483,7 @@ def test_timecode_de_debut_au_choix(fenetre, medias):
 
 def test_effets_depuis_l_interface(fenetre, medias):
     """Ajouter un effet sur un clip, une piste, la séquence ; le régler, le retirer, l'annuler."""
+    from remanence.effets import nouvel_effet
     from remanence.ui.composants import LigneParametre, SectionRepliable
     w = fenetre
     w.importer_chemins([str(medias["prores_hq"])])
@@ -490,7 +491,7 @@ def test_effets_depuis_l_interface(fenetre, medias):
     w.poser_medias(list(w.projet.medias), 0, "")
     clip = w.projet.sequence.pistes_video[0].clips[0]
     w.timeline.vue._choisir({clip.id})
-    w.ajouter_effet("clip", clip.id, "decalage_rvb", "Fort")
+    w.ajouter_effet("clip", clip.id, [nouvel_effet("decalage_rvb", "Anaglyphe")])
     clip = w.projet.sequence.pistes_video[0].clips[0]
     assert [e.type for e in clip.effets] == ["decalage_rvb"]
     assert _attendre(lambda: "Décalage RVB" in {s.titre.text() for s in
@@ -508,10 +509,51 @@ def test_effets_depuis_l_interface(fenetre, medias):
 
     piste = w.projet.sequence.pistes_video[0]
     w.choisir_piste(piste.id)
-    w.ajouter_effet("piste", piste.id, "scanlines", None)
+    w.ajouter_effet("piste", piste.id, [nouvel_effet("scanlines")])
     assert w.projet.sequence.pistes_video[0].effets and w._piste_choisie == piste.id
-    w.ajouter_effet("sequence", "", "vhs", "Usée")
-    w.ajouter_clip_effet("blocs_deplaces", "Chaos")
+    w.ajouter_effet("sequence", "", [nouvel_effet("vhs", "Cassette usée")])
+    w.ajouter_clip_effet([nouvel_effet("blocs_deplaces", "Mosaïque brisée")])
     seq = w.projet.sequence
     assert seq.effets and any(c.est_effet for p in seq.pistes for c in p.clips)
     assert _attendre(lambda: w.visionneuse.zone._image is not None, 5)
+
+
+def test_bibliotheque_d_effets(fenetre, medias, monkeypatch):
+    """Tuiles, filtre, recherche, préréglage personnel, application et dépôt sur la timeline."""
+    from PySide6.QtWidgets import QInputDialog
+    from remanence.effets import prereglages as pr
+    w = fenetre
+    b = w.bibliotheque
+    assert b.vue.count() == 15
+    b._filtrer("Signal")
+    assert b.vue.count() == 6
+    b._filtrer("")
+    b.recherche.setText("cassette")
+    assert b.vue.count() == 3, "les trois préréglages de Cassette VHS"
+    b.recherche.setText("")
+    assert b.vignette(0).width() == 256
+
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    w.timeline.vue._choisir({clip.id})
+    anaglyphe = next(p for p in b.prereglages if p.nom == "Anaglyphe")
+    w.appliquer_prereglage(anaglyphe, "selection")
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    assert [e.type for e in clip.effets] == ["decalage_rvb"]
+    assert "Anaglyphe" in b.actifs, "tuile surlignée pour le clip sélectionné"
+
+    monkeypatch.setattr(QInputDialog, "getText", staticmethod(lambda *a, **k: ("Mon décalage", True)))
+    w.enregistrer_prereglage(clip.effets)
+    assert any(p.nom == "Mon décalage" and not p.fourni for p in b.prereglages)
+    assert b.vue.count() == 16
+
+    piste = w.projet.sequence.pistes_video[0]
+    w._prereglage_depose(anaglyphe, "vide", piste.id, 40)
+    seq = w.projet.sequence
+    effet = next(c for p in seq.pistes for c in p.clips if c.est_effet)
+    assert effet.debut == 40
+    w._prereglage_depose(anaglyphe, "clip", clip.id, 0)
+    assert len(w.projet.sequence.trouver(clip.id)[1].effets) == 2
+    pr.supprimer("Mon décalage")

@@ -247,6 +247,18 @@ class RenduGPU:
         if resultat != nom:
             self._copier(resultat, nom)
 
+    def traiter(self, rvba: np.ndarray, effets: list[Effet], numero: int) -> np.ndarray:
+        """Effets appliqués à une image en mémoire (H×L×4 float32 prémultiplié) : vignettes
+        de la bibliothèque d'effets."""
+        h, l = rvba.shape[:2]
+        self._taille = (l, h)
+        couche, _ = self._cible("couche", self._taille)
+        couche.write(np.ascontiguousarray(rvba, dtype=np.float32).tobytes())
+        resultat = self.effets("couche", effets, numero)
+        _, fbo = self._cible(resultat, self._taille)
+        brut = fbo.read(components=4, dtype="f4", alignment=1)
+        return np.frombuffer(brut, np.float32).reshape(h, l, 4).copy()
+
     def lire(self) -> np.ndarray:
         """L'image composée, H×L×4 float32, première ligne en haut."""
         _, fbo = self._cible(f"accu{self._courant}", self._taille)

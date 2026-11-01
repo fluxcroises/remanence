@@ -7,7 +7,8 @@ DESCRIPTION = DescriptionEffet(
     nom="Décalage RVB",
     famille="Couleur",
     parametres=[Parametre("force", "Force", 0, 100, 40, "%")],
-    prereglages={"Léger": {"force": 20}, "Moyen": {"force": 50}, "Fort": {"force": 90}},
+    prereglages={"Frange légère": {"force": 20}, "Couleurs dédoublées": {"force": 50},
+                 "Anaglyphe": {"force": 90}},
     fragment="""
 uniform float p_force;
 

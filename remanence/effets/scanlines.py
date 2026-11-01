@@ -7,7 +7,8 @@ DESCRIPTION = DescriptionEffet(
     nom="Scanlines",
     famille="Signal",
     parametres=[Parametre("force", "Force", 0, 100, 40, "%")],
-    prereglages={"Discrètes": {"force": 25}, "Écran": {"force": 55}, "Instable": {"force": 90}},
+    prereglages={"Écran discret": {"force": 25}, "Tube cathodique": {"force": 55},
+                 "Image qui décroche": {"force": 90}},
     fragment="""
 uniform float p_force;
 

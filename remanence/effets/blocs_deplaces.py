@@ -7,8 +7,8 @@ DESCRIPTION = DescriptionEffet(
     nom="Blocs déplacés",
     famille="Corruption",
     parametres=[Parametre("force", "Force", 0, 100, 40, "%")],
-    prereglages={"Quelques blocs": {"force": 20}, "Éclats": {"force": 50},
-                 "Chaos": {"force": 90}},
+    prereglages={"Quelques éclats": {"force": 20}, "Blocs en fuite": {"force": 50},
+                 "Mosaïque brisée": {"force": 90}},
     fragment="""
 uniform float p_force;
 

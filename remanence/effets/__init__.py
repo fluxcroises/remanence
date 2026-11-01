@@ -91,8 +91,9 @@ EFFETS: dict[str, DescriptionEffet] = {}
 
 def _charger():
     for module in pkgutil.iter_modules(__path__):
-        d = importlib.import_module(f"{__name__}.{module.name}").DESCRIPTION
-        EFFETS[d.cle] = d
+        d = getattr(importlib.import_module(f"{__name__}.{module.name}"), "DESCRIPTION", None)
+        if d is not None:  # les autres modules du dossier ne sont pas des effets
+            EFFETS[d.cle] = d
 
 
 _charger()

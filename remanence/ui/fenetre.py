@@ -13,7 +13,8 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QFileDial
                                QWidget)
 
 from remanence.config import reglages_interface
-from remanence.effets import EFFETS, nouvel_effet
+from remanence.effets import EFFETS
+from remanence.effets import prereglages
 from remanence.media import intermediaire
 from remanence.media.lecteur import LecteurVideo, generer_cache_audio
 from remanence.media.proxy import chemin_audio, chemin_proxy, generer_proxy, proxy_utile
@@ -34,6 +35,7 @@ from remanence.ui.inspecteur import Historique as ListeHistorique
 from remanence.ui.inspecteur import Inspecteur, Metadonnees
 from remanence.ui.lecture import MoteurLecture
 from remanence.ui.medias import PanneauMedias
+from remanence.ui.bibliotheque import PanneauEffets
 from remanence.ui.menu_effets import remplir_menu_effets
 from remanence.ui.panneau_export import FileExport, FormulaireExport
 from remanence.ui.taches import GestionnaireTaches, Tache
@@ -111,6 +113,7 @@ class FenetrePrincipale(QMainWindow):
         self.lecture = MoteurLecture()
         self.taches = GestionnaireTaches()
         self.medias = PanneauMedias()
+        self.bibliotheque = PanneauEffets()
         self.visionneuse = Moniteur("programme")
         self.source = Moniteur("source")
         self.source.zone.glissable = True
@@ -137,7 +140,8 @@ class FenetrePrincipale(QMainWindow):
         self.setCentralWidget(QWidget())
         self.centralWidget().hide()
         self._docks = {}
-        d, self.onglets_gauche = panneau_onglets([("Média", self.medias)], "medias", self)
+        d, self.onglets_gauche = panneau_onglets([("Média", self.medias),
+                                                  ("Effets", self.bibliotheque)], "medias", self)
         self._docks["medias"] = d
         # Métadonnées et Historique passent sur le second écran en double écran : leurs portes
         # restent ici, vides le temps du double écran.
@@ -428,9 +432,9 @@ class FenetrePrincipale(QMainWindow):
         self._action(mo, "Ajouter une piste vidéo", lambda: self.ajouter_piste("video"))
         self._action(mo, "Ajouter une piste audio", lambda: self.ajouter_piste("audio"))
         mo.addSeparator()
-        remplir_menu_effets(mo.addMenu("Ajouter un clip d'effet"), self.ajouter_clip_effet)
-        remplir_menu_effets(mo.addMenu("Ajouter un effet de séquence"),
-                            lambda cle, pr: self.ajouter_effet("sequence", "", cle, pr))
+        self._menu_clip_effet = mo.addMenu("Ajouter un clip d'effet")
+        self._menu_effet_sequence = mo.addMenu("Ajouter un effet de séquence")
+        self._remplir_menus_effets()
         mo.addSeparator()
         self._action(mo, "Ajouter un marqueur", self.marqueur, "M")
         mo.addSeparator()
@@ -718,6 +722,10 @@ class FenetrePrincipale(QMainWindow):
         self.inspecteur.reglage.connect(self._reglage_clip)
         self.inspecteur.reglage_effet.connect(self.reglage_effet)
         self.inspecteur.ajout_effet.connect(self.ajouter_effet)
+        self.inspecteur.enregistrer_prereglage.connect(self.enregistrer_prereglage)
+        self.bibliotheque.appliquer.connect(self.appliquer_prereglage)
+        self.bibliotheque.personnels_changes.connect(self._remplir_menus_effets)
+        vue.prereglage_depose.connect(self._prereglage_depose)
         self.inspecteur.timecode_demande.connect(self.regler_timecode_debut)
         self.liste_historique.aller.connect(self._aller_historique)
         self.formulaire_export.lancer.connect(self._lancer_export)
@@ -853,12 +861,63 @@ class FenetrePrincipale(QMainWindow):
             media = self.projet.medias.get(c.media_id) if c else None
             if media:
                 self.metadonnees.afficher(media)
+            self.bibliotheque.marquer_actifs(c.effets if c else [])
             if self.onglets_droite.currentIndex() == 1 and self._espace == "montage":
                 self.onglets_droite.choisir(0)
         elif not ids and self._piste_choisie is not None:
             self.inspecteur.piste(self.projet, self._piste_choisie)
         else:
             self.inspecteur.vide(self.projet, len(ids))
+
+    def appliquer_prereglage(self, p, cible: str):
+        """Depuis la bibliothèque : cible « selection », « clip_effet » ou « sequence »."""
+        seq = self.projet.sequence
+        if cible == "clip_effet":
+            self.ajouter_clip_effet(p.nouveaux_effets())
+            return
+        if cible == "sequence":
+            self.ajouter_effet("sequence", "", p.nouveaux_effets())
+            return
+        clips = [c for _, c in seq.tous_les_clips() if c.id in self.timeline.vue.selection
+                 and seq.trouver(c.id)[0].type == "video"]
+        if not clips and self._piste_choisie is not None:
+            self.ajouter_effet("piste", self._piste_choisie, p.nouveaux_effets())
+            return
+        if not clips:
+            self.message("Aucun clip vidéo sélectionné")
+            return
+
+        def poser():
+            for c in clips:
+                for e in p.nouveaux_effets():
+                    edition.ajouter_effet(c, e)
+        self._tenter(f"Préréglage {p.nom}", poser)
+
+    def _prereglage_depose(self, p, genre: str, cible_id: str, f: int):
+        """Préréglage glissé sur la timeline : sur un clip, sur un en-tête de piste, ou dans le
+        vide d'une piste vidéo (clip d'effet à cet endroit)."""
+        if genre == "vide":
+            seq = self.projet.sequence
+            clip = edition.ajouter_clip_effet(seq, f, 5 * self._cadence(), p.nouveaux_effets(),
+                                              piste_id=cible_id)
+            self.valider("Clip d'effet")
+            self.timeline.vue._choisir({clip.id})
+        else:
+            self.ajouter_effet(genre, cible_id, p.nouveaux_effets())
+            # Le clip touché passe dans l'inspecteur, avec l'effet qu'il vient de recevoir.
+            self.timeline.vue._choisir({cible_id})
+
+    def enregistrer_prereglage(self, effets: list):
+        if not effets:
+            return
+        defaut = EFFETS[effets[0].type].nom if len(effets) == 1 else "Pile d'effets"
+        nom, ok = QInputDialog.getText(self, "Enregistrer comme préréglage", "Nom :", text=defaut)
+        if not ok or not nom.strip():
+            return
+        prereglages.enregistrer(nom.strip(), effets)
+        self.bibliotheque.recharger()
+        self._remplir_menus_effets()
+        self.message(f"Préréglage « {nom.strip()} » enregistré", 3000)
 
     def choisir_piste(self, piste_id: str):
         self.timeline.vue._choisir(set())
@@ -868,8 +927,16 @@ class FenetrePrincipale(QMainWindow):
 
     # Effets
 
-    def ajouter_effet(self, genre: str, porteur_id: str, cle: str, prereglage):
-        """genre : "clip", "piste" ou "sequence"."""
+    def _remplir_menus_effets(self):
+        """Menus du menu Montage, à refaire quand un préréglage personnel change."""
+        self._menu_clip_effet.clear()
+        self._menu_effet_sequence.clear()
+        remplir_menu_effets(self._menu_clip_effet, self.ajouter_clip_effet)
+        remplir_menu_effets(self._menu_effet_sequence,
+                            lambda effets: self.ajouter_effet("sequence", "", effets))
+
+    def ajouter_effet(self, genre: str, porteur_id: str, effets: list):
+        """genre : "clip", "piste" ou "sequence" ; effets : effets neufs, posés dans l'ordre."""
         seq = self.projet.sequence
         if genre == "sequence":
             porteur = seq
@@ -877,16 +944,19 @@ class FenetrePrincipale(QMainWindow):
             porteur = next((p for p in seq.pistes if p.id == porteur_id), None)
         else:
             porteur = seq.trouver(porteur_id)[1]
-        if porteur is None:
+        if porteur is None or not effets:
             return
-        self._tenter(f"Effet {EFFETS[cle].nom}",
-                     lambda: edition.ajouter_effet(porteur, nouvel_effet(cle, prereglage)))
 
-    def ajouter_clip_effet(self, cle: str, prereglage):
-        """Clip d'effet de 5 secondes à la tête de lecture."""
+        def poser():
+            for e in effets:
+                edition.ajouter_effet(porteur, e)
+        self._tenter(f"Effet {', '.join(EFFETS[e.type].nom for e in effets)}", poser)
+
+    def ajouter_clip_effet(self, effets: list, debut: int | None = None):
+        """Clip d'effet de 5 secondes, à la tête de lecture ou à l'image donnée."""
         seq = self.projet.sequence
-        clip = edition.ajouter_clip_effet(seq, self.lecture.position, 5 * self._cadence(),
-                                          [nouvel_effet(cle, prereglage)])
+        debut = self.lecture.position if debut is None else debut
+        clip = edition.ajouter_clip_effet(seq, debut, 5 * self._cadence(), effets)
         self.valider("Clip d'effet")
         self.timeline.vue._choisir({clip.id})
 
@@ -1575,6 +1645,7 @@ class FenetrePrincipale(QMainWindow):
         if self._programme_externe is not None:
             self._programme_externe.close()
         self.taches.tout_annuler()
+        self.bibliotheque.fermer()
         self.lecture.fermer()
         self.lecture_source.fermer()
         self.taches.attendre(3000)

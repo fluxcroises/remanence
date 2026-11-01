@@ -8,7 +8,8 @@ DESCRIPTION = DescriptionEffet(
     nom="Cassette VHS",
     famille="Signal",
     parametres=[Parametre("force", "Force", 0, 100, 50, "%")],
-    prereglages={"Usée": {"force": 30}, "Fatiguée": {"force": 60}, "Massacrée": {"force": 95}},
+    prereglages={"Cassette usée": {"force": 30}, "Copie de copie": {"force": 60},
+                 "Bande massacrée": {"force": 95}},
     fragment="""
 uniform float p_force;
 

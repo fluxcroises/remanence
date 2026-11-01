@@ -25,6 +25,7 @@ from remanence.media.lecteur import AudioCache
 from remanence.media.proxy import chemin_audio
 from remanence.media.timecode import images_vers_tc
 from remanence.effets import EFFETS
+from remanence.effets.prereglages import MIME_PREREGLAGE, depuis_mime
 from remanence.projet import edition
 from remanence.projet.modele import Clip, Marqueur, Piste, Projet, valeur_enveloppe
 from remanence.ui import charte
@@ -70,6 +71,8 @@ class VueTimeline(QWidget):
     tete_changee = Signal(int)
     selection_changee = Signal(set)
     media_depose = Signal(list, int, str)
+    # (préréglage, "clip" | "vide", identifiant du clip ou de la piste, image)
+    prereglage_depose = Signal(object, str, str, int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -88,6 +91,8 @@ class VueTimeline(QWidget):
         self._geste: Geste | None = None
         self._repere: int | None = None
         self._depot: tuple[int, str] | None = None
+        # Cible d'un préréglage en cours de glisser : ("clip", id, 0) ou ("vide", piste, image).
+        self._cible_fx: tuple[str, str, int] | None = None
         self.survol_coupe: float | None = None
         self._ondes: dict[str, object] = {}
         self.setMouseTracking(True)
@@ -155,6 +160,8 @@ class VueTimeline(QWidget):
             for clip in piste.clips:
                 self._dessiner_clip(p, piste, clip, y, h)
             self._dessiner_fondus_enchaines(p, piste, y, h)
+        if self._cible_fx is not None and self._cible_fx[0] == "vide":
+            self._ligne_pointillee(p, self._cible_fx[2], "accent-2", HAUT_PISTES)
         if self._depot is not None:
             self._ligne_pointillee(p, self._depot[0], "accent-2", HAUT_PISTES)
         if self.survol_coupe is not None:
@@ -302,6 +309,13 @@ class VueTimeline(QWidget):
         if piste.verrouillee:
             p.fillRect(r, QBrush(c.c("ink-muted", 0.35), Qt.BDiagPattern))
         p.restore()
+        if self._cible_fx is not None and self._cible_fx[:2] == ("clip", clip.id):
+            p.save()
+            p.setRenderHint(QPainter.Antialiasing, True)
+            p.setPen(QPen(c.c("accent-2"), 2))
+            p.setBrush(Qt.NoBrush)
+            p.drawRoundedRect(r.adjusted(1, 1, -1, -1), rayon, rayon)
+            p.restore()
         if clip.id in self.selection:
             p.save()
             p.setRenderHint(QPainter.Antialiasing, True)
@@ -726,8 +740,8 @@ class VueTimeline(QWidget):
             menu.addAction("Supprimer (Suppr)", fenetre.supprimer)
             if self.projet.sequence.trouver(clip.id)[0].type == "video":
                 effets = menu.addMenu("Ajouter un effet")
-                remplir_menu_effets(effets, lambda cle, pr: fenetre.ajouter_effet(
-                    "clip", clip.id, cle, pr))
+                remplir_menu_effets(effets, lambda liste: fenetre.ajouter_effet(
+                    "clip", clip.id, liste))
             if clip.lien:
                 menu.addAction("Dissocier son et image (U)", fenetre.dissocier)
             elif len(self.selection) > 1:
@@ -782,10 +796,18 @@ class VueTimeline(QWidget):
     # Dépôt depuis le panneau Média ou le moniteur source
 
     def dragEnterEvent(self, e):
-        if e.mimeData().hasFormat(MIME_MEDIA):
+        if e.mimeData().hasFormat(MIME_MEDIA) or e.mimeData().hasFormat(MIME_PREREGLAGE):
             e.acceptProposedAction()
 
     def dragMoveEvent(self, e):
+        if e.mimeData().hasFormat(MIME_PREREGLAGE):
+            self._cible_fx = self._cible_prereglage(e.position())
+            if self._cible_fx is None:
+                e.ignore()
+            else:
+                e.acceptProposedAction()
+            self.update()
+            return
         if not e.mimeData().hasFormat(MIME_MEDIA):
             return
         f = self._f_aimantee(e.position().x(), set())
@@ -794,11 +816,32 @@ class VueTimeline(QWidget):
         e.acceptProposedAction()
         self.update()
 
+    def _cible_prereglage(self, pos) -> tuple[str, str, int] | None:
+        """Un clip vidéo sous la souris, ou un endroit libre d'une piste vidéo."""
+        if self.projet is None:
+            return None
+        ligne = self.piste_a(pos.y())
+        if ligne is None or ligne[0].type != "video" or ligne[0].verrouillee:
+            return None
+        _, piste, clip, _ = self._sous(pos)
+        if clip is not None:
+            return "clip", clip.id, 0
+        return "vide", piste.id, self._f_aimantee(pos.x(), set())
+
     def dragLeaveEvent(self, _e):
         self._depot = None
+        self._cible_fx = None
         self.update()
 
     def dropEvent(self, e):
+        if e.mimeData().hasFormat(MIME_PREREGLAGE):
+            cible, self._cible_fx = self._cible_fx, None
+            if cible is not None:
+                p = depuis_mime(e.mimeData().data(MIME_PREREGLAGE))
+                self.prereglage_depose.emit(p, cible[0], cible[1], cible[2])
+                e.acceptProposedAction()
+            self.update()
+            return
         if self._depot is None:
             return
         ids = bytes(e.mimeData().data(MIME_MEDIA)).decode().split(",")
@@ -886,7 +929,17 @@ class EntetePiste(QWidget):
             self.setToolTip(f"Niveau de la piste : {self._texte_niveau()}")
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self._menu)
+        self.setAcceptDrops(video)
         self._tirer = None
+
+    def dragEnterEvent(self, e):
+        if e.mimeData().hasFormat(MIME_PREREGLAGE) and not self.piste.verrouillee:
+            e.acceptProposedAction()
+
+    def dropEvent(self, e):
+        p = depuis_mime(e.mimeData().data(MIME_PREREGLAGE))
+        self.fenetre.ajouter_effet("piste", self.piste.id, p.nouveaux_effets())
+        e.acceptProposedAction()
 
     def _texte_niveau(self) -> str:
         if self.piste.type == "video":
@@ -914,8 +967,8 @@ class EntetePiste(QWidget):
         menu.addAction("Renommer…", self.renommer)
         if self.piste.type == "video":
             effets = menu.addMenu("Ajouter un effet de piste")
-            remplir_menu_effets(effets, lambda cle, pr: f.ajouter_effet(
-                "piste", self.piste.id, cle, pr))
+            remplir_menu_effets(effets, lambda liste: f.ajouter_effet(
+                "piste", self.piste.id, liste))
         menu.addAction(f"Niveau de la piste ({self._texte_niveau()})…", self._regler_niveau)
         if self.piste.type == "video":
             solo = menu.addAction("Solo",

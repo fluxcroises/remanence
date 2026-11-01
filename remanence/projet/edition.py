@@ -554,10 +554,12 @@ def deplacer_effet(seq: Sequence, effet_id: str, sens: int):
     porteur.effets.insert(j, porteur.effets.pop(i))
 
 
-def ajouter_clip_effet(seq: Sequence, debut: int, duree: int, effets: list[Effet]) -> Clip:
-    """Clip d'effet sur la piste vidéo du haut ; si elle est occupée à cet endroit, sur une
-    nouvelle piste au-dessus, pour ne rien écraser."""
-    haut = seq.pistes_video[0] if seq.pistes_video else None
+def ajouter_clip_effet(seq: Sequence, debut: int, duree: int, effets: list[Effet],
+                       piste_id: str | None = None) -> Clip:
+    """Clip d'effet sur la piste vidéo demandée, ou celle du haut ; si elle est occupée à cet
+    endroit, sur une nouvelle piste au-dessus, pour ne rien écraser."""
+    haut = next((p for p in seq.pistes if p.id == piste_id and p.type == "video"), None) \
+        or (seq.pistes_video[0] if seq.pistes_video else None)
     if haut is None or haut.verrouillee or any(c.fin > debut and c.debut < debut + duree
                                                for c in haut.clips):
         haut = ajouter_piste(seq, "video")

@@ -17,8 +17,8 @@ DESCRIPTION = DescriptionEffet(
     famille="Pixels",
     parametres=[Parametre("force", "Force", 0, 100, 40, "%"),
                 Parametre("vertical", "Vertical", 0, 1, 0, booleen=True)],
-    prereglages={"Léger": {"force": 30}, "Fort": {"force": 70},
-                 "Vertical": {"force": 60, "vertical": 1}},
+    prereglages={"Lumières étirées": {"force": 30}, "Fonte des clairs": {"force": 70},
+                 "Coulure verticale": {"force": 60, "vertical": 1}},
     calcul="""
 layout(local_size_x = 1024) in;
 layout(rgba32f, binding = 0) uniform writeonly image2D resultat;

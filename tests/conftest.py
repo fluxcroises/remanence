@@ -6,6 +6,7 @@ import pytest
 
 # Le cache des tests reste isolé de celui de l'utilisateur.
 os.environ["REMANENCE_CACHE"] = tempfile.mkdtemp(prefix="remanence_tests_")
+os.environ["REMANENCE_DONNEES"] = tempfile.mkdtemp(prefix="remanence_donnees_")
 
 from PySide6.QtCore import QSettings  # noqa: E402
 

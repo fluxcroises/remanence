@@ -9,6 +9,10 @@ from pathlib import Path
 
 def dossier_donnees() -> Path:
     """%APPDATA%\\Remanence : préréglages, sauvegardes automatiques, journal."""
+    if os.environ.get("REMANENCE_DONNEES"):  # tests : un dossier à part
+        d = Path(os.environ["REMANENCE_DONNEES"])
+        d.mkdir(parents=True, exist_ok=True)
+        return d
     base = os.environ.get("APPDATA") or str(Path.home() / ".config")
     d = Path(base) / "Remanence"
     d.mkdir(parents=True, exist_ok=True)
