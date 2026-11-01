@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QFileDial
 from remanence.config import reglages_interface
 from remanence.effets import EFFETS, poser_cle, retirer_cle, valeur_a
 from remanence.effets.masques import nouveau_masque
-from remanence.moteurs.codec import bavure, prerendu, scripts
+from remanence.moteurs.codec import analyse, bavure, prerendu, scripts
 from remanence.effets import prereglages
 from remanence.media import intermediaire
 from remanence.media.lecteur import LecteurVideo, generer_cache_audio
@@ -42,6 +42,7 @@ from remanence.ui.menu_effets import remplir_menu_effets
 from remanence.ui.panneau_export import FileExport, FormulaireExport
 from remanence.ui.taches import GestionnaireTaches, Tache
 from remanence.ui.timeline import Timeline
+from remanence.ui.panneau_datamosh import CalqueVecteurs, PanneauDatamosh
 from remanence.ui.visionneuse import (LIBELLES_QUALITE, CalqueMasques, Moniteur, ZoneImage,
                                       glisser_source, peindre_cadre_actif)
 
@@ -57,6 +58,7 @@ VERSION_DISPOSITION = 4
 PANNEAUX_ESPACE = {
     "media": {"medias", "source", "droite"},
     "montage": {"medias", "source", "visionneuse", "droite", "timeline"},
+    "datamosh": {"medias", "visionneuse", "droite", "timeline", "analyse"},
     "export": {"export", "visionneuse", "file_export", "timeline"},
 }
 
@@ -130,6 +132,9 @@ class FenetrePrincipale(QMainWindow):
         self._prerendus: dict[str, str] = {}
         # Médias dont les coupes s'analysent.
         self._analyses_coupes: set[str] = set()
+        # Clips analysés pour l'espace Datamosh (empreintes en cours).
+        self._analyses_clips: set[str] = set()
+        self._analyse_courante = None
         self._un_seul = False
         self._double_ecran: QMainWindow | None = None
         # Double écran : None, "panneaux" (comme Resolve) ou "timeline" (timeline seule à côté).
@@ -184,6 +189,9 @@ class FenetrePrincipale(QMainWindow):
         self._entete_visionneuse.ajouter(self.duree_programme)
         d, _ = panneau("Timeline", self.timeline, "timeline", self, titre_visible=False)
         self._docks["timeline"] = d
+        self.panneau_datamosh = PanneauDatamosh()
+        d, _ = panneau("Compression", self.panneau_datamosh, "analyse", self)
+        self._docks["analyse"] = d
         self.inspecteur.badge.connect(self._badge)
         self.onglets_droite.onglet_change.connect(lambda _i: self._badge())
         self.inspecteur.setMinimumWidth(320)
@@ -276,6 +284,20 @@ class FenetrePrincipale(QMainWindow):
             self.resizeDocks([d["export"], d["visionneuse"], d["file_export"]], [340, 900, 360],
                              Qt.Horizontal)
             self.resizeDocks([d["visionneuse"], d["timeline"]], [640, 260], Qt.Vertical)
+        elif espace == "datamosh":
+            # Bibliothèque d'effets, programme et sa compression, inspecteur ; timeline dessous.
+            self.addDockWidget(Qt.BottomDockWidgetArea, d["timeline"])
+            if self._est_externe("medias"):
+                self.addDockWidget(Qt.LeftDockWidgetArea, d["visionneuse"])
+            else:
+                self.addDockWidget(Qt.LeftDockWidgetArea, d["medias"])
+                self.splitDockWidget(d["medias"], d["visionneuse"], Qt.Horizontal)
+            self.splitDockWidget(d["visionneuse"], d["droite"], Qt.Horizontal)
+            self.splitDockWidget(d["visionneuse"], d["analyse"], Qt.Vertical)
+            self.resizeDocks([d["medias"], d["visionneuse"], d["droite"]], [300, 960, 360],
+                             Qt.Horizontal)
+            self.resizeDocks([d["visionneuse"], d["analyse"]], [400, 120], Qt.Vertical)
+            self.resizeDocks([d["visionneuse"], d["timeline"]], [520, 420], Qt.Vertical)
         elif espace == "media" and self._est_externe("medias"):
             self.addDockWidget(Qt.LeftDockWidgetArea, d["source"])
             self.splitDockWidget(d["source"], d["droite"], Qt.Horizontal)
@@ -323,7 +345,10 @@ class FenetrePrincipale(QMainWindow):
             self._montrer_metadonnees()
         elif espace == "export":
             self.formulaire_export.actualiser(self.projet, self.chemin)
+        elif espace == "datamosh" and not self._est_externe("medias"):
+            self.onglets_gauche.choisir(1)
         self._espace = espace
+        self._actualiser_datamosh()
         self.barre_espaces.activer(espace)
         if self._barre_espaces_2 is not None:
             self._barre_espaces_2.activer(espace)
@@ -486,7 +511,7 @@ class FenetrePrincipale(QMainWindow):
                          lambda _=False, cle=cle: self.visionneuse.choisir_qualite(cle))
         a.addSeparator()
         for i, (cle, nom) in enumerate((("media", "Média"), ("montage", "Montage"),
-                                        ("export", "Export")), 1):
+                                        ("datamosh", "Datamosh"), ("export", "Export")), 1):
             self._action(a, f"Espace {nom}", lambda _=False, cle=cle: self.choisir_espace(cle),
                          f"Shift+{i}")
         a.addSeparator()
@@ -530,7 +555,8 @@ class FenetrePrincipale(QMainWindow):
                                  ("source", self._docks["source"], "Source"),
                                  ("visionneuse", self._docks["visionneuse"], "Programme"),
                                  ("droite", self._docks["droite"], "Inspecteur"),
-                                 ("timeline", self._docks["timeline"], "Timeline")):
+                                 ("timeline", self._docks["timeline"], "Timeline"),
+                                 ("analyse", self._docks["analyse"], "Compression")):
             act = dock.toggleViewAction()
             act.setText(titre)
             fe.addAction(act)
@@ -735,6 +761,11 @@ class FenetrePrincipale(QMainWindow):
         self.inspecteur.reglage_masque.connect(self.reglage_masque)
         self.inspecteur.edition_masques.connect(self.modifier_masques)
         self.visionneuse.zone.calque = CalqueMasques(self.visionneuse.zone)
+        self.visionneuse.zone.vecteurs = CalqueVecteurs(self.visionneuse.zone)
+        self.panneau_datamosh.image_cliquee.connect(self._image_datamosh)
+        self.panneau_datamosh.cle_basculee.connect(self._cle_datamosh)
+        self.panneau_datamosh.vecteurs_bascules.connect(
+            lambda _v: self._suivre_datamosh(self.lecture.position))
         self.visionneuse.zone.calque.modifie.connect(
             lambda masque_id, points: self.reglage_masque(self._masques_effet, masque_id,
                                                           "points", points))
@@ -899,6 +930,7 @@ class FenetrePrincipale(QMainWindow):
         self.timeline.timecode.afficher(f, seq.tc_debut, seq.fraction_cadence, seq.tc_drop)
         self.timeline.suivre_tete(f)
         self.inspecteur.actualiser_temps(f)
+        self._suivre_datamosh(f)
 
     def _position_source(self, f: int):
         m = self.media_source
@@ -930,6 +962,100 @@ class FenetrePrincipale(QMainWindow):
             self.inspecteur.piste(self.projet, self._piste_choisie)
         else:
             self.inspecteur.vide(self.projet, len(ids))
+        self._actualiser_datamosh()
+
+    # Espace Datamosh : compression du clip choisi, vecteurs sur le programme
+
+    def _clip_datamosh(self):
+        ids = self.timeline.vue.selection
+        if len(ids) != 1:
+            return None
+        piste, c = self.projet.sequence.trouver(next(iter(ids)))
+        if c is None or piste.type != "video" or c.est_effet \
+                or c.media_id not in self.projet.medias:
+            return None
+        return c
+
+    def _actualiser_datamosh(self):
+        if not hasattr(self, "panneau_datamosh"):
+            return
+        seq = self.projet.sequence
+        clip = self._clip_datamosh() if self._espace == "datamosh" else None
+        if clip is None:
+            self._analyse_courante = None
+            self.panneau_datamosh.afficher(None, None)
+            self._suivre_datamosh(self.lecture.position)
+            return
+        a = analyse.lire(self.projet, seq, clip)
+        k = analyse.cle(self.projet, seq, clip)
+        if a is None and k not in self._analyses_clips:
+            self._lancer_analyse(clip, k)
+        supprimees = set(clip.cles_supprimees)
+        if clip.transition is not None and edition.precedent(seq.trouver(clip.id)[0], clip):
+            supprimees.add(0)
+        self._analyse_courante = (clip, a)
+        self.panneau_datamosh.afficher(self.projet.medias[clip.media_id].nom, a, supprimees,
+                                       en_cours=k in self._analyses_clips)
+        self._suivre_datamosh(self.lecture.position)
+
+    def _lancer_analyse(self, clip, k: str):
+        projet = Projet.depuis_dict(self.projet.vers_dict())
+        for m in projet.medias.values():
+            m.hors_ligne = self.projet.medias[m.id].hors_ligne
+        copie = projet.sequence.trouver(clip.id)[1]
+        self._analyses_clips.add(k)
+
+        def travail(progression, annule, projet=projet, c=copie):
+            return analyse.analyser(projet, projet.sequence, c, progression, annule)
+
+        def fin(*_a, k=k):
+            self._analyses_clips.discard(k)
+            self._actualiser_datamosh()
+        nom = self.projet.medias[clip.media_id].nom
+        self.taches.lancer(Tache(f"Analyse de {nom}", travail), fin,
+                           lambda message, detail, k=k: (self._analyses_clips.discard(k),
+                                                         self.message(message)),
+                           lambda k=k: self._analyses_clips.discard(k))
+
+    def _suivre_datamosh(self, f: int):
+        calque = self.visionneuse.zone.vecteurs
+        if calque is None:  # fenêtre en construction
+            return
+        courante = getattr(self, "_analyse_courante", None)
+        if courante is None:
+            self.panneau_datamosh.suivre(None)
+            calque.montrer(None)
+            return
+        clip, a = courante
+        t = f - clip.debut if clip.debut <= f < clip.fin else None
+        self.panneau_datamosh.suivre(t)
+        if a is None or t is None or not self.panneau_datamosh.bouton_vecteurs.isChecked():
+            calque.montrer(None)
+            return
+        seq = self.projet.sequence
+        v = self.projet.medias[clip.media_id].infos.video
+        s = min(seq.largeur / v.largeur, seq.hauteur / v.hauteur)
+        lp, hp = v.largeur * s / seq.largeur, v.hauteur * s / seq.hauteur
+        calque.montrer(a.vecteurs_de(t), (v.largeur, v.hauteur),
+                       ((1 - lp) / 2, (1 - hp) / 2, lp, hp))
+
+    def _image_datamosh(self, t: int):
+        courante = getattr(self, "_analyse_courante", None)
+        if courante is not None:
+            self.aller_a(courante[0].debut + t)
+
+    def _cle_datamosh(self, t: int):
+        """Double-clic sur une image clé de la bande : au début du clip, la transition
+        datamosh ; ailleurs, la coupe."""
+        courante = getattr(self, "_analyse_courante", None)
+        if courante is None:
+            return
+        clip = courante[0]
+        if t == 0:
+            if edition.precedent(self.projet.sequence.trouver(clip.id)[0], clip) is not None:
+                self.basculer_cle("raccord", clip.id, 0)
+        else:
+            self.basculer_cle("coupe", clip.id, t)
 
     def appliquer_prereglage(self, p, cible: str):
         """Depuis la bibliothèque : cible « selection », « clip_effet » ou « sequence »."""

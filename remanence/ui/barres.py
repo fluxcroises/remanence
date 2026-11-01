@@ -114,7 +114,8 @@ class BarreTitre(QWidget):
 
 ESPACES = [("media", "Média", "folder", "Média (Maj+1)"),
            ("montage", "Montage", "clapperboard", "Montage (Maj+2)"),
-           ("export", "Export", "upload", "Export (Maj+3)")]
+           ("datamosh", "Datamosh", "zap", "Datamosh (Maj+3)"),
+           ("export", "Export", "upload", "Export (Maj+4)")]
 
 
 class BarreEspaces(QWidget):

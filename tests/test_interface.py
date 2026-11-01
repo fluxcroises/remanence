@@ -685,6 +685,38 @@ def test_scripts_depuis_l_interface(fenetre, medias, tmp_path):
     assert _attendre(lambda: texte() == "Script modifié", 2)
 
 
+def test_espace_datamosh(fenetre, medias):
+    """Espace Datamosh : compression du clip choisi analysée en arrière-plan, vecteurs sur le
+    programme, double-clic sur une image clé de coupe : supprimée."""
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    media = w.projet.medias[clip.media_id]
+    media.coupes = [12]  # un changement de plan, comme s'il avait été analysé
+    w.choisir_espace("datamosh")
+    assert w._docks["analyse"].isVisible() and not w._docks["source"].isVisible()
+    assert w.panneau_datamosh.titre.text() == "Aucun clip vidéo sélectionné"
+    w.timeline.vue._choisir({clip.id})
+    assert _attendre(lambda: w.panneau_datamosh.bande.analyse is not None, 30)
+    a = w.panneau_datamosh.bande.analyse
+    assert len(a.types) == clip.duree and a.types[0] == "I" and a.types[12] == "I"
+    assert "images" in w.panneau_datamosh.infos.text()
+    w.aller_a(5)
+    w.panneau_datamosh.bouton_vecteurs.setChecked(True)
+    calque = w.visionneuse.zone.vecteurs
+    assert _attendre(lambda: calque.isVisible() and calque.vecteurs is not None, 2)
+    w.panneau_datamosh.cle_basculee.emit(12)
+    assert _attendre(lambda: w.projet.sequence.pistes_video[0].clips[0].cles_supprimees == [12],
+                     2)
+    assert _attendre(lambda: 12 in w.panneau_datamosh.bande.supprimees, 30)
+    w.panneau_datamosh.image_cliquee.emit(20)
+    assert _attendre(lambda: w.lecture.position == clip.debut + 20, 2)
+    w.choisir_espace("montage")
+    assert not calque.isVisible() and not w._docks["analyse"].isVisible()
+
+
 def test_losanges_de_la_timeline_et_echap(fenetre, medias):
     """Clic sur un losange d'un clip : la tête y va ; le glisser déplace l'image clé.
     Échap quitte l'outil de coupe."""

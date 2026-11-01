@@ -64,6 +64,8 @@ class ZoneImage(QOpenGLWidget):
         self._clic = None
         self.glissable = False
         self.calque: CalqueMasques | None = None
+        # Calque des vecteurs de mouvement (espace Datamosh).
+        self.vecteurs = None
         self.setMinimumSize(160, 90)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
@@ -76,13 +78,17 @@ class ZoneImage(QOpenGLWidget):
         self._a_envoyer = True
         self._message = ""
         self.update()
-        if self.calque is not None and self.calque.isVisible():
-            self.calque.update()
+        for calque in self._calques():
+            if calque.isVisible():
+                calque.update()
+
+    def _calques(self) -> list:
+        return [c for c in (self.calque, self.vecteurs) if c is not None]
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
-        if self.calque is not None:
-            self.calque.setGeometry(self.rect())
+        for calque in self._calques():
+            calque.setGeometry(self.rect())
 
     def montrer_message(self, texte: str):
         self._image = None
@@ -93,8 +99,8 @@ class ZoneImage(QOpenGLWidget):
         self.zoom = zoom
         self._decalage = QPointF(0, 0)
         self.update()
-        if self.calque is not None:
-            self.calque.update()
+        for calque in self._calques():
+            calque.update()
 
     def initializeGL(self):
         if self._echec_gl:
@@ -182,8 +188,8 @@ class ZoneImage(QOpenGLWidget):
         if self.zoom is not None:
             self._decalage = self._decalage_depart + delta
             self.update()
-            if self.calque is not None:
-                self.calque.update()
+            for calque in self._calques():
+                calque.update()
         elif self.glissable and delta.manhattanLength() > 10:
             self._clic = None
             self.glisser_depart.emit()
