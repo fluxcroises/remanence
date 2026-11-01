@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 from PySide6.QtCore import QEvent, Qt, QTimer
-from PySide6.QtGui import QAction, QGuiApplication, QImage, QKeySequence, QPixmap
+from PySide6.QtGui import QAction, QGuiApplication, QImage, QKeySequence
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QFileDialog, QInputDialog,
                                QMainWindow, QMessageBox, QToolBar, QVBoxLayout, QWidget)
 
@@ -535,6 +535,8 @@ class FenetrePrincipale(QMainWindow):
         self.medias.importer.connect(self.importer)
         self.medias.fichiers_deposes.connect(self.importer_chemins)
         self.medias.media_selectionne.connect(self._media_choisi)
+        self.medias.modifie.connect(self.valider)
+        self.medias.retirer.connect(self.retirer_medias)
         self.medias.media_active.connect(
             lambda mid: self.charger_source(self.projet.medias[mid]) if mid in self.projet.medias
             else None)
@@ -895,7 +897,33 @@ class FenetrePrincipale(QMainWindow):
                                                      edition.avec_lies(self.projet.sequence, sel)
                                                      if sel else None))
 
+    def retirer_medias(self, ids: list[str]):
+        """Retire des médias du projet ; ceux qui servent encore sur la timeline restent."""
+        utilises = [self.projet.medias[i] for i in ids
+                    if i in self.projet.medias and self.projet.clips_du_media(i)]
+        libres = [i for i in ids if i in self.projet.medias and
+                  self.projet.medias[i] not in utilises]
+        for i in libres:
+            del self.projet.medias[i]
+            if self.media_source is not None and self.media_source.id == i:
+                self.media_source = None
+                self.lecture_source.pause()
+                self.source.zone.montrer_message("Choisissez un média pour l'afficher ici.")
+                self._entete_source.precision.setText("")
+                self.activer_moniteur("programme")
+        if libres:
+            self.valider("Retrait de médias")
+        if utilises:
+            noms = "\n".join(f"{m.nom} ({self.projet.clips_du_media(m.id)} clip(s))"
+                             for m in utilises)
+            QMessageBox.information(self, "Médias encore utilisés",
+                                    "Ces médias servent encore sur la timeline et restent dans "
+                                    "le projet. Supprimez d'abord leurs clips.\n\n" + noms)
+
     def supprimer(self):
+        if self.medias.vue.hasFocus():
+            self.retirer_medias(self.medias.medias_choisis())
+            return
         sel = set(self.timeline.vue.selection)
         if sel:
             self.timeline.vue.selection = set()
@@ -1030,6 +1058,7 @@ class FenetrePrincipale(QMainWindow):
                 self._analyser(str(f), None)
 
     def _analyser(self, chemin: str, cadence: str | None):
+        chutier = self.medias.chutier_courant
         self._analyses += 1
         self.medias.signaler_analyses(self._analyses)
 
@@ -1052,6 +1081,8 @@ class FenetrePrincipale(QMainWindow):
         def reussi(infos):
             fin_analyse()
             m = Media(nouvel_id(), infos.chemin, infos)
+            if any(c.id == chutier for c in self.projet.chutiers):
+                m.chutier = chutier
             self.projet.medias[m.id] = m
             self.valider("Import")
             self._preparer(m)
@@ -1094,8 +1125,7 @@ class FenetrePrincipale(QMainWindow):
         self.timeline.vue.vignettes[media_id] = (qimages, pas)
         self.timeline.vue.update()
         if qimages:
-            milieu = qimages[len(qimages) // 2]
-            self.medias.definir_vignette(media_id, QPixmap.fromImage(milieu))
+            self.medias.definir_vignettes(media_id, qimages)
 
     # Export
 

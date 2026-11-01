@@ -273,3 +273,56 @@ def test_double_ecran_et_programme_externe(fenetre, medias):
     assert w._programme_externe is not None
     w.basculer_programme_externe()
     assert _attendre(lambda: w._programme_externe is None, 2)
+
+
+def test_panneau_media(fenetre, medias, monkeypatch):
+    from PySide6.QtCore import Qt
+    w = fenetre
+    p = w.medias
+    p.nouveau_chutier()
+    rushs = w.projet.chutiers[0]
+    item = next(i for i in p.arbre.findItems("", Qt.MatchContains | Qt.MatchRecursive)
+                if i.data(0, Qt.UserRole) == rushs.id)
+    item.setText(0, "Rushs")
+    assert w.projet.chutiers[0].nom == "Rushs"
+    # Le chutier choisi reçoit les médias importés.
+    w.importer_chemins([str(medias["prores_hq"]), str(medias["h264"])])
+    assert _attendre(lambda: len(w.projet.medias) == 2)
+    assert all(m.chutier == rushs.id for m in w.projet.medias.values())
+    assert p.vue.count() == 2
+
+    p.recherche.setText("h264")
+    assert p.vue.count() == 1
+    p.recherche.setText("")
+    p._filtrer("audio")
+    assert p.vue.count() == 0 and "correspond" in p.vide.text()
+    p._filtrer("tous")
+
+    h264 = next(m for m in w.projet.medias.values() if m.nom.startswith("h264"))
+    p.ranger([h264.id], None)
+    assert w.projet.medias[h264.id].chutier is None and p.vue.count() == 1
+
+    w.poser_medias([h264.id], 0, "")
+    messages = []
+    monkeypatch.setattr("remanence.ui.fenetre.QMessageBox.information",
+                        lambda *a: messages.append(a[2]))
+    prores = next(m for m in w.projet.medias.values() if m.nom.startswith("prores"))
+    w.retirer_medias([h264.id, prores.id])
+    assert h264.id in w.projet.medias and prores.id not in w.projet.medias
+    assert messages and "h264" in messages[0]
+
+    p.supprimer_chutier(w.projet.chutiers[0].id)
+    assert not w.projet.chutiers and p.chutier_courant is None
+
+    p.vue_mode(False)
+    assert not p.b_grille.isChecked()
+    p.vue_mode(True)
+    p.resize(400, 600)
+    r = p.vue.visualItemRect(p.vue.item(0))
+    from PySide6.QtCore import QPointF
+    from PySide6.QtGui import QMouseEvent
+    pos = QPointF(r.left() + r.width() / 4, r.center().y())
+    QApplication.sendEvent(p.vue.viewport(), QMouseEvent(
+        QMouseEvent.MouseMove, pos, p.vue.viewport().mapToGlobal(pos), Qt.NoButton, Qt.NoButton,
+        Qt.NoModifier))
+    assert p.survol is not None and p.survol[0] == h264.id and 0.1 < p.survol[1] < 0.4

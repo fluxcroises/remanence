@@ -130,3 +130,17 @@ def test_plage_source_et_insertion(medias):
     assert [(c.debut, c.entree, c.duree) for c in pv.clips] == [(0, 5, 4), (4, 0, 6), (10, 9, 6)]
     relu = Projet.depuis_dict(projet.vers_dict())
     assert relu.medias[m.id].point_entree == 5 and relu.medias[m.id].point_sortie == 15
+
+
+def test_chutiers(medias):
+    from remanence.projet.modele import Chutier
+    projet, m = _projet_avec(medias)
+    rushs = Chutier(nouvel_id(), "Rushs")
+    glitch = Chutier(nouvel_id(), "Glitch", parent=rushs.id)
+    projet.chutiers += [rushs, glitch]
+    m.chutier = glitch.id
+    assert projet.sous_chutiers(rushs.id) == {rushs.id, glitch.id}
+    relu = Projet.depuis_dict(projet.vers_dict())
+    assert [c.nom for c in relu.chutiers] == ["Rushs", "Glitch"]
+    assert relu.medias[m.id].chutier == glitch.id
+    assert relu.clips_du_media(m.id) == 0

@@ -27,6 +27,8 @@ class Media:
     # Points d'entrée et de sortie posés dans le moniteur source (images du média, sortie exclue).
     point_entree: int | None = None
     point_sortie: int | None = None
+    # Chutier où le média est rangé ; None : à la racine du projet.
+    chutier: str | None = None
 
     @property
     def nom(self) -> str:
@@ -49,13 +51,15 @@ class Media:
         d = {"id": self.id, "chemin": self.chemin, "infos": self.infos.vers_dict()}
         if self.point_entree is not None or self.point_sortie is not None:
             d["points"] = [self.point_entree, self.point_sortie]
+        if self.chutier:
+            d["chutier"] = self.chutier
         return d
 
     @staticmethod
     def depuis_dict(d: dict) -> "Media":
         entree, sortie = d.get("points", [None, None])
         return Media(d["id"], d["chemin"], InfosMedia.depuis_dict(d["infos"]),
-                     point_entree=entree, point_sortie=sortie)
+                     point_entree=entree, point_sortie=sortie, chutier=d.get("chutier"))
 
 
 @dataclass
@@ -186,8 +190,17 @@ class Sequence:
 
 
 @dataclass
+class Chutier:
+    """Dossier virtuel du panneau Média ; parent None : à la racine du projet."""
+    id: str
+    nom: str
+    parent: str | None = None
+
+
+@dataclass
 class Projet:
     medias: dict[str, Media] = field(default_factory=dict)
+    chutiers: list[Chutier] = field(default_factory=list)
     sequences: list[Sequence] = field(default_factory=list)
     sequence_active: str | None = None
     graine: int = 0
@@ -198,6 +211,21 @@ class Projet:
             if s.id == self.sequence_active:
                 return s
         return self.sequences[0]
+
+    def sous_chutiers(self, chutier_id: str | None) -> set[str]:
+        """Le chutier et tous ceux qu'il contient, à n'importe quelle profondeur."""
+        ids = {chutier_id}
+        ajoute = True
+        while ajoute:
+            ajoute = False
+            for c in self.chutiers:
+                if c.parent in ids and c.id not in ids:
+                    ids.add(c.id)
+                    ajoute = True
+        return ids
+
+    def clips_du_media(self, media_id: str) -> int:
+        return sum(1 for s in self.sequences for _, c in s.tous_les_clips() if c.media_id == media_id)
 
     @staticmethod
     def nouveau() -> "Projet":
@@ -215,6 +243,7 @@ class Projet:
             "graine": self.graine,
             "sequence_active": self.sequence_active,
             "medias": [m.vers_dict() for m in self.medias.values()],
+            "chutiers": [asdict(c) for c in self.chutiers],
             "sequences": [asdict(s) for s in self.sequences],
         }
 
@@ -229,6 +258,7 @@ class Projet:
         for md in d.get("medias", []):
             m = Media.depuis_dict(md)
             p.medias[m.id] = m
+        p.chutiers = [Chutier(**c) for c in d.get("chutiers", [])]
         for sd in d.get("sequences", []):
             sd = dict(sd)
             pistes = []
