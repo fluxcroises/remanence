@@ -11,7 +11,8 @@ Logiciel Windows de montage vidéo orienté datamosh et glitch art, dans l'espri
 
 ## Éditeur
 
-- Remanence est édité par l'association de Lewis, Flux Croisés (`EDITEUR` dans `remanence/__init__.py`) : mentionné sur l'écran de démarrage et dans À propos. Son logo s'affiche automatiquement s'il est déposé en `UI/charte/assets/Logos/flux-croises.svg` (ou `.png`, fond transparent) ; sinon le nom est écrit en texte.
+- Remanence est édité par l'association de Lewis, Flux Croisés (`EDITEUR` dans `remanence/__init__.py`) : mentionné sur l'écran de démarrage et dans À propos. Son logo, blanc sur fond transparent, est `UI/charte/assets/Logos/flux-croises-blanc.png` (fourni par Lewis le 1er novembre 2026) ; sans ce fichier, le nom est écrit en texte.
+- Écran de démarrage volontairement sobre, comme celui d'After Effects : symbole et nom, ligne de chargement, logo de l'éditeur. Version et licences sont dans À propos.
 
 ## Règles de travail
 

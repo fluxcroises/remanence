@@ -1,16 +1,16 @@
 """Écran de démarrage : la carte de la maquette, entourée d'éclats qui jaillissent de ses bords.
 
 Les éclats sont tirés d'une suite pseudo-aléatoire à graine fixe : l'écran est identique
-à chaque lancement. Rien ne s'anime, seule la barre de progression avance.
+à chaque lancement. Rien ne s'anime : seule la ligne de chargement change.
 """
 
 from __future__ import annotations
 
 from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QFont, QPainter, QPainterPath
+from PySide6.QtGui import QFont, QPainter
 from PySide6.QtWidgets import QApplication, QWidget
 
-from remanence import EDITEUR, __version__
+from remanence import EDITEUR
 from remanence.ui import charte
 
 LARGEUR, HAUTEUR = 880, 600
@@ -69,14 +69,12 @@ class EcranDemarrage(QWidget):
         self.setFixedSize(LARGEUR, HAUTEUR)
         self.setAccessibleName("Démarrage de Remanence")
         self._message = "Démarrage…"
-        self._progression = 0.0
         self._eclats = eclats()
         ecran = QApplication.primaryScreen().availableGeometry()
         self.move(ecran.center().x() - LARGEUR // 2, ecran.center().y() - HAUTEUR // 2)
 
-    def etape(self, message: str, progression: float):
+    def etape(self, message: str):
         self._message = message
-        self._progression = max(0.0, min(1.0, progression))
         self.repaint()
         QApplication.processEvents()
 
@@ -104,37 +102,16 @@ class EcranDemarrage(QWidget):
         p.setPen(c.c("ink-muted"))
         p.drawText(QRectF(g + 80, haut + 46, 300, 18), Qt.AlignLeft, "Montage et datamosh")
 
-        bas = CARTE.bottom() - 28
-        largeur = CARTE.width() - 80
-        p.setFont(c.police("body", 11))
-        p.drawText(QRectF(g, bas - 15, largeur - 120, 30), Qt.AlignLeft | Qt.TextWordWrap,
-                   "Logiciel libre, distribué en code source.\n"
-                   "Licences : menu Aide, À propos.")
-        # Éditeur en bas à droite : son logo s'il est fourni, sinon son nom.
-        droite = QRectF(g + largeur - 110, bas - 15, 110, 30)
-        p.setFont(c.police("caption", 10))
-        p.drawText(QRectF(droite.left(), droite.top() - 2, droite.width(), 12),
-                   Qt.AlignRight | Qt.AlignTop, "Édité par")
+        # Bas de la carte : l'étape de chargement à gauche, l'éditeur à droite. La version et les
+        # licences sont dans À propos.
+        ligne = QRectF(g, CARTE.bottom() - 46, CARTE.width() - 80, 18)
+        p.setFont(c.police("label"))
+        p.drawText(ligne, Qt.AlignLeft | Qt.AlignVCenter, self._message)
         logo = c.logo_editeur(16)
         if logo is not None:
             l = logo.width() / logo.devicePixelRatio()
-            p.drawPixmap(int(droite.right() - l), int(droite.top() + 12), logo)
+            p.drawPixmap(int(ligne.right() - l), int(ligne.center().y() - 8), logo)
         else:
-            p.setFont(c.police("label"))
             p.setPen(c.c("ink"))
-            p.drawText(QRectF(droite.left(), droite.top() + 10, droite.width(), 18),
-                       Qt.AlignRight | Qt.AlignVCenter, EDITEUR)
-        barre = QRectF(g, bas - 34, largeur, 3)
-        chemin = QPainterPath()
-        chemin.addRoundedRect(barre, 1.5, 1.5)
-        p.fillPath(chemin, c.c("line"))
-        rempli = QPainterPath()
-        rempli.addRoundedRect(QRectF(g, bas - 34, largeur * self._progression, 3), 1.5, 1.5)
-        p.fillPath(rempli, c.c("accent"))
-        p.setFont(c.police("label"))
-        p.drawText(QRectF(g, bas - 58, largeur, 18), Qt.AlignLeft | Qt.AlignVCenter, self._message)
-        p.setFont(c.police("value", 11))
-        p.drawText(QRectF(g, bas - 58, largeur, 18), Qt.AlignRight | Qt.AlignVCenter,
-                   f"Version {__version__}")
-        p.fillRect(QRectF(g, bas - 74, largeur, 1), c.c("line"))
+            p.drawText(ligne, Qt.AlignRight | Qt.AlignVCenter, EDITEUR)
         p.end()

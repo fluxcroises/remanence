@@ -162,7 +162,8 @@ class Charte:
 
     def logo_editeur(self, hauteur: int) -> QPixmap | None:
         """Logo de l'association éditrice, s'il a été déposé dans les logos de la charte."""
-        for nom in ("flux-croises.svg", "flux-croises.png"):
+        for nom in ("flux-croises-blanc.svg", "flux-croises-blanc.png", "flux-croises.svg",
+                    "flux-croises.png"):
             fichier = DOSSIER_LOGOS / nom
             if not fichier.exists():
                 continue

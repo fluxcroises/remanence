@@ -29,14 +29,14 @@ def principal() -> int:
     from remanence.ui.demarrage import EcranDemarrage
     ecran = EcranDemarrage()
     ecran.show()
-    ecran.etape("Chargement des polices et de la charte…", 0.2)
+    ecran.etape("Chargement des polices et de la charte…")
 
-    ecran.etape("Démarrage du moteur vidéo (FFmpeg)…", 0.45)
+    ecran.etape("Démarrage du moteur vidéo (FFmpeg)…")
     import av  # noqa: F401  (charge les bibliothèques FFmpeg pendant que l'écran est affiché)
     from remanence.ui.erreurs import afficher_erreur
     from remanence.ui.fenetre import FenetrePrincipale
 
-    ecran.etape("Préparation de l'interface…", 0.75)
+    ecran.etape("Préparation de l'interface…")
     fenetre = FenetrePrincipale()
 
     def erreur_imprevue(type_, valeur, tb):
@@ -48,9 +48,9 @@ def principal() -> int:
     sys.excepthook = erreur_imprevue
 
     if len(sys.argv) > 1 and sys.argv[1].endswith(".remanence"):
-        ecran.etape("Ouverture du projet…", 0.9)
+        ecran.etape("Ouverture du projet…")
         fenetre.ouvrir(sys.argv[1])
-    ecran.etape("Prêt", 1.0)
+    ecran.etape("Prêt")
     # Laisse l'écran lisible au moins une seconde, même sur une machine rapide.
     while time.perf_counter() - debut < 1.0:
         app.processEvents()
