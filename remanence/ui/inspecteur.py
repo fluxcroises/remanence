@@ -5,16 +5,15 @@ from __future__ import annotations
 import random
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (QCheckBox, QGridLayout, QHBoxLayout, QListWidget, QListWidgetItem,
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QGridLayout, QHBoxLayout, QListWidget, QListWidgetItem,
                                QMenu, QPushButton, QScrollArea, QSizePolicy, QToolButton,
                                QVBoxLayout, QWidget)
 
-from remanence.effets import EFFETS
-from remanence.effets import valeur as valeur_effet
+from remanence.effets import EFFETS, valeur_a
 from remanence.media.timecode import images_vers_tc
-from remanence.projet.modele import Media, Projet
-from remanence.ui.composants import (LigneParametre, SectionRepliable, bouton_icone, etiquette,
-                                     poser_icone)
+from remanence.projet.modele import MODES_FUSION, Media, Projet
+from remanence.ui.composants import (BoutonCle, LigneParametre, SectionRepliable, bouton_icone,
+                                     etiquette, poser_icone)
 from remanence.ui.menu_effets import remplir_menu_effets
 
 
@@ -179,6 +178,10 @@ class Historique(QListWidget):
         self.blockSignals(False)
 
 
+# Largeur d'un losange d'image clé et de son espacement : les lignes sans losange s'y alignent.
+RETRAIT_LOSANGE = 18 + 8
+
+
 class Inspecteur(PanneauFiche):
     # (clip_id, champ, valeur) ; la fenêtre applique et enregistre dans l'historique.
     reglage = Signal(str, str, object)
@@ -194,7 +197,55 @@ class Inspecteur(PanneauFiche):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        # Tête de lecture du programme : les réglages animés montrent leur valeur à cet instant.
+        self.temps = 0
+        self._animes: list[tuple] = []
         self.vide()
+
+    def _vider(self):
+        super()._vider()
+        self._animes = []
+
+    def actualiser_temps(self, f: int):
+        """La tête de lecture a bougé : valeurs des réglages animés et état des losanges."""
+        self.temps = f
+        for e, cle, origine, widget, bouton, echelle in self._animes:
+            t = f - origine
+            anime = cle in e.cles
+            if anime:
+                v = valeur_a(e, cle, t) * echelle
+                if isinstance(widget, QCheckBox):
+                    widget.blockSignals(True)
+                    widget.setChecked(v > 0.5)
+                    widget.blockSignals(False)
+                else:
+                    widget.montrer(v)
+            sur_cle = anime and any(k[0] == t for k in e.cles[cle])
+            bouton.definir("cle" if sur_cle else "anime" if anime else "inactif")
+
+    def _bouton_cle(self, e, cle: str, origine: int) -> BoutonCle:
+        b = BoutonCle()
+        b.clicked.connect(lambda: self.reglage_effet.emit(e.id, "cle:" + cle, None))
+        b.setContextMenuPolicy(Qt.CustomContextMenu)
+
+        def menu(pos):
+            m = QMenu(b)
+            cles = e.cles.get(cle, [])
+            t = self.temps - origine
+            courante = next((k[2] for k in cles if k[0] <= t), cles[0][2] if cles else "lineaire")
+            for mode, nom in (("lineaire", "Linéaire"), ("palier", "Palier")):
+                a = m.addAction(nom, lambda mode=mode: self.reglage_effet.emit(
+                    e.id, "interp:" + cle, mode))
+                a.setCheckable(True)
+                a.setChecked(bool(cles) and courante == mode)
+                a.setEnabled(bool(cles))
+            m.addSeparator()
+            a = m.addAction("Supprimer l'animation", lambda: self.reglage_effet.emit(
+                e.id, "interp:" + cle, "supprimer"))
+            a.setEnabled(bool(cles))
+            m.exec(b.mapToGlobal(pos))
+        b.customContextMenuRequested.connect(menu)
+        return b
 
     def vide(self, projet: Projet | None = None, nombre: int = 0):
         """Sans clip unique choisi : la séquence, et le nombre de clips s'il y en a plusieurs."""
@@ -282,6 +333,9 @@ class Inspecteur(PanneauFiche):
                                 100, 1)
         niveau.valeur_finale.connect(lambda v: self.reglage.emit(c.id, "gain", v / 100))
         self._cible.addWidget(niveau)
+        if video:
+            self._cible.addLayout(self._choix_fusion(
+                c.fusion, lambda mode: self.reglage.emit(c.id, "fusion", mode)))
         for champ, nom in (("fondu_entree", "Fondu d'entrée"), ("fondu_sortie", "Fondu de sortie")):
             ligne = LigneParametre(nom, 0, c.duree, getattr(c, champ), "images", 0, 0)
             ligne.champ.setFixedWidth(96)
@@ -299,11 +353,33 @@ class Inspecteur(PanneauFiche):
             rang.addStretch(1)
             self._cible.addLayout(rang)
         if video:
-            self._effets("clip", c.id, c.effets, "Effets")
+            self._effets("clip", c.id, c.effets, "Effets", origine=c.debut)
+
+    def _choix_fusion(self, actuel: str, choisir, retrait: bool = False) -> QHBoxLayout:
+        """Ligne « Fusion » : les sept modes du cahier des charges. retrait : alignée sur les
+        réglages précédés d'un losange."""
+        rang = QHBoxLayout()
+        rang.setSpacing(8)
+        if retrait:
+            rang.addSpacing(RETRAIT_LOSANGE)
+        libelle = etiquette("Fusion", "libelle")
+        libelle.setFixedWidth(100)
+        liste = QComboBox()
+        liste.setAccessibleName("Mode de fusion")
+        for cle, nom in MODES_FUSION.items():
+            liste.addItem(nom, cle)
+        liste.setCurrentIndex(max(0, liste.findData(actuel)))
+        liste.activated.connect(lambda i: choisir(liste.itemData(i)))
+        rang.addWidget(libelle)
+        rang.addWidget(liste, 1)
+        return rang
 
     # Effets : une section par effet, réglages construits depuis la description de l'effet.
 
-    def _effets(self, genre: str, porteur_id: str, effets: list, titre: str):
+    def _effets(self, genre: str, porteur_id: str, effets: list, titre: str, origine: int = 0):
+        """origine : image de la séquence où commence le temps des images clés (début du
+        clip, ou 0 pour un effet de piste ou de séquence)."""
+        t = self.temps - origine
         for e in effets:
             d = EFFETS.get(e.type)
             if d is None:
@@ -326,20 +402,41 @@ class Inspecteur(PanneauFiche):
                 e.id, "retirer", None))
             section.ajouter_outil(retirer)
             for p in d.parametres:
+                bouton = self._bouton_cle(e, p.cle, origine)
                 if p.booleen:
                     case = QCheckBox(p.nom)
-                    case.setChecked(valeur_effet(e, p.cle) > 0.5)
+                    case.setChecked(valeur_a(e, p.cle, t) > 0.5)
                     case.toggled.connect(lambda v, e=e, p=p: self.reglage_effet.emit(
                         e.id, p.cle, 1.0 if v else 0.0))
-                    self._cible.addWidget(case)
+                    rang = QHBoxLayout()
+                    rang.setSpacing(8)
+                    rang.addWidget(bouton)
+                    rang.addWidget(case, 1)
+                    self._cible.addLayout(rang)
+                    self._animes.append((e, p.cle, origine, case, bouton, 1.0))
                     continue
-                ligne = LigneParametre(p.nom, p.minimum, p.maximum, valeur_effet(e, p.cle), p.unite,
-                                       p.defaut, p.decimales)
+                ligne = LigneParametre(p.nom, p.minimum, p.maximum, valeur_a(e, p.cle, t),
+                                       p.unite, p.defaut, p.decimales, cle=bouton)
                 ligne.valeur_finale.connect(lambda v, e=e, p=p: self.reglage_effet.emit(
                     e.id, p.cle, v))
                 self._cible.addWidget(ligne)
+                self._animes.append((e, p.cle, origine, ligne, bouton, 1.0))
+            bouton = self._bouton_cle(e, "opacite", origine)
+            opacite = LigneParametre("Opacité", 0, 100, valeur_a(e, "opacite", t) * 100, "%",
+                                     100, 0, cle=bouton)
+            opacite.valeur_finale.connect(lambda v, e=e: self.reglage_effet.emit(
+                e.id, "opacite", v / 100))
+            self._cible.addWidget(opacite)
+            self._animes.append((e, "opacite", origine, opacite, bouton, 100.0))
+            self._cible.addLayout(self._choix_fusion(
+                e.fusion, lambda mode, e=e: self.reglage_effet.emit(e.id, "fusion", mode),
+                retrait=True))
             rang = QHBoxLayout()
-            rang.addWidget(etiquette("Tirage", "libelle"))
+            rang.setSpacing(8)
+            rang.addSpacing(RETRAIT_LOSANGE)
+            tirage_nom = etiquette("Tirage", "libelle")
+            tirage_nom.setFixedWidth(100)
+            rang.addWidget(tirage_nom)
             rang.addWidget(etiquette(str(e.graine), "valeur"), 1)
             tirage = QPushButton("Autre tirage")
             tirage.clicked.connect(lambda _=False, e=e: self.reglage_effet.emit(

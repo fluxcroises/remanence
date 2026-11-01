@@ -71,6 +71,19 @@ class Effet:
     params: dict = field(default_factory=dict)
     actif: bool = True
     graine: int = 1
+    # Dosage de l'effet sur l'image qu'il reçoit, et façon de les mêler (voir MODES_FUSION).
+    opacite: float = 1.0
+    fusion: str = "normal"
+    # Images clés : paramètre (ou "opacite") -> [[temps, valeur, "lineaire" | "palier"], ...],
+    # triées. Temps en images depuis le début du clip, ou de la séquence pour un effet de piste
+    # ou de séquence. Un paramètre sans image clé garde sa valeur fixe.
+    cles: dict = field(default_factory=dict)
+
+
+# Modes de fusion du cahier des charges : clé enregistrée -> nom affiché.
+MODES_FUSION = {"normal": "Normal", "addition": "Addition", "ecran": "Écran",
+                "produit": "Produit", "difference": "Différence",
+                "luminosite": "Luminosité seule", "couleur": "Couleur seule"}
 
 
 # Un clip d'effet n'a pas de média : il transforme tout ce qui est sous lui. Son entrée est
@@ -91,6 +104,7 @@ class Clip:
     fondu_entree: int = 0
     fondu_sortie: int = 0
     effets: list[Effet] = field(default_factory=list)
+    fusion: str = "normal"
 
     @property
     def fin(self) -> int:

@@ -151,3 +151,74 @@ def test_prereglages_personnels():
     assert [x.nom for x in pr.personnels()] == ["Écran fatigué"]
     pr.supprimer("Écran fatigué")
     assert not pr.personnels()
+
+
+def test_images_cles_interpolation():
+    from remanence.effets import instantane, poser_cle, retirer_cle, valeur_a
+    e = nouvel_effet("decalage_rvb")
+    poser_cle(e, "force", 0, 0.0)
+    poser_cle(e, "force", 10, 100.0)
+    assert [valeur_a(e, "force", t) for t in (-5, 0, 5, 10, 20)] == [0, 0, 50, 100, 100]
+    e.cles["force"][0][2] = "palier"
+    assert valeur_a(e, "force", 9) == 0
+    poser_cle(e, "opacite", 4, 0.25)
+    snap = instantane(e, 4)
+    assert snap.opacite == 0.25 and snap.params["force"] == 0 and e.params["force"] == 40
+    retirer_cle(e, "opacite", 4)
+    assert "opacite" not in e.cles and e.opacite == 0.25, "redevient fixe à sa dernière valeur"
+    v = nouvel_effet("tri_pixels")
+    poser_cle(v, "vertical", 0, 1.0)
+    assert v.cles["vertical"][0][2] == "palier", "un interrupteur ne s'interpole pas"
+
+
+def test_animation_et_opacite_dans_l_image(medias):
+    from remanence.effets import poser_cle
+    projet, clip = _projet(medias)
+    source = [_image(projet, f) for f in (0, 5, 10)]
+    e = nouvel_effet("decalage_rvb")
+    poser_cle(e, "force", 0, 0.0)
+    poser_cle(e, "force", 10, 100.0)
+    clip.effets = [e]
+    assert np.abs(_image(projet, 0) - source[0]).max() < 1e-6, "force 0 au début"
+    assert np.abs(_image(projet, 10) - source[2]).max() > 0.1
+    e.cles.clear()
+    e.params["force"] = 80
+    plein = _image(projet, 5)
+    e.opacite = 0.0
+    assert np.abs(_image(projet, 5) - source[1]).max() < 1e-6, "opacité 0 : effet invisible"
+    e.opacite = 0.5
+    assert np.abs(_image(projet, 5) - (source[1] + plein) / 2).max() < 1e-5
+
+
+@pytest.mark.parametrize("mode", ["addition", "ecran", "produit", "difference"])
+def test_modes_de_fusion(medias, mode):
+    """Un clip opaque posé sur un autre avec un mode : la formule du mode, pixel par pixel."""
+    projet = Projet.nouveau()
+    seq = projet.sequence
+    for cle in ("prores_hq", "dnxhr_hqx"):
+        infos, _ = analyser(str(medias[cle]))
+        m = Media(nouvel_id(), str(medias[cle]), infos)
+        projet.medias[m.id] = m
+    fond, dessus = projet.medias.values()
+    edition.ajouter_media(projet, seq, fond, 0)
+    b = _image(projet, 3)[..., :3]
+    edition.ajouter_piste(seq, "video")
+    edition.ajouter_media(projet, seq, dessus, 0, piste=seq.pistes_video[0])
+    s = _image(projet, 3)[..., :3]
+    seq.pistes_video[0].clips[0].fusion = mode
+    attendu = {"addition": b + s, "ecran": b + s - b * s, "produit": b * s,
+               "difference": np.abs(b - s)}[mode]
+    assert np.abs(_image(projet, 3)[..., :3] - attendu).max() < 1e-4
+
+
+def test_rogner_le_debut_garde_les_cles_en_place(medias):
+    from remanence.effets import poser_cle
+    projet, clip = _projet(medias)
+    e = nouvel_effet("vhs")
+    poser_cle(e, "force", 10, 50.0)
+    clip.effets = [e]
+    edition.rogner(projet, projet.sequence, clip.id, "debut", 4)
+    assert e.cles["force"][0][0] == 6, "même image de la séquence qu'avant"
+    edition.couper(projet.sequence, 8)
+    droite = projet.sequence.pistes_video[0].clips[1]
+    assert droite.effets[0].cles["force"][0][0] == 2

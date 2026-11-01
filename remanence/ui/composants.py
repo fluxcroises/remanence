@@ -6,10 +6,11 @@ from __future__ import annotations
 import math
 from fractions import Fraction
 
-from PySide6.QtCore import QRectF, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QPainter
-from PySide6.QtWidgets import (QDockWidget, QHBoxLayout, QLabel, QLineEdit, QSizePolicy, QSlider,
-                               QStackedWidget, QToolButton, QVBoxLayout, QWidget)
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QPainter, QPen, QPolygonF
+from PySide6.QtWidgets import (QAbstractButton, QDockWidget, QHBoxLayout, QLabel, QLineEdit,
+                               QSizePolicy, QSlider, QStackedWidget, QToolButton, QVBoxLayout,
+                               QWidget)
 from shiboken6 import isValid
 
 from remanence.config import reglages_interface
@@ -246,19 +247,69 @@ class SectionRepliable(QWidget):
         reglages_interface().setValue(f"inspecteur/replie/{self.cle}", not ouvert)
 
 
+class BoutonCle(QAbstractButton):
+    """Losange d'animation devant un réglage : vide gris, pas animé ; contour turquoise,
+    animé ; plein turquoise, image clé à la tête de lecture (couleur keyframe de la charte)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.etat = "inactif"
+        self.setFixedSize(18, 18)
+        self.setCursor(Qt.PointingHandCursor)
+        self.definir("inactif")
+
+    def definir(self, etat: str):
+        self.etat = etat
+        aide = {"inactif": "Animer", "anime": "Ajouter une image clé",
+                "cle": "Retirer l'image clé"}[etat]
+        self.setToolTip(aide)
+        self.setAccessibleName(aide)
+        self.update()
+
+    def paintEvent(self, _e):
+        c = charte.actuelle()
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        m = self.rect().center()
+        r = 4.5 if not self.underMouse() else 5.5
+        forme = QPolygonF([QPointF(m.x(), m.y() - r), QPointF(m.x() + r, m.y()),
+                           QPointF(m.x(), m.y() + r), QPointF(m.x() - r, m.y())])
+        couleur = c.c("ink-muted" if self.etat == "inactif" else "keyframe")
+        p.setPen(QPen(couleur, 1.4))
+        p.setBrush(couleur if self.etat == "cle" else Qt.NoBrush)
+        p.drawPolygon(forme)
+        if self.hasFocus():
+            p.setPen(QPen(c.c("focus"), 1))
+            p.setBrush(Qt.NoBrush)
+            p.drawRect(self.rect().adjusted(0, 0, -1, -1))
+        p.end()
+
+    def enterEvent(self, e):
+        self.update()
+        super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        self.update()
+        super().leaveEvent(e)
+
+
 class LigneParametre(QWidget):
     """Ligne de l'inspecteur : libellé, curseur, valeur saisissable avec son unité.
     Double-clic sur le libellé : retour à la valeur par défaut."""
     valeur_finale = Signal(float)
 
     def __init__(self, libelle: str, minimum: float, maximum: float, valeur: float,
-                 unite: str, defaut: float, decimales: int = 0, aide: str = ""):
+                 unite: str, defaut: float, decimales: int = 0, aide: str = "",
+                 cle: "BoutonCle | None" = None):
         super().__init__()
         self._min, self._max, self._defaut = minimum, maximum, defaut
         self._decimales, self._unite = decimales, unite
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(8)
+        self.cle = cle
+        if cle is not None:
+            lay.addWidget(cle)
         self.libelle = etiquette(libelle, "libelle")
         self.libelle.setFixedWidth(100)
         self.libelle.setToolTip((aide + " " if aide else "") +
@@ -303,6 +354,10 @@ class LigneParametre(QWidget):
         self._afficher(v)
         if emettre:
             self.valeur_finale.emit(v)
+
+    def montrer(self, v: float):
+        """Valeur affichée (image clé lue à la tête de lecture), sans rien envoyer."""
+        self._poser(v, False)
 
     def _saisie(self):
         texte = self.champ.text().replace(self._unite, "").replace(" ", "").replace(",", ".")

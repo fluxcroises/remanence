@@ -126,8 +126,17 @@ def liberer(piste: Piste, debut: int, fin: int, exclure: set[str]):
     piste.trier()
 
 
+def decaler_cles(c: Clip, delta: int):
+    """Le début du clip bouge de delta : ses images clés gardent leur place à l'écran."""
+    for e in c.effets:
+        for cles in e.cles.values():
+            for k in cles:
+                k[0] -= delta
+
+
 def _rogner_debut(c: Clip, coupe: int):
     """Enlève `coupe` images au début du clip, en gardant son contenu en place."""
+    decaler_cles(c, coupe)
     if c.enveloppe:
         # Un point au nouveau bord garde la courbe identique à l'écran.
         bord = valeur_enveloppe(c.enveloppe, coupe)
@@ -237,6 +246,7 @@ def rogner(projet: Projet, seq: Sequence, clip_id: str, cote: str, delta: int,
             c.entree += delta
             c.duree -= delta
             c.enveloppe = [[x - delta, y] for x, y in c.enveloppe if x - delta >= 0]
+            decaler_cles(c, delta)
             c.fondu_entree = min(c.fondu_entree, c.duree)
             if delta < 0:
                 liberer(p, c.debut, ancien_debut, {c.id})
@@ -269,6 +279,7 @@ def _rogner_ripple(projet: Projet, seq: Sequence, clip_id: str, cote: str, delta
             c.entree += delta
             c.duree -= delta
             c.enveloppe = [[x - delta, y] for x, y in c.enveloppe if x - delta >= 0]
+            decaler_cles(c, delta)
             c.fondu_entree = min(c.fondu_entree, c.duree)
             decalage = -delta
         else:
@@ -556,7 +567,7 @@ def deplacer_effet(seq: Sequence, effet_id: str, sens: int):
 
 def ajouter_clip_effet(seq: Sequence, debut: int, duree: int, effets: list[Effet],
                        piste_id: str | None = None) -> Clip:
-    """Clip d'effet sur la piste vidéo demandée, ou celle du haut ; si elle est occupée à cet
+    """Clip d'effet sur la piste vidéo demandée, ou celle du haut ; si elle est occupée à cet
     endroit, sur une nouvelle piste au-dessus, pour ne rien écraser."""
     haut = next((p for p in seq.pistes if p.id == piste_id and p.type == "video"), None) \
         or (seq.pistes_video[0] if seq.pistes_video else None)

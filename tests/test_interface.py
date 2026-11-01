@@ -557,3 +557,37 @@ def test_bibliotheque_d_effets(fenetre, medias, monkeypatch):
     w._prereglage_depose(anaglyphe, "clip", clip.id, 0)
     assert len(w.projet.sequence.trouver(clip.id)[1].effets) == 2
     pr.supprimer("Mon décalage")
+
+
+def test_images_cles_depuis_l_inspecteur(fenetre, medias):
+    from remanence.effets import nouvel_effet
+    from remanence.ui.composants import BoutonCle
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    w.timeline.vue._choisir({clip.id})
+    w.ajouter_effet("clip", clip.id, [nouvel_effet("scanlines")])
+    effet_id = w.projet.sequence.pistes_video[0].clips[0].effets[0].id
+
+    def effet():
+        return w.projet.sequence.pistes_video[0].clips[0].effets[0]
+    w.aller_a(2)
+    w.reglage_effet(effet_id, "cle:force", None)
+    assert _attendre(lambda: effet().cles.get("force") == [[2, 40, "lineaire"]], 2)
+    w.aller_a(12)
+    w.reglage_effet(effet_id, "force", 90.0)
+    assert _attendre(lambda: len(effet().cles["force"]) == 2, 2)
+    w.aller_a(7)
+    assert _attendre(lambda: any(b.etat == "anime" for b in w.inspecteur.findChildren(BoutonCle)
+                                 if b.isVisibleTo(w.inspecteur)), 2)
+    w.aller_a(12)
+    assert _attendre(lambda: any(b.etat == "cle" for b in w.inspecteur.findChildren(BoutonCle)
+                                 if b.isVisibleTo(w.inspecteur)), 2)
+    w.reglage_effet(effet_id, "fusion", "ecran")
+    assert _attendre(lambda: effet().fusion == "ecran", 2)
+    w.reglage_effet(effet_id, "interp:force", "supprimer")
+    assert _attendre(lambda: "force" not in effet().cles, 2)
+    w._reglage_clip(clip.id, "fusion", "produit")
+    assert _attendre(lambda: w.projet.sequence.pistes_video[0].clips[0].fusion == "produit", 2)

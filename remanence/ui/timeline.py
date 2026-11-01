@@ -17,7 +17,7 @@ import math
 from dataclasses import dataclass
 
 from PySide6.QtCore import QPointF, QRect, QRectF, Qt, Signal
-from PySide6.QtGui import QBrush, QImage, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QBrush, QImage, QPainter, QPainterPath, QPen, QPolygonF
 from PySide6.QtWidgets import (QHBoxLayout, QInputDialog, QMenu, QScrollBar, QSlider, QToolButton,
                                QVBoxLayout, QWidget)
 
@@ -272,6 +272,7 @@ class VueTimeline(QWidget):
             self._dessiner_onde(p, clip, media, r)
         self._dessiner_fondus(p, clip, r)
         self._dessiner_enveloppe(p, clip, r)
+        self._dessiner_cles(p, clip, r)
         # Bandeau du nom, sur la couleur du clip : lisible même par-dessus les vignettes.
         p.fillRect(QRectF(r.left(), r.top(), r.width(), BANDEAU), fond)
         p.setPen(c.c("ink"))
@@ -425,6 +426,24 @@ class VueTimeline(QWidget):
         for x, v in clip.enveloppe:
             px, py = self.x_de(clip.debut + x), self._y_enveloppe(r, v * clip.gain)
             p.fillRect(QRectF(px - 3, py - 3, 6, 6), c.c("ink"))
+
+    def _dessiner_cles(self, p: QPainter, clip: Clip, r: QRectF):
+        """Losanges keyframe en bas du clip, un par instant qui porte une image clé d'effet."""
+        temps = sorted({k[0] for e in clip.effets for cles in e.cles.values() for k in cles
+                        if 0 <= k[0] < clip.duree})
+        if not temps:
+            return
+        c = charte.actuelle()
+        p.save()
+        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setPen(QPen(c.c("bg-app"), 1))
+        p.setBrush(c.c("keyframe"))
+        y = r.bottom() - 6
+        for t in temps:
+            x = self.x_de(clip.debut + t) + self.px_par_image / 2
+            p.drawPolygon(QPolygonF([QPointF(x, y - 4), QPointF(x + 4, y), QPointF(x, y + 4),
+                                     QPointF(x - 4, y)]))
+        p.restore()
 
     def oublier_ondes(self):
         self._ondes.clear()

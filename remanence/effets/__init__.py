@@ -110,3 +110,62 @@ def valeur(effet: Effet, cle: str) -> float:
     if cle in effet.params:
         return effet.params[cle]
     return next(p.defaut for p in EFFETS[effet.type].parametres if p.cle == cle)
+
+
+def valeur_a(effet: Effet, cle: str, t: float) -> float:
+    """Valeur d'un paramètre (ou de l'opacité) au temps t, en suivant ses images clés."""
+    cles = effet.cles.get(cle)
+    if not cles:
+        return effet.opacite if cle == "opacite" else valeur(effet, cle)
+    if t <= cles[0][0]:
+        return cles[0][1]
+    for (t0, v0, mode), (t1, v1, _) in zip(cles, cles[1:]):
+        if t < t1:
+            if mode == "palier" or t1 == t0:
+                return v0
+            return v0 + (v1 - v0) * (t - t0) / (t1 - t0)
+    return cles[-1][1]
+
+
+def instantane(effet: Effet, t: float) -> Effet:
+    """L'effet tel qu'il est au temps t : paramètres et opacité fixés, prêt pour le rendu."""
+    if not effet.cles:
+        return effet
+    d = EFFETS.get(effet.type)
+    params = dict(effet.params)
+    for p in (d.parametres if d else []):
+        if p.cle in effet.cles:
+            params[p.cle] = valeur_a(effet, p.cle, t)
+    return Effet(effet.id, effet.type, params, effet.actif, effet.graine,
+                 valeur_a(effet, "opacite", t), effet.fusion)
+
+
+def poser_cle(effet: Effet, cle: str, t: int, v: float, mode: str | None = None):
+    """Image clé au temps t : remplacée si elle existe, ajoutée sinon."""
+    cles = effet.cles.setdefault(cle, [])
+    for k in cles:
+        if k[0] == t:
+            k[1] = v
+            if mode:
+                k[2] = mode
+            return
+    booleen = any(p.cle == cle and p.booleen for p in EFFETS[effet.type].parametres) \
+        if effet.type in EFFETS else False
+    cles.append([t, v, mode or ("palier" if booleen else "lineaire")])
+    cles.sort(key=lambda k: k[0])
+
+
+def retirer_cle(effet: Effet, cle: str, t: int):
+    """Retire l'image clé au temps t ; sans image clé, le paramètre redevient fixe à sa
+    dernière valeur."""
+    cles = effet.cles.get(cle, [])
+    reste = [k for k in cles if k[0] != t]
+    if reste:
+        effet.cles[cle] = reste
+        return
+    valeur_fixe = valeur_a(effet, cle, t)
+    effet.cles.pop(cle, None)
+    if cle == "opacite":
+        effet.opacite = valeur_fixe
+    else:
+        effet.params[cle] = valeur_fixe

@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QFileDial
                                QWidget)
 
 from remanence.config import reglages_interface
-from remanence.effets import EFFETS
+from remanence.effets import EFFETS, poser_cle, retirer_cle, valeur_a
 from remanence.effets import prereglages
 from remanence.media import intermediaire
 from remanence.media.lecteur import LecteurVideo, generer_cache_audio
@@ -21,7 +21,7 @@ from remanence.media.proxy import chemin_audio, chemin_proxy, generer_proxy, pro
 from remanence.media.sonde import EXTENSIONS_IMAGES, analyser, detecter_sequence_images
 from remanence.projet import edition, serialisation
 from remanence.projet.historique import Historique
-from remanence.projet.modele import Marqueur, Media, Projet, nouvel_id
+from remanence.projet.modele import Clip, Marqueur, Media, Projet, nouvel_id
 from remanence.rendu.couleur import vers_rvb16_apercu, vers_rvba
 from remanence.media.timecode import images_vers_tc
 from remanence.rendu.export import exporter
@@ -837,6 +837,7 @@ class FenetrePrincipale(QMainWindow):
                                            seq.tc_drop, seq.point_entree, seq.point_sortie)
         self.timeline.timecode.afficher(f, seq.tc_debut, seq.fraction_cadence, seq.tc_drop)
         self.timeline.suivre_tete(f)
+        self.inspecteur.actualiser_temps(f)
 
     def _position_source(self, f: int):
         m = self.media_source
@@ -970,17 +971,54 @@ class FenetrePrincipale(QMainWindow):
             libelle = f"Effet {nom} retiré"
         elif champ == "reinitialiser":
             e.params = EFFETS[e.type].valeurs()
+            e.cles, e.opacite, e.fusion = {}, 1.0, "normal"
             libelle = f"Effet {nom} réinitialisé"
-        elif champ in ("actif", "graine"):
+        elif champ in ("actif", "graine", "fusion"):
             if getattr(e, champ) == valeur:
                 return
             setattr(e, champ, valeur)
             libelle = f"Effet {nom}"
         else:
-            if e.params.get(champ) == valeur:
-                return
-            e.params[champ] = valeur
-            libelle = f"Effet {nom}"
+            # Temps des images clés : depuis le début du clip, ou de la séquence.
+            t = self.lecture.position
+            if isinstance(porteur, Clip):
+                t = max(0, min(t - porteur.debut, porteur.duree - 1))
+            if champ.startswith("cle:"):
+                cle = champ[4:]
+                if cle in e.cles and any(k[0] == t for k in e.cles[cle]):
+                    retirer_cle(e, cle, t)
+                    libelle = f"Image clé retirée ({nom})"
+                else:
+                    poser_cle(e, cle, t, valeur_a(e, cle, t))
+                    libelle = f"Image clé ({nom})"
+            elif champ.startswith("interp:"):
+                cle = champ[7:]
+                if valeur == "supprimer":
+                    fixe = valeur_a(e, cle, t)
+                    e.cles.pop(cle, None)
+                    if cle == "opacite":
+                        e.opacite = fixe
+                    else:
+                        e.params[cle] = fixe
+                    libelle = f"Animation retirée ({nom})"
+                else:
+                    for k in e.cles.get(cle, []):
+                        k[2] = valeur
+                    libelle = f"Interpolation ({nom})"
+            elif champ in e.cles:
+                # Réglage animé : l'image clé à la tête de lecture prend la valeur.
+                poser_cle(e, champ, t, valeur)
+                libelle = f"Image clé ({nom})"
+            elif champ == "opacite":
+                if e.opacite == valeur:
+                    return
+                e.opacite = valeur
+                libelle = f"Effet {nom}"
+            else:
+                if e.params.get(champ) == valeur:
+                    return
+                e.params[champ] = valeur
+                libelle = f"Effet {nom}"
         # Différé : l'inspecteur est reconstruit, le réglage qui a parlé ne doit pas disparaître
         # pendant son propre signal.
         QTimer.singleShot(0, lambda: self.valider(libelle))
@@ -1321,7 +1359,7 @@ class FenetrePrincipale(QMainWindow):
             setattr(c, champ, valeur)
         QTimer.singleShot(0, lambda: self.valider({
             "gain": "Niveau", "fondu_entree": "Fondu d'entrée", "fondu_sortie": "Fondu de sortie",
-            "enveloppe": "Enveloppe"}[champ]))
+            "enveloppe": "Enveloppe", "fusion": "Mode de fusion"}[champ]))
 
     def poser_medias(self, ids: list[str], f: int, piste_id: str):
         seq = self.projet.sequence

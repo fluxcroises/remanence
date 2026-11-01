@@ -16,7 +16,7 @@ import numpy as np
 from remanence.media.lecteur import FREQUENCE_MIXAGE, LecteurVideo, Pool
 from remanence.media.proxy import chemin_audio, chemin_proxy
 from remanence.media.sonde import analyser
-from remanence.effets import EFFETS
+from remanence.effets import EFFETS, instantane
 from remanence.projet.modele import Clip, Effet, Media, Projet, Sequence
 from remanence.rendu.couleur import vers_rvb16_apercu, vers_rvba
 from remanence.rendu.gpu import RenduGPU, gpu_demande
@@ -28,12 +28,15 @@ class Couche:
     media: Media | None  # None : clip d'effet, qui transforme ce qui est dessous
     image_source: int
     opacite: float
-    # Effets à appliquer à la couche : ceux du clip, puis ceux de sa piste.
+    # Effets à appliquer à la couche : ceux du clip, puis ceux de sa piste, tels qu'ils sont à
+    # cette image (images clés évaluées).
     effets: list[Effet] = field(default_factory=list)
+    fusion: str = "normal"
 
 
-def actifs(effets: list[Effet]) -> list[Effet]:
-    return [e for e in effets if e.actif and e.type in EFFETS]
+def actifs(effets: list[Effet], t: float = 0) -> list[Effet]:
+    """Effets allumés, figés au temps t (depuis le début de leur porteur)."""
+    return [instantane(e, t) for e in effets if e.actif and e.type in EFFETS]
 
 
 def couches(projet: Projet, seq: Sequence, f: int) -> list[Couche]:
@@ -43,10 +46,10 @@ def couches(projet: Projet, seq: Sequence, f: int) -> list[Couche]:
         presents = piste.clips_a(f)
         for i, c in enumerate(presents):
             if c.est_effet:
-                effets = actifs(c.effets)
+                effets = actifs(c.effets, f - c.debut)
                 opacite = c.facteur(f) * piste.niveau
                 if effets and opacite > 0.0:
-                    resultat.append(Couche(c, None, 0, min(opacite, 1.0), effets))
+                    resultat.append(Couche(c, None, 0, min(opacite, 1.0), effets, c.fusion))
                 continue
             media = projet.medias.get(c.media_id)
             if media is None or media.hors_ligne or media.infos.video is None:
@@ -57,7 +60,8 @@ def couches(projet: Projet, seq: Sequence, f: int) -> list[Couche]:
                 continue
             n = min(c.entree + (f - c.debut), media.infos.video.nb_images - 1)
             resultat.append(Couche(c, media, n, min(opacite, 1.0),
-                                   actifs(c.effets) + actifs(piste.effets)))
+                                   actifs(c.effets, f - c.debut) + actifs(piste.effets, f),
+                                   c.fusion))
     return resultat
 
 
@@ -67,7 +71,7 @@ def identite(pile: list[Couche], seq: Sequence | None = None) -> Couche | None:
     if not pile or (seq is not None and actifs(seq.effets)):
         return None
     haut = pile[-1]
-    if haut.media is None or haut.effets or haut.opacite < 1.0:
+    if haut.media is None or haut.effets or haut.opacite < 1.0 or haut.fusion != "normal":
         return None
     if haut.media.infos.video.alpha and len(pile) > 1:
         return None
@@ -130,12 +134,12 @@ class Compositeur:
             g.commencer(largeur, hauteur)
             for couche in pile:
                 if couche.media is None:
-                    g.effet_dessous(couche.effets, couche.opacite, f)
+                    g.effet_dessous(couche.effets, couche.opacite, f, couche.fusion)
                     continue
                 trame, x0, y0 = self._trame_couche(couche, largeur, hauteur, proxy)
                 g.ajouter(trame, couche.media.infos.video.couleur, couche.opacite, x0, y0,
-                          couche.effets, f)
-            effets = actifs(seq.effets)
+                          couche.effets, f, couche.fusion)
+            effets = actifs(seq.effets, f)
             if effets:
                 g.effets_sequence(effets, f)
             return g.lire()

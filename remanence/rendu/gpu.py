@@ -74,28 +74,66 @@ void main() {
 }
 """
 
-# Fusion « normal » d'une couche sur ce qui est dessous, opacité comprise. Mode dosage : un
-# clip d'effet mêle l'image transformée à l'image d'origine selon son opacité (ses fondus).
+# Fusion d'une couche sur ce qui est dessous, opacité comprise. Mode dosage : un effet ou un
+# clip d'effet mêle l'image transformée à l'image qu'il a reçue, selon son opacité.
+# Modes autres que normal : formules du W3C (Compositing and Blending), sur les couleurs sans
+# prémultiplication ; « luminosité seule » et « couleur seule » sont ses modes luminosity et color.
 FUSION = """
 #version 430
 uniform sampler2D couche;
 uniform sampler2D dessous;
 uniform float opacite;
 uniform int dosage;
+uniform int mode;
 out vec4 sortie;
+
+float lum(vec3 c) { return dot(c, vec3(0.3, 0.59, 0.11)); }
+vec3 ramener(vec3 c) {
+    float l = lum(c);
+    float n = min(c.r, min(c.g, c.b));
+    float x = max(c.r, max(c.g, c.b));
+    if (n < 0.0) c = l + (c - l) * l / (l - n);
+    if (x > 1.0) c = l + (c - l) * (1.0 - l) / (x - l);
+    return c;
+}
+vec3 avec_lum(vec3 c, float l) { return ramener(c + (l - lum(c))); }
+
+vec3 melange(vec3 b, vec3 s) {
+    if (mode == 1) return b + s;
+    if (mode == 2) return b + s - b * s;
+    if (mode == 3) return b * s;
+    if (mode == 4) return abs(b - s);
+    if (mode == 5) return avec_lum(b, lum(s));
+    if (mode == 6) return avec_lum(s, lum(b));
+    return s;
+}
 
 void main() {
     ivec2 p = ivec2(gl_FragCoord.xy);
     vec4 c = texelFetch(couche, p, 0);
     vec4 d = texelFetch(dessous, p, 0);
-    if (dosage == 1) {
-        sortie = mix(d, c, opacite);
-    } else {
-        c *= opacite;
-        sortie = c + d * (1.0 - c.a);
+    if (mode == 0) {
+        if (dosage == 1) {
+            sortie = mix(d, c, opacite);
+        } else {
+            c *= opacite;
+            sortie = c + d * (1.0 - c.a);
+        }
+        return;
     }
+    if (dosage == 0) {
+        c *= opacite;
+    }
+    vec3 cs = c.a > 0.0 ? c.rgb / c.a : vec3(0.0);
+    vec3 cb = d.a > 0.0 ? d.rgb / d.a : vec3(0.0);
+    vec4 r = vec4(c.rgb * (1.0 - d.a) + d.rgb * (1.0 - c.a) + c.a * d.a * melange(cb, cs),
+                  c.a + d.a - c.a * d.a);
+    sortie = dosage == 1 ? mix(d, r, opacite) : r;
 }
 """
+
+INDEX_MODES = {"normal": 0, "addition": 1, "ecran": 2, "produit": 3, "difference": 4,
+               "luminosite": 5, "couleur": 6}
 
 
 def gpu_demande() -> bool:
@@ -156,32 +194,39 @@ class RenduGPU:
         fbo.clear(0.0, 0.0, 0.0, 0.0)
 
     def ajouter(self, image: av.VideoFrame, couleur: Couleur, opacite: float,
-                x0: int = 0, y0: int = 0, effets: list[Effet] = (), numero: int = 0):
+                x0: int = 0, y0: int = 0, effets: list[Effet] = (), numero: int = 0,
+                fusion: str = "normal"):
         """Une couche de média : conversion, ses effets (clip puis piste), fusion dessus."""
         self._convertir(image, couleur, x0, y0)
         couche = self.effets("couche", effets, numero)
-        self._fusionner(couche, opacite, dosage=False)
+        self._fusionner(couche, opacite, dosage=False, fusion=fusion)
 
-    def effet_dessous(self, effets: list[Effet], opacite: float, numero: int):
+    def effet_dessous(self, effets: list[Effet], opacite: float, numero: int,
+                      fusion: str = "normal"):
         """Clip d'effet : transforme tout ce qui est dessous, dosé par son opacité."""
         if not any(e.actif for e in effets):
             return
         self._copier(f"accu{self._courant}", "couche")
         couche = self.effets("couche", effets, numero)
-        self._fusionner(couche, opacite, dosage=True)
+        self._fusionner(couche, opacite, dosage=True, fusion=fusion)
 
-    def _fusionner(self, nom_couche: str, opacite: float, dosage: bool):
-        couche, _ = self._cible(nom_couche, self._taille)
-        dessous, _ = self._cible(f"accu{self._courant}", self._taille)
+    def _fusionner(self, nom_couche: str, opacite: float, dosage: bool, fusion: str = "normal"):
         _, fbo = self._cible(f"accu{1 - self._courant}", self._taille)
+        self._melanger(nom_couche, f"accu{self._courant}", fbo, opacite, dosage, fusion)
+        self._courant = 1 - self._courant
+
+    def _melanger(self, nom_couche: str, nom_dessous: str, fbo, opacite: float, dosage: bool,
+                  fusion: str):
+        couche, _ = self._cible(nom_couche, self._taille)
+        dessous, _ = self._cible(nom_dessous, self._taille)
         fbo.use()
         self.ctx.viewport = (0, 0, *self._taille)
         couche.use(0)
         dessous.use(1)
         self._fusion["opacite"].value = float(opacite)
         self._fusion["dosage"].value = int(dosage)
+        self._fusion["mode"].value = INDEX_MODES.get(fusion, 0)
         self._vao_fusion.render(moderngl.TRIANGLE_STRIP)
-        self._courant = 1 - self._courant
 
     def _copier(self, de: str, vers: str):
         self.ctx.copy_framebuffer(self._cible(vers, self._taille)[1],
@@ -192,12 +237,20 @@ class RenduGPU:
     def effets(self, nom: str, effets: list[Effet], numero: int) -> str:
         """Applique les effets actifs, dans l'ordre, à la texture nom ; renvoie le nom de la
         texture qui porte le résultat (nom ou son double, nom + "_b")."""
-        courant, autre = nom, nom + "_b"
+        noms = [nom, nom + "_b", nom + "_c"]
+        courant = nom
         for effet in effets:
             if not effet.actif or effet.type not in EFFETS:
                 continue
-            self._effet(effet, courant, autre, numero)
-            courant, autre = autre, courant
+            sortie = next(n for n in noms if n != courant)
+            self._effet(effet, courant, sortie, numero)
+            if effet.opacite < 1.0 or effet.fusion != "normal":
+                # L'effet dosé ou mêlé à l'image qu'il a reçue.
+                melange = next(n for n in noms if n not in (courant, sortie))
+                _, fbo = self._cible(melange, self._taille)
+                self._melanger(sortie, courant, fbo, effet.opacite, True, effet.fusion)
+                sortie = melange
+            courant = sortie
         return courant
 
     def _programme(self, cle: str):
@@ -248,7 +301,7 @@ class RenduGPU:
             self._copier(resultat, nom)
 
     def traiter(self, rvba: np.ndarray, effets: list[Effet], numero: int) -> np.ndarray:
-        """Effets appliqués à une image en mémoire (H×L×4 float32 prémultiplié) : vignettes
+        """Effets appliqués à une image en mémoire (H×L×4 float32 prémultiplié) : vignettes
         de la bibliothèque d'effets."""
         h, l = rvba.shape[:2]
         self._taille = (l, h)
