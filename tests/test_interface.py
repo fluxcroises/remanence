@@ -336,13 +336,28 @@ def test_double_ecran_et_programme_externe(fenetre, medias):
     w.importer_chemins([str(medias["prores_hq"])])
     assert _attendre(lambda: len(w.projet.medias) == 1)
     w.poser_medias(list(w.projet.medias), 0, "")
-    w.basculer_double_ecran(True)
+    w.choisir_double_ecran("timeline")
     assert w._double_ecran is not None
     assert w._docks["timeline"].parent() is w._double_ecran
     w.choisir_espace("media")
     assert w._docks["timeline"].isVisible(), "la timeline reste sur le second écran"
-    w.basculer_double_ecran(False)
+    w.choisir_double_ecran(None)
     assert w._double_ecran is None and w._docks["timeline"].parent() is w
+
+    # Comme Resolve : Média, Métadonnées et Historique sur le second écran.
+    w.choisir_espace("montage")
+    w.choisir_double_ecran("panneaux")
+    second = w._double_ecran
+    assert w._docks["medias"].parent() is second
+    assert w.metadonnees.window() is second and w.liste_historique.window() is second
+    assert w._docks["timeline"].isVisible() and w._docks["timeline"].parent() is w
+    assert w.onglets_droite.boutons[1].isHidden(), "plus d'onglet Métadonnées à droite"
+    w.choisir_espace("media")
+    assert w._docks["medias"].isVisible() and w._barre_espaces_2.boutons["media"].isChecked()
+    w.choisir_espace("montage")
+    w.choisir_double_ecran(None)
+    assert _attendre(lambda: w.metadonnees.window() is w, 2)
+    assert w._docks["medias"].parent() is w and not w.onglets_droite.boutons[1].isHidden()
     w.basculer_programme_externe()
     assert w._programme_externe is not None
     w.basculer_programme_externe()
@@ -411,16 +426,17 @@ def test_inspecteur_sections_repliables(fenetre, medias):
     w.poser_medias(list(w.projet.medias), 0, "")
     titres = lambda: {s.titre.text(): s for s in w.inspecteur.findChildren(SectionRepliable)
                       if s.isVisibleTo(w.inspecteur)}
-    assert "Séquence" in titres()
+    assert _attendre(lambda: "Séquence" in titres(), 2)
 
     video = w.projet.sequence.pistes_video[0].clips[0]
     w.timeline.vue._choisir({video.id})
+    assert _attendre(lambda: {"Clip", "Niveau et fondus"} <= set(titres()), 2)
     sections = titres()
-    assert {"Clip", "Niveau et fondus"} <= set(sections)
     sections["Clip"].titre.click()
     assert not sections["Clip"].ouverte()
     w.timeline.vue._choisir(set())
     w.timeline.vue._choisir({video.id})
+    assert _attendre(lambda: "Clip" in titres(), 2)
     assert not titres()["Clip"].ouverte(), "l'état replié est retenu"
     titres()["Clip"].titre.click()
 

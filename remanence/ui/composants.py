@@ -434,6 +434,27 @@ class PanneauOnglets(QStackedWidget):
         self.boutons[i].setChecked(True)
         self.onglet_change.emit(i)
 
+    def masquer_onglet(self, i: int, masque: bool):
+        """Double écran : l'onglet part sur l'autre écran, son bouton disparaît ici."""
+        self.boutons[i].setVisible(not masque)
+        if masque and self.currentIndex() == i:
+            self.choisir(next(k for k, b in enumerate(self.boutons) if not b.isHidden()))
+
+
+class Porte(QWidget):
+    """Emplacement d'un panneau qui peut changer d'écran : on y pose le panneau, on l'en retire."""
+
+    def __init__(self, contenu: QWidget | None = None):
+        super().__init__()
+        self._lay = QVBoxLayout(self)
+        self._lay.setContentsMargins(0, 0, 0, 0)
+        if contenu is not None:
+            self.poser(contenu)
+
+    def poser(self, contenu: QWidget):
+        self._lay.addWidget(contenu)
+        contenu.show()
+
 
 def panneau_onglets(onglets: list[tuple[str, QWidget]], nom: str,
                     parent) -> tuple[QDockWidget, PanneauOnglets]:

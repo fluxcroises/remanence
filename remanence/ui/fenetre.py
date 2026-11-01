@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 from PySide6.QtCore import QEvent, Qt, QTimer
-from PySide6.QtGui import QAction, QGuiApplication, QImage, QKeySequence
+from PySide6.QtGui import QAction, QActionGroup, QGuiApplication, QImage, QKeySequence
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QFileDialog, QInputDialog,
                                QMainWindow, QMessageBox, QSizePolicy, QToolBar, QVBoxLayout,
                                QWidget)
@@ -27,7 +27,7 @@ from remanence.rendu.export import exporter
 from remanence.ui import charte
 from remanence.ui.apropos import APropos
 from remanence.ui.barres import BarreEspaces, BarreTitre
-from remanence.ui.composants import etiquette, panneau, panneau_onglets
+from remanence.ui.composants import Porte, etiquette, panneau, panneau_onglets
 from remanence.ui.erreurs import afficher_erreur
 from remanence.ui.inspecteur import Historique as ListeHistorique
 from remanence.ui.inspecteur import Inspecteur, Metadonnees
@@ -117,6 +117,10 @@ class FenetrePrincipale(QMainWindow):
         self._actif = "programme"
         self._un_seul = False
         self._double_ecran: QMainWindow | None = None
+        # Double écran : None, "panneaux" (comme Resolve) ou "timeline" (timeline seule à côté).
+        self._mode_double: str | None = None
+        self._barre_espaces_2 = None
+        self._docks_ext: dict = {}
         self._programme_externe: QWidget | None = None
         self.inspecteur = Inspecteur()
         self.metadonnees = Metadonnees()
@@ -131,9 +135,16 @@ class FenetrePrincipale(QMainWindow):
         self._docks = {}
         d, self.onglets_gauche = panneau_onglets([("Média", self.medias)], "medias", self)
         self._docks["medias"] = d
+        # Métadonnées et Historique passent sur le second écran en double écran : leurs portes
+        # restent ici, vides le temps du double écran.
+        self._porte_meta = Porte(self.metadonnees)
+        self._porte_histo = Porte(self.liste_historique)
+        for w in (self.metadonnees, self.liste_historique):
+            w.setProperty("role", "panneau")
+            w.setAttribute(Qt.WA_StyledBackground, True)
         d, self.onglets_droite = panneau_onglets(
-            [("Inspecteur", self.inspecteur), ("Métadonnées", self.metadonnees),
-             ("Historique", self.liste_historique)], "droite", self)
+            [("Inspecteur", self.inspecteur), ("Métadonnées", self._porte_meta),
+             ("Historique", self._porte_histo)], "droite", self)
         self._docks["droite"] = d
         self.badge_inspecteur = etiquette("", "badge-accent")
         self.badge_inspecteur.hide()
@@ -178,6 +189,10 @@ class FenetrePrincipale(QMainWindow):
         self._connecter()
         self._afficher_tout()
         self._restaurer_disposition()
+        # Double écran retrouvé au lancement, si le second écran est toujours branché.
+        mode = reglages_interface().value("double_ecran/mode", "")
+        if mode in ("panneaux", "timeline") and len(QGuiApplication.screens()) > 1:
+            QTimer.singleShot(0, lambda: self.choisir_double_ecran(mode))
 
         self._minuterie_auto = QTimer(self)
         self._minuterie_auto.timeout.connect(self._sauvegarde_auto)
@@ -245,12 +260,25 @@ class FenetrePrincipale(QMainWindow):
             self.resizeDocks([d["export"], d["visionneuse"], d["file_export"]], [340, 900, 360],
                              Qt.Horizontal)
             self.resizeDocks([d["visionneuse"], d["timeline"]], [640, 260], Qt.Vertical)
+        elif espace == "media" and self._est_externe("medias"):
+            self.addDockWidget(Qt.LeftDockWidgetArea, d["source"])
+            self.splitDockWidget(d["source"], d["droite"], Qt.Horizontal)
+            self.resizeDocks([d["source"], d["droite"]], [1100, 400], Qt.Horizontal)
         elif espace == "media":
             self.addDockWidget(Qt.LeftDockWidgetArea, d["medias"])
             self.splitDockWidget(d["medias"], d["source"], Qt.Horizontal)
             self.splitDockWidget(d["source"], d["droite"], Qt.Horizontal)
             self.resizeDocks([d["medias"], d["source"], d["droite"]], [620, 660, 380],
                              Qt.Horizontal)
+        elif self._est_externe("medias"):
+            # Double écran façon Resolve : moniteurs, inspecteur et timeline ici.
+            self.addDockWidget(Qt.LeftDockWidgetArea, d["source"])
+            self.addDockWidget(Qt.BottomDockWidgetArea, d["timeline"])
+            self.splitDockWidget(d["source"], d["visionneuse"], Qt.Horizontal)
+            self.splitDockWidget(d["visionneuse"], d["droite"], Qt.Horizontal)
+            self.resizeDocks([d["source"], d["visionneuse"], d["droite"]], [620, 620, 360],
+                             Qt.Horizontal)
+            self.resizeDocks([d["visionneuse"], d["timeline"]], [500, 440], Qt.Vertical)
         else:
             self.addDockWidget(Qt.LeftDockWidgetArea, d["medias"])
             self.addDockWidget(Qt.BottomDockWidgetArea, d["timeline"])
@@ -266,7 +294,7 @@ class FenetrePrincipale(QMainWindow):
 
     def _appliquer_espace(self, espace: str, par_defaut: bool = False):
         reglages = reglages_interface()
-        etat = None if par_defaut else reglages.value(f"disposition/{espace}")
+        etat = None if par_defaut else reglages.value(self._cle_disposition(espace))
         if etat is None or not self.restoreState(etat, VERSION_DISPOSITION):
             self._disposition(espace)
         # Une disposition mémorisée ne doit jamais faire apparaître un panneau d'un autre espace.
@@ -276,11 +304,25 @@ class FenetrePrincipale(QMainWindow):
         if self._un_seul and espace == "montage":
             self.basculer_un_seul_moniteur()
         if espace == "media":
-            self.onglets_droite.choisir(1)
+            self._montrer_metadonnees()
         elif espace == "export":
             self.formulaire_export.actualiser(self.projet, self.chemin)
         self._espace = espace
         self.barre_espaces.activer(espace)
+        if self._barre_espaces_2 is not None:
+            self._barre_espaces_2.activer(espace)
+
+    def _cle_disposition(self, espace: str) -> str:
+        # La disposition façon Resolve n'a pas les mêmes panneaux : elle est retenue à part.
+        suffixe = "/double" if self._mode_double == "panneaux" else ""
+        return f"disposition/{espace}{suffixe}"
+
+    def _montrer_metadonnees(self):
+        if self._mode_double == "panneaux":
+            self._docks_ext["metadonnees"].show()
+            self._docks_ext["metadonnees"].raise_()
+        else:
+            self.onglets_droite.choisir(1)
 
     def focus_initial(self):
         """Le clavier va à la timeline si elle est affichée ; sinon à personne, plutôt qu'au
@@ -291,14 +333,15 @@ class FenetrePrincipale(QMainWindow):
             QApplication.focusWidget().clearFocus()
 
     def _est_externe(self, nom: str) -> bool:
-        return self._double_ecran is not None and nom == "timeline"
+        externes = {"panneaux": {"medias"}, "timeline": {"timeline"}}.get(self._mode_double, set())
+        return nom in externes
 
     def choisir_espace(self, espace: str):
         """Change la disposition ; le projet, la sélection et la tête de lecture ne bougent pas."""
         if espace == self._espace:
             return
-        reglages_interface().setValue(f"disposition/{self._espace}",
-                                                     self.saveState(VERSION_DISPOSITION))
+        reglages_interface().setValue(self._cle_disposition(self._espace),
+                                      self.saveState(VERSION_DISPOSITION))
         self._appliquer_espace(espace)
 
     def _restaurer_disposition(self):
@@ -311,6 +354,7 @@ class FenetrePrincipale(QMainWindow):
         reglages = reglages_interface()
         for espace in PANNEAUX_ESPACE:
             reglages.remove(f"disposition/{espace}")
+            reglages.remove(f"disposition/{espace}/double")
         self._appliquer_espace(self._espace, par_defaut=True)
 
     # Menus et raccourcis
@@ -439,10 +483,25 @@ class FenetrePrincipale(QMainWindow):
         self.a_programme_externe = self._action(
             a, "Programme en plein écran", self.basculer_programme_externe, "Ctrl+F",
             "Montre le programme en plein écran, sur le second écran s'il y en a un. Échap ferme.")
-        self.a_double_ecran = self._action(a, "Double écran", self.basculer_double_ecran,
-                                           aide="Envoie la timeline sur le second écran, "
-                                                "comme dans DaVinci Resolve.")
-        self.a_double_ecran.setCheckable(True)
+        double = a.addMenu("Double écran")
+        self._groupe_double = QActionGroup(self)
+        self.a_doubles = {}
+        for mode, texte, aide in (
+                (None, "Un seul écran", None),
+                ("panneaux", "Panneaux sur le second écran",
+                 "Comme DaVinci Resolve : moniteurs, inspecteur et timeline sur l'écran principal ; "
+                 "Média, Métadonnées et Historique sur le second."),
+                ("timeline", "Timeline sur le second écran",
+                 "La timeline seule sur le second écran, tout le reste sur le principal.")):
+            act = self._action(double, texte, lambda _=False, mode=mode:
+                               self.choisir_double_ecran(mode), aide=aide)
+            act.setCheckable(True)
+            self._groupe_double.addAction(act)
+            self.a_doubles[mode] = act
+        self.a_doubles[None].setChecked(True)
+        double.addSeparator()
+        self.a_echanger = self._action(double, "Échanger les écrans", self.echanger_ecrans,
+                                       aide="L'écran principal devient le second, et inversement.")
         QGuiApplication.instance().screenAdded.connect(lambda _e: self._ecrans_changes())
         QGuiApplication.instance().screenRemoved.connect(lambda _e: self._ecrans_changes())
         self._ecrans_changes()
@@ -482,45 +541,123 @@ class FenetrePrincipale(QMainWindow):
 
     def _ecrans_changes(self):
         deux = len(QGuiApplication.screens()) > 1
-        self.a_double_ecran.setEnabled(deux or self._double_ecran is not None)
-        self.a_double_ecran.setText("Double écran" if deux
-                                    else "Double écran (aucun second écran détecté)")
+        for mode, act in self.a_doubles.items():
+            act.setEnabled(mode is None or deux or self._mode_double == mode)
+            act.setToolTip(act.statusTip() if deux or mode is None
+                           else "Aucun second écran détecté.")
+        self.a_echanger.setEnabled(self._double_ecran is not None and deux)
 
-    def basculer_double_ecran(self, actif: bool | None = None):
-        """La timeline (et ses vumètres) passe dans une fenêtre sur le second écran."""
-        actif = self.a_double_ecran.isChecked() if actif is None else actif
-        if actif and self._double_ecran is None:
-            # Fenêtre sans parent : sinon restoreState() de la fenêtre principale retrouverait la
-            # timeline parmi ses descendants et la rapatrierait au changement d'espace.
-            fenetre = QMainWindow()
-            fenetre.setWindowTitle("Remanence · Timeline")
-            fenetre.setWindowIcon(self.windowIcon())
-            fenetre.setCentralWidget(QWidget())
-            fenetre.centralWidget().hide()
+    def choisir_double_ecran(self, mode: str | None):
+        """Un seul écran, panneaux sur le second écran (comme Resolve), ou timeline seule à côté."""
+        if mode == self._mode_double:
+            return
+        if self._mode_double is not None:
+            self._quitter_double_ecran()
+        if mode is not None:
+            self._entrer_double_ecran(mode)
+        self.a_doubles[self._mode_double].setChecked(True)
+        self._ecrans_changes()
+
+    def _entrer_double_ecran(self, mode: str):
+        reglages_interface().setValue(self._cle_disposition(self._espace),
+                                      self.saveState(VERSION_DISPOSITION))
+        # Fenêtre sans parent : sinon restoreState() de la fenêtre principale retrouverait ses
+        # panneaux parmi ses descendants et les rapatrierait au changement d'espace.
+        # Sans cadre comme la fenêtre principale ; elle se ferme par Affichage > Double écran.
+        fenetre = QMainWindow(None, Qt.Window | Qt.FramelessWindowHint)
+        fenetre.setWindowTitle("Remanence · " + ("Panneaux" if mode == "panneaux" else "Timeline"))
+        fenetre.setWindowIcon(self.windowIcon())
+        fenetre.setCentralWidget(QWidget())
+        fenetre.centralWidget().hide()
+        fenetre.setDockNestingEnabled(True)
+        self._mode_double = mode
+        self._double_ecran = fenetre
+        if mode == "timeline":
             dock = self._docks["timeline"]
             self.removeDockWidget(dock)
             fenetre.addDockWidget(Qt.BottomDockWidgetArea, dock)
             dock.show()
-            fenetre.closeEvent = lambda e: (e.accept(), self.basculer_double_ecran(False))
-            ecran = self._autre_ecran()
-            if ecran is not None:
-                fenetre.setGeometry(ecran.availableGeometry())
-                fenetre.showMaximized()
-            else:
-                fenetre.resize(1400, 500)
-                fenetre.show()
-            self._double_ecran = fenetre
-        elif not actif and self._double_ecran is not None:
-            fenetre, self._double_ecran = self._double_ecran, None
+        else:
+            medias = self._docks["medias"]
+            self.removeDockWidget(medias)
+            fenetre.addDockWidget(Qt.LeftDockWidgetArea, medias)
+            medias.show()
+            self.onglets_droite.choisir(0)
+            for i in (1, 2):
+                self.onglets_droite.masquer_onglet(i, True)
+            self._docks_ext = {}
+            for cle, titre, widget in (("metadonnees", "Métadonnées", self.metadonnees),
+                                       ("historique", "Historique", self.liste_historique)):
+                d, _ = panneau(titre, Porte(widget), f"{cle}_second_ecran", fenetre)
+                fenetre.splitDockWidget(medias, d, Qt.Horizontal) if cle == "metadonnees" \
+                    else fenetre.splitDockWidget(self._docks_ext["metadonnees"], d, Qt.Vertical)
+                self._docks_ext[cle] = d
+            fenetre.resizeDocks([medias, self._docks_ext["metadonnees"]], [1100, 500],
+                                Qt.Horizontal)
+            # Boutons pour afficher ou masquer chaque panneau du second écran, comme dans Resolve.
+            barre = QToolBar("Panneaux")
+            barre.setObjectName("panneaux_second_ecran")
+            barre.setMovable(False)
+            for dock, titre in ((medias, "Média"), (self._docks_ext["metadonnees"], "Métadonnées"),
+                                (self._docks_ext["historique"], "Historique")):
+                act = dock.toggleViewAction()
+                act.setText(titre)
+                act.setToolTip(f"Afficher ou masquer le panneau {titre}")
+                barre.addAction(act)
+                bouton = barre.widgetForAction(act)
+                bouton.setProperty("variante", "panneau")
+                bouton.setFocusPolicy(Qt.NoFocus)
+            fenetre.addToolBar(Qt.TopToolBarArea, barre)
+        # Barre des espaces en bas des deux écrans.
+        self._barre_espaces_2 = BarreEspaces(QWidget())
+        self._barre_espaces_2.espace_choisi.connect(self.choisir_espace)
+        bas = QToolBar("Espaces de travail")
+        bas.setMovable(False)
+        bas.addWidget(self._barre_espaces_2)
+        fenetre.addToolBar(Qt.BottomToolBarArea, bas)
+        fenetre.closeEvent = lambda e: (e.accept(), self.choisir_double_ecran(None))
+        ecran = self._autre_ecran()
+        if ecran is not None:
+            fenetre.setGeometry(ecran.availableGeometry())
+            fenetre.showMaximized()
+        else:
+            fenetre.resize(1400, 800)
+            fenetre.show()
+        self._appliquer_espace(self._espace)
+
+    def _quitter_double_ecran(self):
+        fenetre, self._double_ecran = self._double_ecran, None
+        mode, self._mode_double = self._mode_double, None
+        if mode == "timeline":
             dock = self._docks["timeline"]
             fenetre.removeDockWidget(dock)
             self.addDockWidget(Qt.BottomDockWidgetArea, dock)
-            fenetre.closeEvent = lambda e: e.accept()
-            fenetre.close()
-            fenetre.deleteLater()
-            self._appliquer_espace(self._espace, par_defaut=True)
-        self.a_double_ecran.setChecked(self._double_ecran is not None)
-        self._ecrans_changes()
+        else:
+            dock = self._docks["medias"]
+            fenetre.removeDockWidget(dock)
+            self.addDockWidget(Qt.LeftDockWidgetArea, dock)
+            self._porte_meta.poser(self.metadonnees)
+            self._porte_histo.poser(self.liste_historique)
+            for i in (1, 2):
+                self.onglets_droite.masquer_onglet(i, False)
+            self._docks_ext = {}
+        self._barre_espaces_2 = None
+        fenetre.closeEvent = lambda e: e.accept()
+        fenetre.close()
+        fenetre.deleteLater()
+        self._appliquer_espace(self._espace)
+
+    def echanger_ecrans(self):
+        """Comme le choix de l'écran principal de Resolve : les deux fenêtres changent d'écran."""
+        if self._double_ecran is None:
+            return
+        ecran_principal, ecran_second = self.screen(), self._double_ecran.screen()
+        if ecran_principal is ecran_second:
+            return
+        for fenetre, ecran in ((self, ecran_second), (self._double_ecran, ecran_principal)):
+            fenetre.showNormal()
+            fenetre.setGeometry(ecran.availableGeometry())
+            fenetre.showMaximized()
 
     def basculer_programme_externe(self):
         if self._programme_externe is not None:
@@ -714,7 +851,7 @@ class FenetrePrincipale(QMainWindow):
     def _media_choisi(self, media):
         if media is not None:
             self.metadonnees.afficher(media)
-            self.onglets_droite.choisir(1)
+            self._montrer_metadonnees()
             self.charger_source(media)
 
     def charger_source(self, media: Media):
@@ -1369,10 +1506,11 @@ class FenetrePrincipale(QMainWindow):
             e.ignore()
             return
         reglages = reglages_interface()
-        reglages.setValue(f"disposition/{self._espace}", self.saveState(VERSION_DISPOSITION))
+        reglages.setValue(self._cle_disposition(self._espace), self.saveState(VERSION_DISPOSITION))
         reglages.setValue("espace_actif", self._espace)
+        reglages.setValue("double_ecran/mode", self._mode_double or "")
         if self._double_ecran is not None:
-            self.basculer_double_ecran(False)
+            self.choisir_double_ecran(None)
         if self._programme_externe is not None:
             self._programme_externe.close()
         self.taches.tout_annuler()
