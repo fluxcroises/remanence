@@ -479,3 +479,39 @@ def test_timecode_de_debut_au_choix(fenetre, medias):
         assert d.valeur() == w._timecode_premier_clip()
     finally:
         reglages_interface().setValue(CLE_PREFERENCE, "clip")
+
+
+def test_effets_depuis_l_interface(fenetre, medias):
+    """Ajouter un effet sur un clip, une piste, la séquence ; le régler, le retirer, l'annuler."""
+    from remanence.ui.composants import LigneParametre, SectionRepliable
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    w.timeline.vue._choisir({clip.id})
+    w.ajouter_effet("clip", clip.id, "decalage_rvb", "Fort")
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    assert [e.type for e in clip.effets] == ["decalage_rvb"]
+    assert _attendre(lambda: "Décalage RVB" in {s.titre.text() for s in
+                                                w.inspecteur.findChildren(SectionRepliable)
+                                                if s.isVisibleTo(w.inspecteur)}, 2)
+    force = next(l for l in w.inspecteur.findChildren(LigneParametre) if l.libelle.text() == "Force")
+    force.valeur_finale.emit(12.0)
+    assert _attendre(lambda: w.projet.sequence.pistes_video[0].clips[0].effets[0].params["force"]
+                     == 12.0, 2)
+    effet_id = w.projet.sequence.pistes_video[0].clips[0].effets[0].id
+    w.reglage_effet(effet_id, "retirer", None)
+    assert _attendre(lambda: not w.projet.sequence.pistes_video[0].clips[0].effets, 2)
+    w.annuler()
+    assert w.projet.sequence.pistes_video[0].clips[0].effets
+
+    piste = w.projet.sequence.pistes_video[0]
+    w.choisir_piste(piste.id)
+    w.ajouter_effet("piste", piste.id, "scanlines", None)
+    assert w.projet.sequence.pistes_video[0].effets and w._piste_choisie == piste.id
+    w.ajouter_effet("sequence", "", "vhs", "Usée")
+    w.ajouter_clip_effet("blocs_deplaces", "Chaos")
+    seq = w.projet.sequence
+    assert seq.effets and any(c.est_effet for p in seq.pistes for c in p.clips)
+    assert _attendre(lambda: w.visionneuse.zone._image is not None, 5)

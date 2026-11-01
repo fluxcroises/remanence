@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QListWidget, QListWidgetItem,
-                               QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget)
+import random
 
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (QCheckBox, QGridLayout, QHBoxLayout, QListWidget, QListWidgetItem,
+                               QMenu, QPushButton, QScrollArea, QSizePolicy, QToolButton,
+                               QVBoxLayout, QWidget)
+
+from remanence.effets import EFFETS
+from remanence.effets import valeur as valeur_effet
 from remanence.media.timecode import images_vers_tc
 from remanence.projet.modele import Media, Projet
-from remanence.ui.composants import LigneParametre, SectionRepliable, bouton_icone, etiquette
+from remanence.ui.composants import (LigneParametre, SectionRepliable, bouton_icone, etiquette,
+                                     poser_icone)
+from remanence.ui.menu_effets import remplir_menu_effets
 
 
 def _effacer(layout):
@@ -176,6 +183,10 @@ class Inspecteur(PanneauFiche):
     # (clip_id, champ, valeur) ; la fenêtre applique et enregistre dans l'historique.
     reglage = Signal(str, str, object)
     timecode_demande = Signal()
+    # (effet_id, champ, valeur) : un paramètre, "actif", "graine", "reinitialiser", "retirer".
+    reglage_effet = Signal(str, str, object)
+    # (genre "clip" | "piste" | "sequence", identifiant, clé de l'effet, préréglage ou None)
+    ajout_effet = Signal(str, str, str, object)
     # Texte du badge de l'en-tête (« Clip vidéo », « Clip audio »), vide sans sélection.
     badge = Signal(str)
 
@@ -208,12 +219,24 @@ class Inspecteur(PanneauFiche):
             ("Clips", str(sum(len(p.clips) for p in seq.pistes))),
             ("Marqueurs", str(len(seq.marqueurs)))])
         b = QPushButton("Changer le timecode de début…")
-
         b.clicked.connect(self.timecode_demande.emit)
         rang = QHBoxLayout()
         rang.addWidget(b)
         rang.addStretch(1)
         self._cible.addLayout(rang)
+        self._effets("sequence", seq.id, seq.effets, "Effets de séquence")
+
+    def piste(self, projet: Projet, piste_id: str):
+        seq = projet.sequence
+        piste = next((p for p in seq.pistes if p.id == piste_id), None)
+        if piste is None:
+            self.vide(projet)
+            return
+        self._vider()
+        self.badge.emit("Piste")
+        self._titre(piste.nom, f"Piste {nom_court_piste(seq, piste)}")
+        if piste.type == "video":
+            self._effets("piste", piste.id, piste.effets, "Effets de piste")
 
     def clip(self, projet: Projet, clip_id: str):
         seq = projet.sequence
@@ -225,24 +248,27 @@ class Inspecteur(PanneauFiche):
         media = projet.medias.get(c.media_id)
         video = piste.type == "video"
         cad = seq.fraction_cadence
-        self.badge.emit("Clip vidéo" if video else "Clip audio")
+        self.badge.emit("Clip d'effet" if c.est_effet else "Clip vidéo" if video else "Clip audio")
         debut = images_vers_tc(seq.tc_debut + c.debut, cad, seq.tc_drop)
         fin = images_vers_tc(seq.tc_debut + c.fin, cad, seq.tc_drop)
-        self._titre(media.nom if media else "Média manquant",
-                    f"Piste {nom_court_piste(seq, piste)} · {debut} à {fin}")
+        titre = "Clip d'effet" if c.est_effet else media.nom if media else "Média manquant"
+        self._titre(titre, f"Piste {nom_court_piste(seq, piste)} · {debut} à {fin}")
 
         self._section("Clip", "clip")
-        if media and media.infos.video and media.infos.video.tc_debut is not None:
+        if c.est_effet:
+            self._lignes([("Durée", f"{images_vers_tc(c.duree, cad)} · {c.duree} images")])
+        elif media and media.infos.video and media.infos.video.tc_debut is not None:
             v = media.infos.video
             entree = images_vers_tc(v.tc_debut + c.entree, v.fraction_cadence, v.tc_drop)
             sortie = images_vers_tc(v.tc_debut + c.entree + c.duree, v.fraction_cadence,
                                     v.tc_drop)
         else:
             entree, sortie = f"image {c.entree}", f"image {c.entree + c.duree}"
-        self._lignes([("Durée", f"{images_vers_tc(c.duree, cad)} · {c.duree} images"),
-                      ("Entrée source", entree),
-                      ("Sortie source", sortie),
-                      ("Liaison", "liée au son ou à l'image" if c.lien else "indépendante")])
+        if not c.est_effet:
+            self._lignes([("Durée", f"{images_vers_tc(c.duree, cad)} · {c.duree} images"),
+                          ("Entrée source", entree),
+                          ("Sortie source", sortie),
+                          ("Liaison", "liée au son ou à l'image" if c.lien else "indépendante")])
 
         section = self._section("Niveau et fondus", "niveau")
         if c.gain != 1.0 or c.fondu_entree or c.fondu_sortie:
@@ -251,13 +277,11 @@ class Inspecteur(PanneauFiche):
             raz.clicked.connect(lambda: self.reglage.emit(c.id, "reinitialiser", None))
             section.ajouter_outil(raz)
         niveau = LigneParametre("Opacité" if video else "Volume", 0, 100, c.gain * 100, "%",
-                                100, 1, "" if video
-                                else "")
+                                100, 1)
         niveau.valeur_finale.connect(lambda v: self.reglage.emit(c.id, "gain", v / 100))
         self._cible.addWidget(niveau)
         for champ, nom in (("fondu_entree", "Fondu d'entrée"), ("fondu_sortie", "Fondu de sortie")):
-            ligne = LigneParametre(nom, 0, c.duree, getattr(c, champ), "images", 0, 0,
-                                   "")
+            ligne = LigneParametre(nom, 0, c.duree, getattr(c, champ), "images", 0, 0)
             ligne.champ.setFixedWidth(96)
             ligne.valeur_finale.connect(lambda v, champ=champ: self.reglage.emit(c.id, champ,
                                                                                  round(v)))
@@ -272,3 +296,62 @@ class Inspecteur(PanneauFiche):
             rang.addWidget(b)
             rang.addStretch(1)
             self._cible.addLayout(rang)
+        if video:
+            self._effets("clip", c.id, c.effets, "Effets")
+
+    # Effets : une section par effet, réglages construits depuis la description de l'effet.
+
+    def _effets(self, genre: str, porteur_id: str, effets: list, titre: str):
+        for e in effets:
+            d = EFFETS.get(e.type)
+            if d is None:
+                continue
+            section = self._section(d.nom, f"effet-{e.type}")
+            actif = bouton_icone("eye" if e.actif else "eye-off", "Activer ou couper l'effet",
+                                 cochable=True, taille=14)
+            actif.setChecked(e.actif)
+            actif.toggled.connect(lambda v, e=e: self.reglage_effet.emit(e.id, "actif", v))
+            section.ajouter_outil(actif)
+            raz = bouton_icone("rotate-ccw", "Réinitialiser", taille=14)
+            raz.clicked.connect(lambda _=False, e=e: self.reglage_effet.emit(
+                e.id, "reinitialiser", None))
+            section.ajouter_outil(raz)
+            retirer = bouton_icone("x", "Retirer l'effet", taille=14)
+            retirer.clicked.connect(lambda _=False, e=e: self.reglage_effet.emit(
+                e.id, "retirer", None))
+            section.ajouter_outil(retirer)
+            for p in d.parametres:
+                if p.booleen:
+                    case = QCheckBox(p.nom)
+                    case.setChecked(valeur_effet(e, p.cle) > 0.5)
+                    case.toggled.connect(lambda v, e=e, p=p: self.reglage_effet.emit(
+                        e.id, p.cle, 1.0 if v else 0.0))
+                    self._cible.addWidget(case)
+                    continue
+                ligne = LigneParametre(p.nom, p.minimum, p.maximum, valeur_effet(e, p.cle), p.unite,
+                                       p.defaut, p.decimales)
+                ligne.valeur_finale.connect(lambda v, e=e, p=p: self.reglage_effet.emit(
+                    e.id, p.cle, v))
+                self._cible.addWidget(ligne)
+            rang = QHBoxLayout()
+            rang.addWidget(etiquette("Tirage", "libelle"))
+            rang.addWidget(etiquette(str(e.graine), "valeur"), 1)
+            tirage = QPushButton("Autre tirage")
+            tirage.clicked.connect(lambda _=False, e=e: self.reglage_effet.emit(
+                e.id, "graine", random.randrange(1, 1 << 31)))
+            rang.addWidget(tirage)
+            self._cible.addLayout(rang)
+        self._cible = self._lay
+        ajout = QToolButton()
+        ajout.setText("Ajouter un effet" if not effets else "Ajouter un autre effet")
+        poser_icone(ajout, "plus", 14)
+        ajout.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        ajout.setPopupMode(QToolButton.InstantPopup)
+        menu = QMenu(ajout)
+        remplir_menu_effets(menu, lambda cle, pr: self.ajout_effet.emit(genre, porteur_id,
+                                                                        cle, pr))
+        ajout.setMenu(menu)
+        rang = QHBoxLayout()
+        rang.addWidget(ajout)
+        rang.addStretch(1)
+        self._lay.addLayout(rang)

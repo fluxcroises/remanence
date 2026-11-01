@@ -1,12 +1,12 @@
 """Composition sur la carte graphique (OpenGL 4.3 hors écran, un contexte par fil d'exécution).
 
-Les plans YUV sont envoyés tels quels, en textures entières : la carte graphique les convertit
+Les plans YUV sont envoyés tels quels, en textures entières : la carte graphique les convertit
 avec la matrice et la plage du fichier, comme `couleur.vers_rvba`, puis fusionne les couches de
-bas en haut en flottant 32 bits, alpha prémultiplié. On garde 32 bits plutôt que les 16 du cahier
-des charges : en 16 bits flottants, une source 12 bits (ProRes 4444) perdrait de la précision.
+bas en haut en flottant 32 bits, alpha prémultiplié. On garde 32 bits plutôt que les 16 du cahier
+des charges : en 16 bits flottants, une source 12 bits (ProRes 4444) perdrait de la précision.
 
 Sans effet, le résultat est celui du calcul sur le processeur (`Compositeur` sans carte
-graphique) : `tests/test_gpu.py` le vérifie au pixel près.
+graphique) : `tests/test_gpu.py` le vérifie au pixel près.
 """
 
 from __future__ import annotations
@@ -16,7 +16,9 @@ import os
 import av
 import numpy as np
 
+from remanence.effets import COMMUN, EFFETS, valeur
 from remanence.media.sonde import Couleur
+from remanence.projet.modele import Effet
 from remanence.rendu.couleur import _est_yuv, _plage_complete, _plans, coefficients
 
 try:
@@ -72,19 +74,26 @@ void main() {
 }
 """
 
-# Fusion « normal » d'une couche sur ce qui est dessous, opacité comprise.
+# Fusion « normal » d'une couche sur ce qui est dessous, opacité comprise. Mode dosage : un
+# clip d'effet mêle l'image transformée à l'image d'origine selon son opacité (ses fondus).
 FUSION = """
 #version 430
 uniform sampler2D couche;
 uniform sampler2D dessous;
 uniform float opacite;
+uniform int dosage;
 out vec4 sortie;
 
 void main() {
     ivec2 p = ivec2(gl_FragCoord.xy);
-    vec4 c = texelFetch(couche, p, 0) * opacite;
+    vec4 c = texelFetch(couche, p, 0);
     vec4 d = texelFetch(dessous, p, 0);
-    sortie = c + d * (1.0 - c.a);
+    if (dosage == 1) {
+        sortie = mix(d, c, opacite);
+    } else {
+        c *= opacite;
+        sortie = c + d * (1.0 - c.a);
+    }
 }
 """
 
@@ -111,6 +120,7 @@ class RenduGPU:
         self._fusion["dessous"].value = 1
         self._textures: dict[tuple, moderngl.Texture] = {}
         self._cibles: dict[tuple, tuple] = {}
+        self._programmes: dict[str, tuple] = {}
         self._taille = (0, 0)
         self._courant = 0
 
@@ -146,17 +156,96 @@ class RenduGPU:
         fbo.clear(0.0, 0.0, 0.0, 0.0)
 
     def ajouter(self, image: av.VideoFrame, couleur: Couleur, opacite: float,
-                x0: int = 0, y0: int = 0):
+                x0: int = 0, y0: int = 0, effets: list[Effet] = (), numero: int = 0):
+        """Une couche de média : conversion, ses effets (clip puis piste), fusion dessus."""
         self._convertir(image, couleur, x0, y0)
-        couche, _ = self._cible("couche", self._taille)
+        couche = self.effets("couche", effets, numero)
+        self._fusionner(couche, opacite, dosage=False)
+
+    def effet_dessous(self, effets: list[Effet], opacite: float, numero: int):
+        """Clip d'effet : transforme tout ce qui est dessous, dosé par son opacité."""
+        if not any(e.actif for e in effets):
+            return
+        self._copier(f"accu{self._courant}", "couche")
+        couche = self.effets("couche", effets, numero)
+        self._fusionner(couche, opacite, dosage=True)
+
+    def _fusionner(self, nom_couche: str, opacite: float, dosage: bool):
+        couche, _ = self._cible(nom_couche, self._taille)
         dessous, _ = self._cible(f"accu{self._courant}", self._taille)
         _, fbo = self._cible(f"accu{1 - self._courant}", self._taille)
         fbo.use()
+        self.ctx.viewport = (0, 0, *self._taille)
         couche.use(0)
         dessous.use(1)
         self._fusion["opacite"].value = float(opacite)
+        self._fusion["dosage"].value = int(dosage)
         self._vao_fusion.render(moderngl.TRIANGLE_STRIP)
         self._courant = 1 - self._courant
+
+    def _copier(self, de: str, vers: str):
+        self.ctx.copy_framebuffer(self._cible(vers, self._taille)[1],
+                                  self._cible(de, self._taille)[1])
+
+    # Effets
+
+    def effets(self, nom: str, effets: list[Effet], numero: int) -> str:
+        """Applique les effets actifs, dans l'ordre, à la texture nom ; renvoie le nom de la
+        texture qui porte le résultat (nom ou son double, nom + "_b")."""
+        courant, autre = nom, nom + "_b"
+        for effet in effets:
+            if not effet.actif or effet.type not in EFFETS:
+                continue
+            self._effet(effet, courant, autre, numero)
+            courant, autre = autre, courant
+        return courant
+
+    def _programme(self, cle: str):
+        if cle not in self._programmes:
+            d = EFFETS[cle]
+            entete = "#version 430\n" + COMMUN
+            if d.calcul:
+                prog = self.ctx.compute_shader(entete + d.calcul)
+                self._programmes[cle] = (prog, None)
+            else:
+                prog = self.ctx.program(vertex_shader=SOMMETS,
+                                        fragment_shader=entete + "out vec4 sortie;\n" + d.fragment)
+                vao = self.ctx.vertex_array(prog, [(self._vbo, "2f", "pos")])
+                self._programmes[cle] = (prog, vao)
+        return self._programmes[cle]
+
+    def _effet(self, effet: Effet, de: str, vers: str, numero: int):
+        d = EFFETS[effet.type]
+        prog, vao = self._programme(effet.type)
+        source, _ = self._cible(de, self._taille)
+        cible, fbo = self._cible(vers, self._taille)
+        source.use(0)
+        reglages = {"source": 0, "taille": self._taille, "numero": int(numero),
+                    "graine": int(effet.graine) & 0xFFFFFFFF}
+        for p in d.parametres:
+            reglages[f"p_{p.cle}"] = float(valeur(effet, p.cle))
+        for nom, val in reglages.items():
+            # Le compilateur retire les réglages inutilisés : ils n'existent plus dans le programme.
+            if nom in prog:
+                prog[nom].value = val
+        if vao is None:
+            cible.bind_to_image(0, read=False, write=True)
+            l, h = self._taille
+            vertical = (any(p.cle == "vertical" for p in d.parametres)
+                        and float(valeur(effet, "vertical")) > 0.5)
+            prog.run(group_x=l if vertical else h)
+            self.ctx.memory_barrier()
+        else:
+            fbo.use()
+            self.ctx.viewport = (0, 0, *self._taille)
+            vao.render(moderngl.TRIANGLE_STRIP)
+
+    def effets_sequence(self, effets: list[Effet], numero: int):
+        """Effets de séquence, sur l'image entière, après toutes les pistes."""
+        nom = f"accu{self._courant}"
+        resultat = self.effets(nom, effets, numero)
+        if resultat != nom:
+            self._copier(resultat, nom)
 
     def lire(self) -> np.ndarray:
         """L'image composée, H×L×4 float32, première ligne en haut."""

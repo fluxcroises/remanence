@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import copy
 
-from remanence.projet.modele import (Clip, Media, Piste, Projet, Sequence, nouvel_id,
-                                     valeur_enveloppe)
+from remanence.projet.modele import (ENTREE_CLIP_EFFET, Clip, Effet, Media, Piste, Projet,
+                                     Sequence, nouvel_id, valeur_enveloppe)
 
 
 class EditionImpossible(Exception):
@@ -25,6 +25,13 @@ def regler_sequence_sur_media(seq: Sequence, media: Media):
     seq.tc_debut = v.tc_debut or 0
     seq.tc_drop = v.tc_drop
     seq.reglee = True
+
+
+def longueur_source(projet: Projet, seq: Sequence, c: Clip) -> int:
+    """Longueur de ce que montre le clip ; un clip d'effet peut s'étendre sans limite."""
+    if c.est_effet:
+        return 2 * ENTREE_CLIP_EFFET
+    return projet.medias[c.media_id].nb_images(seq.fraction_cadence)
 
 
 def _piste_type(seq: Sequence, type_: str, apres: Piste | None = None) -> Piste:
@@ -109,7 +116,10 @@ def liberer(piste: Piste, debut: int, fin: int, exclure: set[str]):
             nouveaux.append(gauche)
         if c.fin > fin:
             droite = copy.deepcopy(c)
-            droite.id = nouvel_id() if c.debut < debut else c.id
+            if c.debut < debut:
+                # La partie gauche garde l'identité du clip ; celle-ci devient un autre clip.
+                droite.id = nouvel_id()
+                _renouveler_effets(droite)
             _rogner_debut(droite, fin - c.debut)
             nouveaux.append(droite)
     piste.clips = nouveaux
@@ -213,7 +223,7 @@ def rogner(projet: Projet, seq: Sequence, clip_id: str, cote: str, delta: int,
         if p.verrouillee:
             raise EditionImpossible(f"La piste « {p.nom} » est verrouillée.")
     for _, c in clips:
-        longueur = projet.medias[c.media_id].nb_images(seq.fraction_cadence)
+        longueur = longueur_source(projet, seq, c)
         if cote == "debut":
             delta = max(delta, -c.entree, -c.debut)
             delta = min(delta, c.duree - 1)
@@ -248,7 +258,7 @@ def _rogner_ripple(projet: Projet, seq: Sequence, clip_id: str, cote: str, delta
         if p.verrouillee:
             raise EditionImpossible(f"La piste « {p.nom} » est verrouillée.")
     for _, c in clips:
-        longueur = projet.medias[c.media_id].nb_images(seq.fraction_cadence)
+        longueur = longueur_source(projet, seq, c)
         if cote == "debut":
             delta = min(max(delta, -c.entree), c.duree - 1)
         else:
@@ -303,7 +313,7 @@ def glisser_contenu(projet: Projet, seq: Sequence, clip_id: str, delta: int,
     for p, c in clips:
         if p.verrouillee:
             raise EditionImpossible(f"La piste « {p.nom} » est verrouillée.")
-        longueur = projet.medias[c.media_id].nb_images(seq.fraction_cadence)
+        longueur = longueur_source(projet, seq, c)
         delta = min(max(delta, -c.entree), longueur - c.entree - c.duree)
     for _, c in clips:
         c.entree += delta
@@ -327,7 +337,7 @@ def faire_glisser(projet: Projet, seq: Sequence, clip_id: str, delta: int,
             raise EditionImpossible(f"La piste « {p.nom} » est verrouillée.")
         avant, apres = _voisins(p, c)
         if avant is not None:
-            fin_media = projet.medias[avant.media_id].nb_images(seq.fraction_cadence)
+            fin_media = longueur_source(projet, seq, avant)
             delta = max(min(delta, fin_media - avant.entree - avant.duree), 1 - avant.duree)
         else:
             delta = max(delta, -c.debut)
@@ -363,7 +373,7 @@ def rouler(projet: Projet, seq: Sequence, clip_id: str, delta: int,
     if not paires:
         return 0
     for c, apres in paires:
-        fin_media = projet.medias[c.media_id].nb_images(seq.fraction_cadence)
+        fin_media = longueur_source(projet, seq, c)
         delta = max(min(delta, fin_media - c.entree - c.duree, apres.duree - 1),
                     1 - c.duree, -apres.entree)
     for c, apres in paires:
@@ -393,6 +403,7 @@ def couper(seq: Sequence, f: int, ids: set[str] | None = None) -> list[str]:
                 continue
             droite = copy.deepcopy(c)
             droite.id = nouvel_id()
+            _renouveler_effets(droite)
             if c.lien:
                 droite.lien = nouveaux_liens.setdefault(c.lien, nouvel_id())
             _rogner_debut(droite, f - c.debut)
@@ -494,3 +505,63 @@ def aimanter(valeur: int, cibles: list[int], seuil: int) -> int:
     if meilleure is not None and abs(meilleure - valeur) <= seuil:
         return meilleure
     return valeur
+
+
+# Effets
+
+def _renouveler_effets(c: Clip):
+    """Un clip dupliqué (coupe) reçoit ses propres effets, indépendants de ceux de l'original."""
+    for e in c.effets:
+        e.id = nouvel_id()
+
+
+def porteurs_effets(seq: Sequence):
+    """Tout ce qui peut porter des effets : la séquence, ses pistes, ses clips."""
+    yield seq
+    for p in seq.pistes:
+        yield p
+        yield from p.clips
+
+
+def trouver_effet(seq: Sequence, effet_id: str):
+    for porteur in porteurs_effets(seq):
+        for e in porteur.effets:
+            if e.id == effet_id:
+                return porteur, e
+    return None, None
+
+
+def ajouter_effet(porteur, effet: Effet):
+    """Ajoute un effet en fin de chaîne d'un clip, d'une piste vidéo ou de la séquence."""
+    if isinstance(porteur, Piste) and porteur.type != "video":
+        raise EditionImpossible("Les effets vont sur les pistes vidéo.")
+    porteur.effets.append(effet)
+
+
+def retirer_effet(seq: Sequence, effet_id: str):
+    porteur, e = trouver_effet(seq, effet_id)
+    if porteur is not None:
+        porteur.effets.remove(e)
+
+
+def deplacer_effet(seq: Sequence, effet_id: str, sens: int):
+    """Monte (sens -1) ou descend (sens 1) un effet dans sa chaîne."""
+    porteur, e = trouver_effet(seq, effet_id)
+    if porteur is None:
+        return
+    i = porteur.effets.index(e)
+    j = max(0, min(len(porteur.effets) - 1, i + sens))
+    porteur.effets.insert(j, porteur.effets.pop(i))
+
+
+def ajouter_clip_effet(seq: Sequence, debut: int, duree: int, effets: list[Effet]) -> Clip:
+    """Clip d'effet sur la piste vidéo du haut ; si elle est occupée à cet endroit, sur une
+    nouvelle piste au-dessus, pour ne rien écraser."""
+    haut = seq.pistes_video[0] if seq.pistes_video else None
+    if haut is None or haut.verrouillee or any(c.fin > debut and c.debut < debut + duree
+                                               for c in haut.clips):
+        haut = ajouter_piste(seq, "video")
+    c = Clip(nouvel_id(), "", max(0, debut), ENTREE_CLIP_EFFET, max(1, duree), effets=effets)
+    haut.clips.append(c)
+    haut.trier()
+    return c

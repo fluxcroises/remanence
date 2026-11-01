@@ -63,6 +63,22 @@ class Media:
 
 
 @dataclass
+class Effet:
+    """Un effet posé sur un clip, une piste ou la séquence. type : clé d'une description de
+    `remanence.effets` ; params : valeur de chaque paramètre ; graine : tirage du hasard."""
+    id: str
+    type: str
+    params: dict = field(default_factory=dict)
+    actif: bool = True
+    graine: int = 1
+
+
+# Un clip d'effet n'a pas de média : il transforme tout ce qui est sous lui. Son entrée est
+# placée loin dans une source imaginaire, pour qu'on puisse le rallonger des deux côtés.
+ENTREE_CLIP_EFFET = 1_000_000
+
+
+@dataclass
 class Clip:
     id: str
     media_id: str
@@ -74,10 +90,15 @@ class Clip:
     enveloppe: list[list[float]] = field(default_factory=list)
     fondu_entree: int = 0
     fondu_sortie: int = 0
+    effets: list[Effet] = field(default_factory=list)
 
     @property
     def fin(self) -> int:
         return self.debut + self.duree
+
+    @property
+    def est_effet(self) -> bool:
+        return not self.media_id
 
     def contient(self, f: int) -> bool:
         return self.debut <= f < self.fin
@@ -127,6 +148,7 @@ class Piste:
     # Hauteur choisie à la souris ; None : la hauteur par défaut de la charte.
     hauteur: int | None = None
     clips: list[Clip] = field(default_factory=list)
+    effets: list[Effet] = field(default_factory=list)
 
     def clips_a(self, f: int) -> list[Clip]:
         """Clips présents à l'image f, du plus ancien au plus récent (deux lors d'un fondu)."""
@@ -163,6 +185,7 @@ class Sequence:
     marqueurs: list[Marqueur] = field(default_factory=list)
     point_entree: int | None = None
     point_sortie: int | None = None
+    effets: list[Effet] = field(default_factory=list)
 
     @property
     def fraction_cadence(self) -> Fraction:
@@ -235,7 +258,8 @@ class Projet:
         return ids
 
     def clips_du_media(self, media_id: str) -> int:
-        return sum(1 for s in self.sequences for _, c in s.tous_les_clips() if c.media_id == media_id)
+        return sum(1 for s in self.sequences for _, c in s.tous_les_clips()
+                   if c.media_id and c.media_id == media_id)
 
     @staticmethod
     def nouveau() -> "Projet":
@@ -273,10 +297,21 @@ class Projet:
             pistes = []
             for pd in sd.pop("pistes", []):
                 pd = dict(pd)
-                clips = [Clip(**c) for c in pd.pop("clips", [])]
-                pistes.append(Piste(**pd, clips=clips))
+                clips = []
+                for c in pd.pop("clips", []):
+                    c = dict(c)
+                    effets = _effets(c.pop("effets", None))
+                    clips.append(Clip(**c, effets=effets))
+                effets = _effets(pd.pop("effets", None))
+                pistes.append(Piste(**pd, clips=clips, effets=effets))
             marqueurs = [Marqueur(**m) for m in sd.pop("marqueurs", [])]
-            p.sequences.append(Sequence(**sd, pistes=pistes, marqueurs=marqueurs))
+            effets = _effets(sd.pop("effets", None))
+            p.sequences.append(Sequence(**sd, pistes=pistes, marqueurs=marqueurs, effets=effets))
         if not p.sequences:
             return Projet.nouveau()
         return p
+
+
+def _effets(liste: list[dict] | None) -> list[Effet]:
+    """Les effets enregistrés ; absents des projets d'avant l'étape 2."""
+    return [Effet(**e) for e in (liste or [])]

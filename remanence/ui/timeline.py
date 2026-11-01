@@ -24,12 +24,14 @@ from PySide6.QtWidgets import (QHBoxLayout, QInputDialog, QMenu, QScrollBar, QSl
 from remanence.media.lecteur import AudioCache
 from remanence.media.proxy import chemin_audio
 from remanence.media.timecode import images_vers_tc
+from remanence.effets import EFFETS
 from remanence.projet import edition
 from remanence.projet.modele import Clip, Marqueur, Piste, Projet, valeur_enveloppe
 from remanence.ui import charte
 from remanence.ui.composants import ChampTimecode, Vumetres, bouton_icone, etiquette
 from remanence.ui.inspecteur import nom_court_piste
 from remanence.ui.medias import MIME_MEDIA
+from remanence.ui.menu_effets import remplir_menu_effets
 
 HAUTEUR_REGLE = 28
 HAUTEUR_MARQUEURS = 20
@@ -250,7 +252,7 @@ class VueTimeline(QWidget):
             return
         media = self.projet.medias.get(clip.media_id)
         video = piste.type == "video"
-        fond = c.c("clip-video" if video else "clip-audio")
+        fond = c.c("clip-effect" if clip.est_effet else "clip-video" if video else "clip-audio")
         rayon = c.px("radius-xs")
         forme = QPainterPath()
         forme.addRoundedRect(r, rayon, rayon)
@@ -267,12 +269,29 @@ class VueTimeline(QWidget):
         p.fillRect(QRectF(r.left(), r.top(), r.width(), BANDEAU), fond)
         p.setPen(c.c("ink"))
         p.setFont(c.police("label"))
-        nom = media.nom if media else "Média manquant"
+        if clip.est_effet:
+            noms = [EFFETS[e.type].nom for e in clip.effets if e.type in EFFETS]
+            nom = "Clip d'effet" + (" · " + ", ".join(noms) if noms else "")
+        else:
+            nom = media.nom if media else "Média manquant"
         if media and media.hors_ligne:
             nom += " (hors ligne)"
         if clip.lien is None and media and media.infos.video and media.infos.audio:
             nom += " · dissocié"
-        p.drawText(QRectF(r.left() + 8, r.top(), r.width() - 16, BANDEAU),
+        badge = 0.0
+        if clip.effets and not clip.est_effet and r.width() > 60:
+            # Badge « fx » de la charte (ton accent : effet actif), à droite du bandeau.
+            p.setFont(c.police("caption"))
+            badge = p.fontMetrics().horizontalAdvance("FX") + 10
+            zone = QRectF(r.right() - badge - 4, r.top() + 2, badge, BANDEAU - 4)
+            p.setPen(Qt.NoPen)
+            p.setBrush(c.c("accent-soft"))
+            p.drawRoundedRect(zone, rayon, rayon)
+            p.setPen(c.c("accent" if any(e.actif for e in clip.effets) else "ink-muted"))
+            p.drawText(zone, Qt.AlignCenter, "FX")
+            p.setFont(c.police("label"))
+            p.setPen(c.c("ink"))
+        p.drawText(QRectF(r.left() + 8, r.top(), r.width() - 16 - badge, BANDEAU),
                    Qt.AlignVCenter | Qt.AlignLeft, nom)
         for gauche in (True, False):
             hx = r.left() + clip.fondu_entree * self.px_par_image if gauche else \
@@ -705,6 +724,10 @@ class VueTimeline(QWidget):
                 self._choisir({clip.id})
             menu.addAction("Couper à la tête de lecture (S)", fenetre.couper)
             menu.addAction("Supprimer (Suppr)", fenetre.supprimer)
+            if self.projet.sequence.trouver(clip.id)[0].type == "video":
+                effets = menu.addMenu("Ajouter un effet")
+                remplir_menu_effets(effets, lambda cle, pr: fenetre.ajouter_effet(
+                    "clip", clip.id, cle, pr))
             if clip.lien:
                 menu.addAction("Dissocier son et image (U)", fenetre.dissocier)
             elif len(self.selection) > 1:
@@ -837,6 +860,10 @@ class EntetePiste(QWidget):
 
         self.nom.mouseDoubleClickEvent = lambda e: self.renommer()
         lay.addWidget(self.nom, 1)
+        if piste.effets:
+            fx = etiquette("FX", "badge-accent")
+            fx.setToolTip(", ".join(EFFETS[e.type].nom for e in piste.effets if e.type in EFFETS))
+            lay.addWidget(fx)
         if not video:
             for lettre, champ, aide in (("M", "muette", "Muet"),
                                         ("S", "solo", "Solo")):
@@ -885,6 +912,10 @@ class EntetePiste(QWidget):
         menu = QMenu(self)
         f = self.fenetre
         menu.addAction("Renommer…", self.renommer)
+        if self.piste.type == "video":
+            effets = menu.addMenu("Ajouter un effet de piste")
+            remplir_menu_effets(effets, lambda cle, pr: f.ajouter_effet(
+                "piste", self.piste.id, cle, pr))
         menu.addAction(f"Niveau de la piste ({self._texte_niveau()})…", self._regler_niveau)
         if self.piste.type == "video":
             solo = menu.addAction("Solo",
@@ -932,6 +963,9 @@ class EntetePiste(QWidget):
         if e.button() == Qt.LeftButton and e.position().y() >= self.height() - POIGNEE_HAUTEUR:
             self._tirer = (e.position().y(), self.height())
             return
+        if e.button() == Qt.LeftButton:
+            # Un clic sur l'en-tête montre la piste et ses effets dans l'inspecteur.
+            self.fenetre.choisir_piste(self.piste.id)
         super().mousePressEvent(e)
 
     def mouseReleaseEvent(self, e):

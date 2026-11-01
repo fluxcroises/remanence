@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QFileDial
                                QWidget)
 
 from remanence.config import reglages_interface
-from remanence.ui.dialogue_timecode import DialogueTimecode, preference, timecode_une_heure
+from remanence.effets import EFFETS, nouvel_effet
 from remanence.media import intermediaire
 from remanence.media.lecteur import LecteurVideo, generer_cache_audio
 from remanence.media.proxy import chemin_audio, chemin_proxy, generer_proxy, proxy_utile
@@ -28,11 +28,13 @@ from remanence.ui import charte
 from remanence.ui.apropos import APropos
 from remanence.ui.barres import BarreEspaces, BarreTitre
 from remanence.ui.composants import Porte, etiquette, panneau, panneau_onglets
+from remanence.ui.dialogue_timecode import DialogueTimecode, preference, timecode_une_heure
 from remanence.ui.erreurs import afficher_erreur
 from remanence.ui.inspecteur import Historique as ListeHistorique
 from remanence.ui.inspecteur import Inspecteur, Metadonnees
 from remanence.ui.lecture import MoteurLecture
 from remanence.ui.medias import PanneauMedias
+from remanence.ui.menu_effets import remplir_menu_effets
 from remanence.ui.panneau_export import FileExport, FormulaireExport
 from remanence.ui.taches import GestionnaireTaches, Tache
 from remanence.ui.timeline import Timeline
@@ -115,6 +117,8 @@ class FenetrePrincipale(QMainWindow):
         self.lecture_source = MoteurLecture()
         self.media_source: Media | None = None
         self._actif = "programme"
+        # Piste dont l'inspecteur montre les effets (clic sur son en-tête).
+        self._piste_choisie: str | None = None
         self._un_seul = False
         self._double_ecran: QMainWindow | None = None
         # Double écran : None, "panneaux" (comme Resolve) ou "timeline" (timeline seule à côté).
@@ -424,6 +428,10 @@ class FenetrePrincipale(QMainWindow):
         self._action(mo, "Ajouter une piste vidéo", lambda: self.ajouter_piste("video"))
         self._action(mo, "Ajouter une piste audio", lambda: self.ajouter_piste("audio"))
         mo.addSeparator()
+        remplir_menu_effets(mo.addMenu("Ajouter un clip d'effet"), self.ajouter_clip_effet)
+        remplir_menu_effets(mo.addMenu("Ajouter un effet de séquence"),
+                            lambda cle, pr: self.ajouter_effet("sequence", "", cle, pr))
+        mo.addSeparator()
         self._action(mo, "Ajouter un marqueur", self.marqueur, "M")
         mo.addSeparator()
         self._action(mo, "Timecode de début de la séquence…", self.regler_timecode_debut,
@@ -708,6 +716,8 @@ class FenetrePrincipale(QMainWindow):
         vue.selection_changee.connect(self._selection)
         vue.media_depose.connect(self.poser_medias)
         self.inspecteur.reglage.connect(self._reglage_clip)
+        self.inspecteur.reglage_effet.connect(self.reglage_effet)
+        self.inspecteur.ajout_effet.connect(self.ajouter_effet)
         self.inspecteur.timecode_demande.connect(self.regler_timecode_debut)
         self.liste_historique.aller.connect(self._aller_historique)
         self.formulaire_export.lancer.connect(self._lancer_export)
@@ -834,6 +844,8 @@ class FenetrePrincipale(QMainWindow):
         return max(1, round(float(self.projet.sequence.fraction_cadence)))
 
     def _selection(self, ids: set):
+        if ids:
+            self._piste_choisie = None
         if len(ids) == 1:
             clip_id = next(iter(ids))
             self.inspecteur.clip(self.projet, clip_id)
@@ -843,8 +855,65 @@ class FenetrePrincipale(QMainWindow):
                 self.metadonnees.afficher(media)
             if self.onglets_droite.currentIndex() == 1 and self._espace == "montage":
                 self.onglets_droite.choisir(0)
+        elif not ids and self._piste_choisie is not None:
+            self.inspecteur.piste(self.projet, self._piste_choisie)
         else:
             self.inspecteur.vide(self.projet, len(ids))
+
+    def choisir_piste(self, piste_id: str):
+        self.timeline.vue._choisir(set())
+        self._piste_choisie = piste_id
+        self.inspecteur.piste(self.projet, piste_id)
+        self.onglets_droite.choisir(0)
+
+    # Effets
+
+    def ajouter_effet(self, genre: str, porteur_id: str, cle: str, prereglage):
+        """genre : "clip", "piste" ou "sequence"."""
+        seq = self.projet.sequence
+        if genre == "sequence":
+            porteur = seq
+        elif genre == "piste":
+            porteur = next((p for p in seq.pistes if p.id == porteur_id), None)
+        else:
+            porteur = seq.trouver(porteur_id)[1]
+        if porteur is None:
+            return
+        self._tenter(f"Effet {EFFETS[cle].nom}",
+                     lambda: edition.ajouter_effet(porteur, nouvel_effet(cle, prereglage)))
+
+    def ajouter_clip_effet(self, cle: str, prereglage):
+        """Clip d'effet de 5 secondes à la tête de lecture."""
+        seq = self.projet.sequence
+        clip = edition.ajouter_clip_effet(seq, self.lecture.position, 5 * self._cadence(),
+                                          [nouvel_effet(cle, prereglage)])
+        self.valider("Clip d'effet")
+        self.timeline.vue._choisir({clip.id})
+
+    def reglage_effet(self, effet_id: str, champ: str, valeur):
+        porteur, e = edition.trouver_effet(self.projet.sequence, effet_id)
+        if e is None:
+            return
+        nom = EFFETS[e.type].nom if e.type in EFFETS else e.type
+        if champ == "retirer":
+            porteur.effets.remove(e)
+            libelle = f"Effet {nom} retiré"
+        elif champ == "reinitialiser":
+            e.params = EFFETS[e.type].valeurs()
+            libelle = f"Effet {nom} réinitialisé"
+        elif champ in ("actif", "graine"):
+            if getattr(e, champ) == valeur:
+                return
+            setattr(e, champ, valeur)
+            libelle = f"Effet {nom}"
+        else:
+            if e.params.get(champ) == valeur:
+                return
+            e.params[champ] = valeur
+            libelle = f"Effet {nom}"
+        # Différé : l'inspecteur est reconstruit, le réglage qui a parlé ne doit pas disparaître
+        # pendant son propre signal.
+        QTimer.singleShot(0, lambda: self.valider(libelle))
 
     def _media_choisi(self, media):
         if media is not None:

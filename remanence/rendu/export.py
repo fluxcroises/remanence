@@ -129,9 +129,9 @@ def _compatible(v: InfosVideo, fmt: FormatExport, seq: Sequence) -> bool:
 
 def media_reference(projet: Projet, seq: Sequence, debut: int, fin: int) -> Media | None:
     for f in range(debut, fin):
-        pile = couches(projet, seq, f)
-        if pile:
-            return pile[-1].media
+        media = next((c.media for c in reversed(couches(projet, seq, f)) if c.media), None)
+        if media is not None:
+            return media
     return None
 
 
@@ -177,7 +177,7 @@ def exporter(projet: Projet, seq: Sequence, chemin: Path, cle_format: str = "sou
     n_images = fin - debut
 
     piles = [couches(projet, seq, f) for f in range(debut, fin)]
-    idents = [identite(p) for p in piles]
+    idents = [identite(p, seq) for p in piles]
     remux_total = (
         ref is not None and all(i is not None and i.media.id == ref.id for i in idents)
         and [i.image_source for i in idents] == list(range(ref.infos.video.nb_images))
