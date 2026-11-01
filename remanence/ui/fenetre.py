@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QFileDial
 from remanence.config import reglages_interface
 from remanence.effets import EFFETS, poser_cle, retirer_cle, valeur_a
 from remanence.effets.masques import nouveau_masque
+from remanence.moteurs.codec import prerendu
 from remanence.effets import prereglages
 from remanence.media import intermediaire
 from remanence.media.lecteur import LecteurVideo, generer_cache_audio
@@ -125,6 +126,8 @@ class FenetrePrincipale(QMainWindow):
         self._piste_choisie: str | None = None
         # Effet dont les masques se modifient sur l'image du programme.
         self._masques_effet = ""
+        # Pré-rendus codec en cours : empreinte -> clip.
+        self._prerendus: dict[str, str] = {}
         self._un_seul = False
         self._double_ecran: QMainWindow | None = None
         # Double écran : None, "panneaux" (comme Resolve) ou "timeline" (timeline seule à côté).
@@ -772,6 +775,43 @@ class FenetrePrincipale(QMainWindow):
         QTimer.singleShot(duree_ms, lambda: self.barre_espaces.message.text() == texte
                           and self.barre_espaces.message.setText(""))
 
+    def _lancer_prerendus(self):
+        """Datamosh (moteur codec) : chaque clip dont le pré-rendu manque est calculé en
+        arrière-plan ; l'aperçu le montre dès qu'il est prêt."""
+        seq = self.projet.sequence
+        for _, clip in seq.tous_les_clips():
+            k = prerendu.cle(self.projet, seq, clip)
+            if k is None or k in self._prerendus or prerendu.chemin(k).exists():
+                continue
+            # Le calcul travaille sur une copie : le montage peut continuer pendant ce temps.
+            projet = Projet.depuis_dict(self.projet.vers_dict())
+            for m in projet.medias.values():
+                m.hors_ligne = self.projet.medias[m.id].hors_ligne
+            copie_seq = projet.sequence
+            copie_clip = copie_seq.trouver(clip.id)[1]
+            self._prerendus[k] = clip.id
+            nom = self.projet.medias[clip.media_id].nom
+
+            def travail(progression, annule, projet=projet, s=copie_seq, c=copie_clip):
+                return prerendu.calculer(projet, s, c, progression, annule)
+
+            def fini(_r, k=k):
+                self._prerendus.pop(k, None)
+                self._afficher_calculs()
+                self.lecture.rafraichir()
+
+            def echec(message, detail, k=k):
+                self._prerendus.pop(k, None)
+                self._afficher_calculs()
+                afficher_erreur(self, "Datamosh impossible", message, detail)
+            self.taches.lancer(Tache(f"Datamosh : {nom}", travail), fini, echec,
+                               lambda k=k: (self._prerendus.pop(k, None), self._afficher_calculs()))
+        self._afficher_calculs()
+
+    def _afficher_calculs(self):
+        self.timeline.vue.en_calcul = set(self._prerendus.values())
+        self.timeline.vue.update()
+
     def _afficher_tout(self):
         self.medias.afficher(self.projet)
         self.timeline.afficher(self.projet)
@@ -827,6 +867,7 @@ class FenetrePrincipale(QMainWindow):
             self.modifie = True
         self._afficher_tout()
         self._actualiser_calque()
+        self._lancer_prerendus()
 
     def _remplacer_projet(self, projet: Projet):
         hors_ligne = {m.id: m.hors_ligne for m in self.projet.medias.values()}
@@ -1643,6 +1684,7 @@ class FenetrePrincipale(QMainWindow):
         self.projet = Projet.nouveau()
         self.historique = Historique(self.projet)
         self.chemin = None
+        prerendu.definir_projet(self.chemin)
         self.modifie = False
         self._derniere_sauvegarde = None
         self.timeline.vue.selection = set()
@@ -1675,6 +1717,7 @@ class FenetrePrincipale(QMainWindow):
         self.projet = projet
         self.historique = Historique(projet)
         self.chemin = chemin
+        prerendu.definir_projet(self.chemin)
         self.modifie = source != chemin
         self._derniere_sauvegarde = chemin.stat().st_mtime if chemin.exists() else None
         self.timeline.vue.selection = set()
@@ -1711,6 +1754,7 @@ class FenetrePrincipale(QMainWindow):
         if not chemin:
             return False
         self.chemin = Path(chemin).with_suffix(serialisation.EXTENSION)
+        prerendu.definir_projet(self.chemin)
         return self.enregistrer()
 
     def _sauvegarde_auto(self):

@@ -469,7 +469,12 @@ class Inspecteur(PanneauFiche):
                 e.id, "retirer", None))
             section.ajouter_outil(retirer)
             for p in d.parametres:
-                bouton = self._bouton_cle(e, p.cle, origine)
+                if d.codec:
+                    # Moteur codec : un seul calcul pour tout le clip, pas d'image clé.
+                    bouton = QWidget()
+                    bouton.setFixedSize(18, 18)
+                else:
+                    bouton = self._bouton_cle(e, p.cle, origine)
                 if p.booleen:
                     case = QCheckBox(p.nom)
                     case.setChecked(valeur_a(e, p.cle, t) > 0.5)
@@ -480,14 +485,16 @@ class Inspecteur(PanneauFiche):
                     rang.addWidget(bouton)
                     rang.addWidget(case, 1)
                     self._cible.addLayout(rang)
-                    self._animes.append((e, p.cle, origine, case, bouton, 1.0))
+                    if not d.codec:
+                        self._animes.append((e, p.cle, origine, case, bouton, 1.0))
                     continue
                 ligne = LigneParametre(p.nom, p.minimum, p.maximum, valeur_a(e, p.cle, t),
                                        p.unite, p.defaut, p.decimales, cle=bouton)
                 ligne.valeur_finale.connect(lambda v, e=e, p=p: self.reglage_effet.emit(
                     e.id, p.cle, v))
                 self._cible.addWidget(ligne)
-                self._animes.append((e, p.cle, origine, ligne, bouton, 1.0))
+                if not d.codec:
+                    self._animes.append((e, p.cle, origine, ligne, bouton, 1.0))
             bouton = self._bouton_cle(e, "opacite", origine)
             opacite = LigneParametre("Opacité", 0, 100, valeur_a(e, "opacite", t) * 100, "%",
                                      100, 0, cle=bouton)

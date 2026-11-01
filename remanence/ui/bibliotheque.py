@@ -13,8 +13,9 @@ from PySide6.QtWidgets import (QAbstractItemView, QHBoxLayout, QInputDialog, QLi
                                QListView, QListWidget, QListWidgetItem, QMenu, QMessageBox,
                                QStyle, QStyledItemDelegate, QToolButton, QVBoxLayout, QWidget)
 
-from remanence.effets import FAMILLES
+from remanence.effets import EFFETS, FAMILLES
 from remanence.effets import prereglages as pr
+from remanence.moteurs.codec import prerendu
 from remanence.rendu.gpu import RenduGPU, gpu_demande
 from remanence.ui import charte
 from remanence.ui.composants import bouton_icone, etiquette
@@ -133,6 +134,7 @@ class PanneauEffets(QWidget):
         self.prereglages: list[pr.Prereglage] = []
         self.actifs: set[str] = set()
         self._vignettes: dict[int, QImage] = {}
+        self._animations_codec: dict[int, list] = {}
         self._gpu: RenduGPU | None = None
         self._gpu_essaye = False
         self._survole: int | None = None
@@ -189,6 +191,7 @@ class PanneauEffets(QWidget):
         """Relit les préréglages (après l'ajout ou la suppression d'un préréglage personnel)."""
         self.prereglages = pr.tous()
         self._vignettes.clear()
+        self._animations_codec.clear()
         self._remplir()
 
     def _filtrer(self, famille: str):
@@ -231,7 +234,29 @@ class PanneauEffets(QWidget):
                     self._gpu = None
         return self._gpu
 
+    def _codec(self, i: int) -> list[np.ndarray] | None:
+        """Préréglage codec : toute l'animation passée une fois par le moteur Bavure."""
+        effets = self.prereglages[i].nouveaux_effets()
+        if not any(EFFETS[e.type].codec for e in effets):
+            return None
+        if i not in self._animations_codec:
+            # Une coupe à mi-chemin (second plan : l'image en miroir), pour que la suppression
+            # d'images clés ait un raccord où baver.
+            images = []
+            for n in range(IMAGES_ANIMATION):
+                rvb = np.clip(image_demo(n)[..., :3], 0, 1)
+                if n >= IMAGES_ANIMATION // 2:
+                    rvb = rvb[::-1, ::-1]
+                images.append(np.ascontiguousarray((rvb * 255 + 0.5).astype(np.uint8)))
+            self._animations_codec[i] = prerendu.apercu(images, effets)
+        return self._animations_codec[i]
+
     def _calculer(self, i: int, numero: int) -> QImage:
+        codec = self._codec(i)
+        if codec is not None:
+            rvb = np.ascontiguousarray(codec[numero % IMAGES_ANIMATION])
+            h, l = rvb.shape[:2]
+            return QImage(rvb.data, l, h, 3 * l, QImage.Format_RGB888).copy()
         image = image_demo(numero)
         g = self._rendu()
         if g is not None:

@@ -548,6 +548,11 @@ def ajouter_effet(porteur, effet: Effet):
     """Ajoute un effet en fin de chaîne d'un clip, d'une piste vidéo ou de la séquence."""
     if isinstance(porteur, Piste) and porteur.type != "video":
         raise EditionImpossible("Les effets vont sur les pistes vidéo.")
+    from remanence.effets import EFFETS
+    if effet.type in EFFETS and EFFETS[effet.type].codec and \
+            not (isinstance(porteur, Clip) and not porteur.est_effet):
+        # Le moteur codec réencode les images d'un média : il lui faut un clip.
+        raise EditionImpossible(f"{EFFETS[effet.type].nom} se pose sur un clip.")
     porteur.effets.append(effet)
 
 

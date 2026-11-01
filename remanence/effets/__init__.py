@@ -40,6 +40,14 @@ class DescriptionEffet:
     fragment: str = ""
     calcul: str = ""
     prereglages: dict[str, dict] = field(default_factory=dict)
+    # Moteur codec : pas de programme pour la carte graphique, mais traiter(paquets, valeurs,
+    # graine) qui abîme le flux MPEG-4 du clip ; calculé en arrière-plan, gardé en cache.
+    moteur: str = "temps_reel"
+    traiter: object = None
+
+    @property
+    def codec(self) -> bool:
+        return self.moteur == "codec"
 
     def valeurs(self, prereglage: str | None = None) -> dict:
         v = {p.cle: p.defaut for p in self.parametres}
@@ -98,7 +106,7 @@ def _charger():
 
 _charger()
 
-FAMILLES = ["Corruption", "Couleur", "Pixels", "Signal"]
+FAMILLES = ["Datamosh", "Corruption", "Couleur", "Pixels", "Signal"]
 
 
 def nouvel_effet(cle: str, prereglage: str | None = None) -> Effet:

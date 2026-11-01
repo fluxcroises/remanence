@@ -524,7 +524,7 @@ def test_bibliotheque_d_effets(fenetre, medias, monkeypatch):
     from remanence.effets import prereglages as pr
     w = fenetre
     b = w.bibliotheque
-    assert b.vue.count() == 15
+    assert b.vue.count() == len(pr.fournis())
     b._filtrer("Signal")
     assert b.vue.count() == 6
     b._filtrer("")
@@ -547,7 +547,7 @@ def test_bibliotheque_d_effets(fenetre, medias, monkeypatch):
     monkeypatch.setattr(QInputDialog, "getText", staticmethod(lambda *a, **k: ("Mon décalage", True)))
     w.enregistrer_prereglage(clip.effets)
     assert any(p.nom == "Mon décalage" and not p.fourni for p in b.prereglages)
-    assert b.vue.count() == 16
+    assert b.vue.count() == len(pr.fournis()) + 1
 
     piste = w.projet.sequence.pistes_video[0]
     w._prereglage_depose(anaglyphe, "vide", piste.id, 40)
@@ -624,3 +624,21 @@ def test_masques_depuis_l_interface(fenetre, medias):
     assert _attendre(lambda: abs(effet().masques[0].points[0][0] - 0.35) < 0.02, 2), "déplacé"
     w.reglage_masque(effet().id, effet().masques[0].id, "retirer", None)
     assert _attendre(lambda: not effet().masques and not calque.isVisible(), 2)
+
+
+def test_datamosh_calcule_en_arriere_plan(fenetre, medias):
+    """Un effet codec posé : le pré-rendu se calcule seul, le badge le dit, puis il est prêt."""
+    from remanence.effets import nouvel_effet
+    from remanence.moteurs.codec import prerendu
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    w.ajouter_effet("clip", clip.id, [nouvel_effet("bloom", "Fonte courte")])
+    seq = w.projet.sequence
+    clip = seq.pistes_video[0].clips[0]
+    assert clip.id in w.timeline.vue.en_calcul or prerendu.pret(w.projet, seq, clip)
+    assert _attendre(lambda: prerendu.pret(w.projet, w.projet.sequence,
+                                           w.projet.sequence.pistes_video[0].clips[0]), 10)
+    assert _attendre(lambda: not w.timeline.vue.en_calcul, 5)

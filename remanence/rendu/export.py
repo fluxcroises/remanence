@@ -249,7 +249,8 @@ def exporter(projet: Projet, seq: Sequence, chemin: Path, cle_format: str = "sou
         avertissements.append("GIF : durée de chaque image arrondie au centième de seconde.")
     numero_depart = seq.tc_debut + debut
     partiel = chemin.with_name(chemin.stem + ".partiel" + chemin.suffix)
-    compositeur = Compositeur(projet)
+    # Synchrone : les pré-rendus codec manquants sont calculés pendant l'export.
+    compositeur = Compositeur(projet, synchrone=True)
     lecteurs_paquets: dict[str, LecteurPaquets] = {}
     sources_ouvertes = []
     copiees = calculees = 0

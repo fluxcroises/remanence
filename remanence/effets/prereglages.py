@@ -32,9 +32,10 @@ class Prereglage:
 
     @property
     def description(self) -> str:
-        """« Effet · temps réel », ou la liste des effets d'une pile."""
-        noms = [EFFETS[e["type"]].nom for e in self.effets if e["type"] in EFFETS]
-        return " + ".join(noms) + " · temps réel"
+        """« Effet · temps réel » ou « Effet · moteur codec », ou la liste d'une pile."""
+        connus = [EFFETS[e["type"]] for e in self.effets if e["type"] in EFFETS]
+        moteur = "moteur codec" if any(d.codec for d in connus) else "temps réel"
+        return " + ".join(d.nom for d in connus) + " · " + moteur
 
     def nouveaux_effets(self) -> list[Effet]:
         """Effets neufs, prêts à poser : chacun garde ses réglages et reste modifiable."""

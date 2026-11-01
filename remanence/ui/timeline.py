@@ -93,6 +93,8 @@ class VueTimeline(QWidget):
         self._depot: tuple[int, str] | None = None
         # Cible d'un préréglage en cours de glisser : ("clip", id, 0) ou ("vide", piste, image).
         self._cible_fx: tuple[str, str, int] | None = None
+        # Clips dont le pré-rendu codec (datamosh) se calcule en arrière-plan.
+        self.en_calcul: set[str] = set()
         self.survol_coupe: float | None = None
         self._ondes: dict[str, object] = {}
         self.setMouseTracking(True)
@@ -290,13 +292,14 @@ class VueTimeline(QWidget):
         if clip.effets and not clip.est_effet and r.width() > 60:
             # Badge « fx » de la charte (ton accent : effet actif), à droite du bandeau.
             p.setFont(c.police("caption"))
-            badge = p.fontMetrics().horizontalAdvance("FX") + 10
+            texte_badge = "Calcul…" if clip.id in self.en_calcul else "FX"
+            badge = p.fontMetrics().horizontalAdvance(texte_badge) + 10
             zone = QRectF(r.right() - badge - 4, r.top() + 2, badge, BANDEAU - 4)
             p.setPen(Qt.NoPen)
             p.setBrush(c.c("accent-soft"))
             p.drawRoundedRect(zone, rayon, rayon)
             p.setPen(c.c("accent" if any(e.actif for e in clip.effets) else "ink-muted"))
-            p.drawText(zone, Qt.AlignCenter, "FX")
+            p.drawText(zone, Qt.AlignCenter, texte_badge)
             p.setFont(c.police("label"))
             p.setPen(c.c("ink"))
         p.drawText(QRectF(r.left() + 8, r.top(), r.width() - 16 - badge, BANDEAU),

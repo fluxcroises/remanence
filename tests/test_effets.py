@@ -32,7 +32,7 @@ def _image(projet, f=5, echelle=1.0):
         c.fermer()
 
 
-@pytest.mark.parametrize("cle", sorted(EFFETS))
+@pytest.mark.parametrize("cle", sorted(c for c, d in EFFETS.items() if not d.codec))
 def test_chaque_effet_a_0_50_et_100(medias, cle):
     projet, clip = _projet(medias)
     source = _image(projet)
@@ -137,7 +137,8 @@ def test_sauvegarde_coupe_et_retrait(medias):
 
 def test_prereglages_personnels():
     from remanence.effets import prereglages as pr
-    assert len(pr.fournis()) == 15 and not pr.personnels()
+    assert len(pr.fournis()) == sum(len(d.prereglages) for d in EFFETS.values())
+    assert not pr.personnels()
     a, b = nouvel_effet("vhs", "Copie de copie"), nouvel_effet("scanlines")
     b.params["force"] = 33
     pr.enregistrer("Ma pile", [a, b])
@@ -291,3 +292,36 @@ def test_masques_enregistres(medias):
     edition.couper(projet.sequence, 10)
     a, b = projet.sequence.pistes_video[0].clips
     assert a.effets[0].masques[0].id != b.effets[0].masques[0].id
+
+
+@pytest.mark.parametrize("cle", sorted(c for c, d in EFFETS.items() if d.codec))
+def test_effets_codec(medias, tmp_path, cle):
+    """Moteur codec : pré-rendu de même durée, recomposé dans l'image ; à l'export, calculé
+    sur-le-champ et recopie de la source hors du clip."""
+    from remanence.moteurs.codec import prerendu
+    projet, clip = _projet(medias)
+    seq = projet.sequence
+    source = _image(projet, 20)
+    effet = nouvel_effet(cle, list(EFFETS[cle].prereglages)[-1])
+    clip.effets = [effet]
+    assert prerendu.pret(projet, seq, clip) is None
+    c = Compositeur(projet)
+    try:
+        sans = c.image(seq, 20)
+        assert np.array_equal(sans, source) and clip.id in c.manquants, "pas encore calculé"
+    finally:
+        c.fermer()
+    fichier = prerendu.calculer(projet, seq, clip)
+    infos, _ = analyser(str(fichier))
+    assert infos.video.nb_images == clip.duree
+    mosh = _image(projet, 20)
+    assert np.abs(mosh - source).max() > 0.02, "le datamosh se voit"
+    assert np.array_equal(mosh, _image(projet, 20)), "déterministe"
+    effet.opacite = 0.0
+    assert np.array_equal(_image(projet, 20), source)
+    effet.opacite = 1.0
+    clip.effets = [nouvel_effet(cle, list(EFFETS[cle].prereglages)[0])]
+    rapport = exporter(projet, seq, tmp_path / "mosh.mov")
+    assert rapport.conforme and rapport.images_calculees == 30
+    with pytest.raises(edition.EditionImpossible):
+        edition.ajouter_effet(seq.pistes_video[0], nouvel_effet(cle))

@@ -18,6 +18,7 @@ from remanence.media.proxy import chemin_audio, chemin_proxy
 from remanence.media.sonde import analyser
 from remanence.effets import EFFETS, instantane
 from remanence.projet.modele import Clip, Effet, Media, Projet, Sequence
+from remanence.moteurs.codec import prerendu
 from remanence.rendu.couleur import vers_rvb16_apercu, vers_rvba
 from remanence.rendu.gpu import RenduGPU, gpu_demande
 
@@ -35,8 +36,10 @@ class Couche:
 
 
 def actifs(effets: list[Effet], t: float = 0) -> list[Effet]:
-    """Effets allumés, figés au temps t (depuis le début de leur porteur)."""
-    return [instantane(e, t) for e in effets if e.actif and e.type in EFFETS]
+    """Effets allumés, figés au temps t (depuis le début de leur porteur). Les effets codec
+    passent en tête : leur pré-rendu part de la source, avant tout effet en temps réel."""
+    allumes = [instantane(e, t) for e in effets if e.actif and e.type in EFFETS]
+    return sorted(allumes, key=lambda e: not EFFETS[e.type].codec)
 
 
 def couches(projet: Projet, seq: Sequence, f: int) -> list[Couche]:
@@ -85,10 +88,15 @@ class Compositeur:
     gpu : None pour le choix automatique (carte graphique si possible), False pour le
     processeur seul (référence des tests)."""
 
-    def __init__(self, projet: Projet, apercu: bool = False, gpu: bool | None = None):
+    def __init__(self, projet: Projet, apercu: bool = False, gpu: bool | None = None,
+                 synchrone: bool = False):
         self.projet = projet
         self.pool = Pool()
         self.apercu = apercu
+        # synchrone (export) : un pré-rendu codec manquant est calculé sur-le-champ. Sinon
+        # (aperçu) l'image sort sans lui, et le clip est noté dans `manquants`.
+        self.synchrone = synchrone
+        self.manquants: set[str] = set()
         self._gpu_voulu = gpu_demande() if gpu is None else gpu
         self._gpu: RenduGPU | None = None
 
@@ -137,8 +145,11 @@ class Compositeur:
                     g.effet_dessous(couche.effets, couche.opacite, f, couche.fusion)
                     continue
                 trame, x0, y0 = self._trame_couche(couche, largeur, hauteur, proxy)
+                codec = None
+                if any(EFFETS[e.type].codec for e in couche.effets):
+                    codec = self._trame_codec(seq, couche, f, trame)
                 g.ajouter(trame, couche.media.infos.video.couleur, couche.opacite, x0, y0,
-                          couche.effets, f, couche.fusion)
+                          couche.effets, f, couche.fusion, codec)
             effets = actifs(seq.effets, f)
             if effets:
                 g.effets_sequence(effets, f)
@@ -184,6 +195,26 @@ class Compositeur:
         lp, hp = max(2, round(v.largeur * s)), max(2, round(v.hauteur * s))
         reduite = image.reformat(width=lp, height=hp, interpolation="BICUBIC")
         return reduite, (largeur - lp) // 2, (hauteur - hp) // 2
+
+    def _trame_codec(self, seq: Sequence, couche: Couche, f: int, trame):
+        """L'image du pré-rendu codec du clip, à la taille de sa couche ; None s'il n'est pas
+        encore calculé (aperçu)."""
+        clip = couche.clip
+        fichier = prerendu.pret(self.projet, seq, clip)
+        if fichier is None and self.synchrone:
+            fichier = prerendu.calculer(self.projet, seq, clip)
+        if fichier is None:
+            self.manquants.add(clip.id)
+            return None
+
+        def fabrique():
+            _, index = analyser(str(fichier))
+            return LecteurVideo(str(fichier), index)
+        image = self.pool.video(("datamosh", str(fichier)), fabrique).image(
+            max(0, min(f - clip.debut, clip.duree - 1)))
+        if (image.width, image.height) != (trame.width, trame.height):
+            image = image.reformat(width=trame.width, height=trame.height)
+        return image
 
     def _image_couche(self, couche: Couche, largeur: int, hauteur: int, proxy: bool) -> np.ndarray:
         trame, x0, y0 = self._trame_couche(couche, largeur, hauteur, proxy)

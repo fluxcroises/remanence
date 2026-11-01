@@ -230,6 +230,8 @@ class RenduGPU:
         self._programmes: dict[str, tuple] = {}
         self._taille = (0, 0)
         self._courant = 0
+        # Image pré-rendue par le moteur codec pour la couche en cours (texture « codec »).
+        self._codec_pret = False
 
     def fermer(self):
         self.ctx.release()
@@ -264,10 +266,15 @@ class RenduGPU:
 
     def ajouter(self, image: av.VideoFrame, couleur: Couleur, opacite: float,
                 x0: int = 0, y0: int = 0, effets: list[Effet] = (), numero: int = 0,
-                fusion: str = "normal"):
-        """Une couche de média : conversion, ses effets (clip puis piste), fusion dessus."""
+                fusion: str = "normal", image_codec: av.VideoFrame | None = None):
+        """Une couche de média : conversion, ses effets (clip puis piste), fusion dessus.
+        image_codec : l'image du pré-rendu des effets codec du clip, si elle est prête."""
+        if image_codec is not None:
+            self._convertir(image_codec, couleur, x0, y0, cible="codec")
+        self._codec_pret = image_codec is not None
         self._convertir(image, couleur, x0, y0)
         couche = self.effets("couche", effets, numero)
+        self._codec_pret = False
         self._fusionner(couche, opacite, dosage=False, fusion=fusion)
 
     def effet_dessous(self, effets: list[Effet], opacite: float, numero: int,
@@ -311,11 +318,20 @@ class RenduGPU:
         texture qui porte le résultat (nom ou son double, nom + "_b")."""
         noms = [nom, nom + "_b", nom + "_c"]
         courant = nom
+        codec_fait = False
         for effet in effets:
             if not effet.actif or effet.type not in EFFETS:
                 continue
             sortie = next(n for n in noms if n != courant)
-            self._effet(effet, courant, sortie, numero)
+            if EFFETS[effet.type].codec:
+                # Tous les effets codec du clip sont dans un seul pré-rendu : le premier le
+                # pose, avec son opacité et ses masques ; sans pré-rendu prêt, ils attendent.
+                if not self._codec_pret or codec_fait:
+                    continue
+                self._copier("codec", sortie)
+                codec_fait = True
+            else:
+                self._effet(effet, courant, sortie, numero)
             masques = [m for m in effet.masques if m.actif]
             if effet.opacite < 1.0 or effet.fusion != "normal" or masques:
                 # L'effet dosé, mêlé à l'image qu'il a reçue, ou limité à ses masques.
@@ -426,7 +442,8 @@ class RenduGPU:
         brut = fbo.read(components=4, dtype="f4", alignment=1)
         return np.frombuffer(brut, np.float32).reshape(h, l, 4).copy()
 
-    def _convertir(self, image: av.VideoFrame, couleur: Couleur, x0: int, y0: int):
+    def _convertir(self, image: av.VideoFrame, couleur: Couleur, x0: int, y0: int,
+                   cible: str = "couche"):
         fmt = image.format
         h, l = image.height, image.width
         prog = self._conv
@@ -467,6 +484,6 @@ class RenduGPU:
             prog["sous_ech"].value = (-(-l // cl), -(-h // ch))
             prog["a_alpha"].value = int(alpha)
             prog["yuv"].value = 1
-        _, fbo = self._cible("couche", self._taille)
+        _, fbo = self._cible(cible, self._taille)
         fbo.use()
         self._vao_conv.render(moderngl.TRIANGLE_STRIP)
