@@ -45,7 +45,7 @@ Logiciel Windows de montage vidéo orienté datamosh et glitch art, dans l'espri
 - Proxies : ProRes 422 Proxy en demi-résolution (4444 si alpha), seulement au-delà de 1280 px de large et pour les sources YUV, dans `%LOCALAPPDATA%\Remanence\cache`. Cache audio : float32 stéréo 48 kHz au même endroit.
 - Cadence variable : intermédiaire ProRes 422 HQ à la cadence standard la plus proche de la moyenne, niveaux ramenés en plage vidéo.
 - Historique : instantanés JSON complets du projet (annulation illimitée). Le moteur de lecture travaille sur une copie du projet.
-- Le premier média posé règle la séquence (taille, cadence, timecode de départ). Un média de cadence différente est posé image pour image (la vitesse viendra à l'étape 5).
+- Le premier média posé règle la séquence (taille, cadence). Timecode de départ au choix de l'utilisateur (demande de Lewis, 1er novembre 2026) : à la pose du premier média, `DialogueTimecode` propose 01:00:00:00, celui du premier clip ou un autre saisi ; le choix peut être retenu (`sequence/timecode_debut` : « heure » ou « clip ») ; modifiable ensuite par Montage > Timecode de début de la séquence, ou le bouton de la fiche Séquence de l'inspecteur. Les tests fixent « clip » dans `conftest.py` pour ne pas ouvrir la boîte. Un média de cadence différente est posé image pour image (la vitesse viendra à l'étape 5).
 - Pièges PyAV et FFmpeg 8 rencontrés :
   - la base de temps d'un flux change à la première écriture, donc garder sa propre variable `base_temps` pour horodater les images ;
   - les métadonnées couleur sont lues sur chaque image encodée (voir `appliquer_couleur`) ;

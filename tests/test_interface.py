@@ -433,3 +433,33 @@ def test_inspecteur_sections_repliables(fenetre, medias):
     assert _attendre(lambda: w.projet.sequence.pistes_video[0].clips[0].fondu_entree == 5, 2)
     w.inspecteur.reglage.emit(video.id, "reinitialiser", None)
     assert _attendre(lambda: w.projet.sequence.pistes_video[0].clips[0].fondu_entree == 0, 2)
+
+
+def test_timecode_de_debut_au_choix(fenetre, medias):
+    """Premier média posé : 01:00:00:00, celui du clip, ou un timecode saisi librement."""
+    from remanence.config import reglages_interface
+    from remanence.ui.dialogue_timecode import CLE_PREFERENCE, DialogueTimecode
+    w = fenetre
+    reglages_interface().setValue(CLE_PREFERENCE, "heure")
+    try:
+        w.importer_chemins([str(medias["prores_hq"])])
+        assert _attendre(lambda: len(w.projet.medias) == 1)
+        w.poser_medias(list(w.projet.medias), 0, "")
+        seq = w.projet.sequence
+        une_heure = 24 * 3600
+        assert _attendre(lambda: w.projet.sequence.tc_debut == une_heure, 2)
+        assert w.historique.libelles()[-1] == "Ajout à la timeline", "une seule ligne"
+
+        seq = w.projet.sequence
+        d = DialogueTimecode(seq, w._timecode_premier_clip(), False, w)
+        assert d.b_heure.isChecked() and not d.retenir.isVisibleTo(d)
+        d.saisie.setText("10:00:00:00")
+        d.b_autre.setChecked(True)
+        assert d.valeur() == 10 * une_heure
+        d.saisie.setText("n'importe quoi")
+        d._valider()
+        assert d.erreur.isVisibleTo(d) and d.result() != DialogueTimecode.Accepted
+        d.b_clip.setChecked(True)
+        assert d.valeur() == w._timecode_premier_clip()
+    finally:
+        reglages_interface().setValue(CLE_PREFERENCE, "clip")

@@ -177,6 +177,7 @@ class Historique(QListWidget):
 class Inspecteur(PanneauFiche):
     # (clip_id, champ, valeur) ; la fenêtre applique et enregistre dans l'historique.
     reglage = Signal(str, str, object)
+    timecode_demande = Signal()
     # Texte du badge de l'en-tête (« Clip vidéo », « Clip audio »), vide sans sélection.
     badge = Signal(str)
 
@@ -208,6 +209,13 @@ class Inspecteur(PanneauFiche):
             ("Pistes", f"{len(seq.pistes_video)} vidéo, {len(seq.pistes_audio)} audio"),
             ("Clips", str(sum(len(p.clips) for p in seq.pistes))),
             ("Marqueurs", str(len(seq.marqueurs)))])
+        b = QPushButton("Changer le timecode de début…")
+        b.setToolTip("01:00:00:00, celui du premier clip, ou un autre de votre choix.")
+        b.clicked.connect(self.timecode_demande.emit)
+        rang = QHBoxLayout()
+        rang.addWidget(b)
+        rang.addStretch(1)
+        self._cible.addLayout(rang)
 
     def clip(self, projet: Projet, clip_id: str):
         seq = projet.sequence

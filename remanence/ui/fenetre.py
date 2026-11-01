@@ -8,11 +8,12 @@ from pathlib import Path
 import numpy as np
 from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtGui import QAction, QGuiApplication, QImage, QKeySequence
-from PySide6.QtWidgets import (QAbstractButton, QApplication, QFileDialog, QInputDialog,
+from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QFileDialog, QInputDialog,
                                QMainWindow, QMessageBox, QSizePolicy, QToolBar, QVBoxLayout,
                                QWidget)
 
 from remanence.config import reglages_interface
+from remanence.ui.dialogue_timecode import DialogueTimecode, preference, timecode_une_heure
 from remanence.media import intermediaire
 from remanence.media.lecteur import LecteurVideo, generer_cache_audio
 from remanence.media.proxy import chemin_audio, chemin_proxy, generer_proxy, proxy_utile
@@ -282,7 +283,7 @@ class FenetrePrincipale(QMainWindow):
         self.barre_espaces.activer(espace)
 
     def focus_initial(self):
-        """Le clavier va à la timeline si elle est affichée ; sinon à personne, plutôt qu'au
+        """Le clavier va à la timeline si elle est affichée ; sinon à personne, plutôt qu'au
         premier bouton venu (ou à la liste des médias, qui choisirait le premier média)."""
         if self._docks["timeline"].isVisible():
             self.timeline.vue.setFocus()
@@ -381,6 +382,9 @@ class FenetrePrincipale(QMainWindow):
         self._action(mo, "Ajouter une piste audio", lambda: self.ajouter_piste("audio"))
         mo.addSeparator()
         self._action(mo, "Ajouter un marqueur", self.marqueur, "M")
+        mo.addSeparator()
+        self._action(mo, "Timecode de début de la séquence…", self.regler_timecode_debut,
+                     aide="01:00:00:00, celui du premier clip, ou un autre de votre choix.")
 
         lec = m.addMenu("&Lecture")
         self._action(lec, "Lire / Pause", self._espace_clavier, "Space")
@@ -569,6 +573,7 @@ class FenetrePrincipale(QMainWindow):
         vue.selection_changee.connect(self._selection)
         vue.media_depose.connect(self.poser_medias)
         self.inspecteur.reglage.connect(self._reglage_clip)
+        self.inspecteur.timecode_demande.connect(self.regler_timecode_debut)
         self.liste_historique.aller.connect(self._aller_historique)
         self.formulaire_export.lancer.connect(self._lancer_export)
         for nom, moteur, moniteur in (("programme", self.lecture, self.visionneuse),
@@ -895,12 +900,16 @@ class FenetrePrincipale(QMainWindow):
         f = self.lecture.position
         operation = edition.inserer_media if inserer else edition.ajouter_media
         clips = []
+        vierge = not seq.reglee
 
         def faire():
             clips.extend(operation(self.projet, seq, m, f, None, entree, sortie - entree))
         self._tenter("Insertion depuis la source" if inserer else "Écrasement depuis la source",
                      faire)
         if clips:
+            if vierge and seq.reglee:
+                self._timecode_nouvelle_sequence("Insertion depuis la source" if inserer
+                                                 else "Écrasement depuis la source")
             self.aller_a(max(c.fin for c in clips))
             self.activer_moniteur("programme")
 
@@ -1044,6 +1053,7 @@ class FenetrePrincipale(QMainWindow):
 
     def poser_medias(self, ids: list[str], f: int, piste_id: str):
         seq = self.projet.sequence
+        vierge = not seq.reglee
         piste = next((p for p in seq.pistes if p.id == piste_id), None)
         position = f
         try:
@@ -1063,8 +1073,52 @@ class FenetrePrincipale(QMainWindow):
         except edition.EditionImpossible as e:
             self.message(str(e))
         self.valider("Ajout à la timeline")
+        if vierge and seq.reglee:
+            self._timecode_nouvelle_sequence("Ajout à la timeline")
         if len(ids) == 1 and seq.duree() and self.timeline.vue.px_par_image == 6.0:
             self.timeline.tout_voir()
+
+    # Timecode de début de la séquence
+
+    def _timecode_premier_clip(self) -> int | None:
+        """Timecode de la séquence qui fait correspondre le premier clip à sa source."""
+        seq = self.projet.sequence
+        clips = sorted((c for p in seq.pistes_video for c in p.clips), key=lambda c: c.debut)
+        for c in clips:
+            m = self.projet.medias.get(c.media_id)
+            if m and m.infos.video:
+                if m.infos.video.tc_debut is None:
+                    return None
+                return max(0, m.infos.video.tc_debut + c.entree - c.debut)
+        return None
+
+    def _timecode_nouvelle_sequence(self, libelle: str):
+        """Premier média posé : propose le timecode de début (ou applique le choix retenu).
+        Différé : la boîte ne doit pas s'ouvrir pendant le glisser-déposer qui a posé le clip."""
+        def proposer():
+            seq = self.projet.sequence
+            choix = preference()
+            tc_clip = self._timecode_premier_clip()
+            if choix == "heure":
+                seq.tc_debut = timecode_une_heure(seq)
+            elif choix == "clip":
+                if tc_clip is not None:
+                    seq.tc_debut = tc_clip
+            else:
+                d = DialogueTimecode(seq, tc_clip, True, self)
+                if d.exec() != QDialog.Accepted:
+                    return
+                seq.tc_debut = d.valeur()
+            # Même libellé : le timecode fait partie de la pose du premier clip (un seul Ctrl+Z).
+            self.valider(libelle, fusionner=True)
+        QTimer.singleShot(0, proposer)
+
+    def regler_timecode_debut(self):
+        seq = self.projet.sequence
+        d = DialogueTimecode(seq, self._timecode_premier_clip(), False, self)
+        if d.exec() == QDialog.Accepted and d.valeur() != seq.tc_debut:
+            seq.tc_debut = d.valeur()
+            self.valider("Timecode de début")
 
     def annuler(self):
         p = self.historique.annuler()

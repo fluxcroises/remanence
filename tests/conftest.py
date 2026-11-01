@@ -14,6 +14,10 @@ QSettings.setDefaultFormat(QSettings.IniFormat)
 QSettings.setPath(QSettings.IniFormat, QSettings.UserScope,
                   tempfile.mkdtemp(prefix="remanence_reglages_"))
 
+from remanence.config import reglages_interface  # noqa: E402
+
+reglages_interface().setValue("sequence/timecode_debut", "clip")
+
 from tests.generer_medias import generer  # noqa: E402
 
 
