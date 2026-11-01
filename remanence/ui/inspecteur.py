@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QListWidget, QListWidgetItem,
-                               QPushButton, QScrollArea, QVBoxLayout, QWidget)
+                               QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget)
 
 from remanence.media.timecode import images_vers_tc
 from remanence.projet.modele import Media, Projet
@@ -43,7 +43,9 @@ class PanneauFiche(QWidget):
         defil = QScrollArea()
         defil.setWidgetResizable(True)
         defil.setFrameShape(QScrollArea.NoFrame)
+        defil.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         contenu = QWidget()
+        contenu.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         contenu.setProperty("role", "panneau")
         contenu.setAttribute(Qt.WA_StyledBackground, True)
         self._lay = QVBoxLayout(contenu)

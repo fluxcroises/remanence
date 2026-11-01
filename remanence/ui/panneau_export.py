@@ -75,6 +75,8 @@ class FormulaireExport(QWidget):
         for cle, f in FORMATS.items():
             self.format.addItem(f.nom, cle)
         i = self.format.findData(choix)
+        if i < 0:
+            i = 0 if ref is not None else self.format.findData("prores_hq")
         self.format.setCurrentIndex(max(0, i))
         self.format.blockSignals(False)
         a_plage = seq.point_entree is not None or seq.point_sortie is not None

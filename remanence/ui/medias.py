@@ -6,9 +6,9 @@ rangement) passe par le signal `modifie`, que la fenêtre enregistre dans l'hist
 
 from __future__ import annotations
 
-from PySide6.QtCore import QMimeData, QPoint, QRectF, QSize, Qt, Signal
+from PySide6.QtCore import QMimeData, QPoint, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QImage, QPainter, QPen
-from PySide6.QtWidgets import (QAbstractItemView, QHBoxLayout, QLineEdit, QListView, QListWidget,
+from PySide6.QtWidgets import (QHeaderView, QAbstractItemView, QHBoxLayout, QLineEdit, QListView, QListWidget,
                                QListWidgetItem, QMenu, QSlider, QSplitter, QStackedLayout, QStyle,
                                QStyledItemDelegate, QToolButton, QTreeWidget, QTreeWidgetItem,
                                QVBoxLayout, QWidget)
@@ -220,6 +220,11 @@ class ArbreChutiers(QTreeWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setHeaderHidden(True)
+        # Colonne 0 : le nom, seul modifiable ; colonne 1 : le nombre de médias.
+        self.setColumnCount(2)
+        self.header().setStretchLastSection(False)
+        self.header().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.header().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.setAcceptDrops(True)
         self.setDropIndicatorShown(True)
         self.setEditTriggers(QAbstractItemView.EditKeyPressed | QAbstractItemView.SelectedClicked)
@@ -321,7 +326,7 @@ class PanneauMedias(QWidget):
         self._pile.addWidget(self.vide)
         self._pile.addWidget(self.vue)
 
-        separation = QSplitter(Qt.Vertical)
+        separation = self._separation = QSplitter(Qt.Vertical)
         separation.addWidget(self.arbre)
         separation.addWidget(zone)
         separation.setStretchFactor(0, 1)
@@ -413,7 +418,7 @@ class PanneauMedias(QWidget):
     def _remplir_arbre(self):
         self.arbre.blockSignals(True)
         self.arbre.clear()
-        racine = QTreeWidgetItem([f"Médias du projet ({self._compte(None)})"])
+        racine = QTreeWidgetItem(["Médias du projet", str(self._compte(None))])
         racine.setData(0, ROLE_ID, None)
         racine.setToolTip(0, "Tous les médias du projet, quel que soit leur chutier.")
         self.arbre.addTopLevelItem(racine)
@@ -426,7 +431,7 @@ class PanneauMedias(QWidget):
                 break
             for c in places:
                 parent = items.get(c.parent, racine)
-                item = QTreeWidgetItem([f"{c.nom} ({self._compte(c.id)})"])
+                item = QTreeWidgetItem([c.nom, str(self._compte(c.id))])
                 item.setData(0, ROLE_ID, c.id)
                 item.setData(0, Qt.UserRole + 1, c.nom)
                 item.setFlags(item.flags() | Qt.ItemIsEditable)
@@ -434,9 +439,25 @@ class PanneauMedias(QWidget):
                 parent.addChild(item)
                 items[c.id] = item
                 restants.remove(c)
+        for item in items.values():
+            item.setForeground(1, charte.actuelle().c("ink-muted"))
+            item.setTextAlignment(1, Qt.AlignRight | Qt.AlignVCenter)
         self.arbre.expandAll()
         self.arbre.setCurrentItem(items.get(self.chutier_courant, racine))
         self.arbre.blockSignals(False)
+        self._lignes_arbre = len(items)
+        self._ajuster_arbre()
+
+    def _ajuster_arbre(self):
+        lignes = getattr(self, "_lignes_arbre", 1)
+        """L'arbre prend la hauteur de ses chutiers (une ligne de marge pour en déposer),
+        sans dépasser un tiers du panneau : pas de grande bande vide au-dessus des médias."""
+        total = sum(self._separation.sizes())
+        if total <= 0:
+            return
+        hauteur = (lignes + 1) * max(20, self.arbre.sizeHintForRow(0)) + 8
+        hauteur = min(hauteur, total // 3)
+        self._separation.setSizes([hauteur, total - hauteur])
 
     def _visible(self, media: Media) -> bool:
         if self.chutier_courant is not None and \
@@ -458,7 +479,8 @@ class PanneauMedias(QWidget):
                 continue
             item = QListWidgetItem(m.nom)
             item.setData(ROLE_ID, m.id)
-            item.setToolTip("\n".join(f"{k} : {v}" for k, v in m.infos.fiche()))
+            # Bulle courte : la fiche complète est dans l'onglet Métadonnées.
+            item.setToolTip(m.nom)
             self.vue.addItem(item)
             if m.id == courant:
                 self.vue.setCurrentItem(item)
@@ -512,7 +534,7 @@ class PanneauMedias(QWidget):
 
     def _renomme(self, item, _colonne):
         chutier = next((c for c in self.projet.chutiers if c.id == item.data(0, ROLE_ID)), None)
-        nom = item.text(0).rsplit(" (", 1)[0].strip()
+        nom = item.text(0).strip()
         if chutier is None or not nom or nom == chutier.nom:
             return
         chutier.nom = nom
@@ -575,6 +597,8 @@ class PanneauMedias(QWidget):
         self.b_importer.setToolButtonStyle(Qt.ToolButtonIconOnly if etroit
                                            else Qt.ToolButtonTextBesideIcon)
         super().resizeEvent(e)
+        # Après la mise en page du séparateur, qui n'a sa taille réelle qu'ensuite.
+        QTimer.singleShot(0, self._ajuster_arbre)
 
     def keyPressEvent(self, e):
         if e.key() == Qt.Key_Delete and self.vue.hasFocus() and self.medias_choisis():

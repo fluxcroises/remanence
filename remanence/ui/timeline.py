@@ -17,7 +17,7 @@ import math
 from dataclasses import dataclass
 
 from PySide6.QtCore import QPointF, QRect, QRectF, Qt, Signal
-from PySide6.QtGui import QImage, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QBrush, QImage, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (QHBoxLayout, QInputDialog, QMenu, QScrollBar, QSlider, QToolButton,
                                QVBoxLayout, QWidget)
 
@@ -40,6 +40,8 @@ MARGE_BORD = 6
 SEUIL_AIMANT_PX = 8
 ZOOM_MIN, ZOOM_MAX = 0.02, 40.0
 HAUTEUR_MIN, HAUTEUR_MAX = 30, 160
+# Zone du bas de l'en-tête qui sert à tirer la hauteur de la piste.
+POIGNEE_HAUTEUR = 7
 COULEURS_MARQUEURS = [("accent-2", "Turquoise"), ("accent", "Mauve"), ("warning", "Jaune"),
                       ("success", "Bleu"), ("danger", "Rouge")]
 
@@ -279,6 +281,8 @@ class VueTimeline(QWidget):
             p.fillRect(QRectF(hx - (0 if gauche else 6), r.top(), 6, 6), c.c("ink"))
         if piste.masquee or piste.muette:
             p.fillRect(r, c.c("bg-app", 0.55))
+        if piste.verrouillee:
+            p.fillRect(r, QBrush(c.c("ink-muted", 0.35), Qt.BDiagPattern))
         p.restore()
         if clip.id in self.selection:
             p.save()
@@ -919,13 +923,14 @@ class EntetePiste(QWidget):
                                                                           - self._tirer[0])))
             self.piste.hauteur = h
             self.timeline.placer_entetes()
+            self.timeline.bornes()
             self.timeline.vue.update()
             return
-        pres_du_bas = e.position().y() >= self.height() - 4
+        pres_du_bas = e.position().y() >= self.height() - POIGNEE_HAUTEUR
         self.setCursor(Qt.SizeVerCursor if pres_du_bas else Qt.ArrowCursor)
 
     def mousePressEvent(self, e):
-        if e.button() == Qt.LeftButton and e.position().y() >= self.height() - 4:
+        if e.button() == Qt.LeftButton and e.position().y() >= self.height() - POIGNEE_HAUTEUR:
             self._tirer = (e.position().y(), self.height())
             return
         super().mousePressEvent(e)
@@ -1067,7 +1072,7 @@ class Timeline(QWidget):
         for e in self._entetes:
             e.show()
         self.placer_entetes()
-        self._bornes()
+        self.bornes()
         self.vue.update()
 
     def placer_entetes(self):
@@ -1079,7 +1084,7 @@ class Timeline(QWidget):
         self.timecode.setGeometry(12, 4, self.timecode.width(), HAUT_PISTES - 8)
         self.timecode.raise_()
 
-    def _bornes(self):
+    def bornes(self):
         if self.vue.projet is None:
             return
         duree = max(self.vue.projet.sequence.duree(), self.vue.tete) + 200
@@ -1091,7 +1096,7 @@ class Timeline(QWidget):
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
-        self._bornes()
+        self.bornes()
 
     def _sur_defilement_h(self, v):
         self.vue.decalage_x = float(v)
@@ -1123,7 +1128,7 @@ class Timeline(QWidget):
         x_ancre = v.width() / 2 if x_ancre is None else x_ancre
         f_ancre = v.f_de(x_ancre)
         v.px_par_image = max(ZOOM_MIN, min(ZOOM_MAX, v.px_par_image * facteur))
-        self._bornes()
+        self.bornes()
         self.barre_h.setValue(int(f_ancre * v.px_par_image - x_ancre))
         v.decalage_x = float(self.barre_h.value())
         if synchro:
@@ -1134,7 +1139,7 @@ class Timeline(QWidget):
         v = self.vue
         duree = max(1, v.projet.sequence.duree() if v.projet else 1)
         v.px_par_image = max(ZOOM_MIN, min(ZOOM_MAX, (v.width() - 40) / duree))
-        self._bornes()
+        self.bornes()
         self.barre_h.setValue(0)
         v.decalage_x = 0
         self._synchroniser_zoom()
@@ -1146,7 +1151,7 @@ class Timeline(QWidget):
         v.tete = f
         x = v.x_de(f)
         if x > v.width() - 30 or x < 0:
-            self._bornes()
+            self.bornes()
             self.barre_h.setValue(int(f * v.px_par_image - 60))
         v.update()
 

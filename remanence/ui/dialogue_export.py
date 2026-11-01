@@ -14,10 +14,10 @@ class DialogueRapport(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Export terminé")
         lay = QVBoxLayout(self)
-        titre = QLabel(("Le fichier est conforme : il peut remplacer la source sans recalage."
-                        if rapport.conforme else
-                        "Le fichier a été écrit, mais il diffère de la source sur les points "
-                        "marqués « Écart »."))
+        titre = QLabel(("Export vérifié : le fichier a bien le format, la cadence, le timecode "
+                        "et la couleur attendus." if rapport.conforme else
+                        "Le fichier a été écrit, mais il diffère de ce qui était attendu sur les "
+                        "points marqués « Écart »."))
         titre.setWordWrap(True)
         titre.setStyleSheet("font-weight: 600;")
         lay.addWidget(titre)
@@ -49,4 +49,8 @@ class DialogueRapport(QDialog):
         boutons.button(QDialogButtonBox.Close).setText("Fermer")
         boutons.rejected.connect(self.accept)
         lay.addWidget(boutons)
-        self.resize(720, 360)
+        # Tout le tableau visible sans défilement horizontal, dans la limite de l'écran.
+        table.resizeColumnsToContents()
+        largeur = table.horizontalHeader().length() + 2 * table.frameWidth() + 48
+        ecran = self.screen().availableGeometry().width() if self.screen() else 1600
+        self.resize(min(max(720, largeur), int(ecran * 0.9)), 380)

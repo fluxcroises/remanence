@@ -16,11 +16,19 @@ class Historique:
     def _figer(projet: Projet) -> str:
         return json.dumps(projet.vers_dict(), ensure_ascii=False)
 
-    def valider(self, projet: Projet, libelle: str) -> bool:
-        """Enregistre l'état courant. Renvoie False si rien n'a changé."""
+    def valider(self, projet: Projet, libelle: str, fusionner: bool = False) -> bool:
+        """Enregistre l'état courant. Renvoie False si rien n'a changé.
+
+        fusionner : si la dernière action porte le même libellé et qu'on n'a rien annulé
+        depuis, elle est remplacée au lieu d'ajouter une ligne (import de plusieurs fichiers).
+        """
         etat = self._figer(projet)
         if etat == self._etats[self._position][1]:
             return False
+        if fusionner and self._position > 0 and self._position == len(self._etats) - 1 \
+                and self._etats[-1][0] == libelle:
+            self._etats[-1] = (libelle, etat)
+            return True
         del self._etats[self._position + 1:]
         self._etats.append((libelle, etat))
         self._position += 1

@@ -148,7 +148,7 @@ def placer(piste: Piste, ids: set[str], fondus_auto: bool):
     """Installe les clips `ids` de la piste à leur nouvelle place.
 
     Un clip qui en recouvre un autre l'écrase, sauf quand fondus_auto est vrai et que le
-    recouvrement ne touche qu'un bord : les deux clips restent et se fondent l'un dans l'autre
+    recouvrement ne touche qu'un bord : les deux clips restent et se fondent l'un dans l'autre
     sur la zone commune, comme dans Vegas Pro.
     """
     poses = [c for c in piste.clips if c.id in ids]
@@ -202,7 +202,7 @@ def rogner(projet: Projet, seq: Sequence, clip_id: str, cote: str, delta: int,
            inclure_lies: bool = True, ripple: bool = False) -> int:
     """Déplace le bord gauche ('debut') ou droit ('fin') d'un clip. Renvoie le delta appliqué.
 
-    En ripple, la place du clip ne change pas : ce qui le suit sur ses pistes avance ou recule
+    En ripple, la place du clip ne change pas : ce qui le suit sur ses pistes avance ou recule
     d'autant, sans laisser de trou ni écraser.
     """
     if ripple:
@@ -283,15 +283,21 @@ def supprimer_ripple(seq: Sequence, ids: set[str], inclure_lies: bool = True):
                          reverse=True)
         p.clips = [c for c in p.clips if c.id not in ids]
         for r in retires:
-            for o in p.clips:
-                if o.debut >= r.fin:
-                    o.debut -= r.duree
+            suivants = [o for o in p.clips if o.debut > r.debut]
+            if not suivants:
+                continue
+            # Le premier clip suivant vient à la place du clip retiré, même s'il le chevauchait.
+            recul = min(r.duree, min(o.debut for o in suivants) - r.debut)
+            for o in suivants:
+                if o.debut < r.fin:
+                    o.fondu_entree = 0
+                o.debut -= recul
         p.trier()
 
 
 def glisser_contenu(projet: Projet, seq: Sequence, clip_id: str, delta: int,
                     inclure_lies: bool = True) -> int:
-    """Slip : le clip reste en place, son contenu glisse (le point d'entrée change)."""
+    """Slip : le clip reste en place, son contenu glisse (le point d'entrée change)."""
     ids = avec_lies(seq, {clip_id}) if inclure_lies else {clip_id}
     clips = [(p, c) for p, c in seq.tous_les_clips() if c.id in ids]
     for p, c in clips:
@@ -312,7 +318,7 @@ def _voisins(piste: Piste, c: Clip) -> tuple[Clip | None, Clip | None]:
 
 def faire_glisser(projet: Projet, seq: Sequence, clip_id: str, delta: int,
                   inclure_lies: bool = True) -> int:
-    """Slide : le clip se déplace avec son contenu ; ses voisins collés s'allongent ou se
+    """Slide : le clip se déplace avec son contenu ; ses voisins collés s'allongent ou se
     raccourcissent pour qu'il n'y ait ni trou ni écrasement."""
     ids = avec_lies(seq, {clip_id}) if inclure_lies else {clip_id}
     clips = [(p, c) for p, c in seq.tous_les_clips() if c.id in ids]
@@ -342,7 +348,7 @@ def faire_glisser(projet: Projet, seq: Sequence, clip_id: str, delta: int,
 
 def rouler(projet: Projet, seq: Sequence, clip_id: str, delta: int,
            inclure_lies: bool = True) -> int:
-    """Roll : déplace la coupe entre le clip et son voisin de droite ; la durée totale ne
+    """Roll : déplace la coupe entre le clip et son voisin de droite ; la durée totale ne
     change pas, l'un gagne ce que l'autre perd."""
     ids = avec_lies(seq, {clip_id}) if inclure_lies else {clip_id}
     paires = []

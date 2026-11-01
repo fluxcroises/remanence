@@ -4,7 +4,7 @@ import sys
 import time
 import traceback
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QLibraryInfo, QLocale, Qt, QTimer, QTranslator
 from PySide6.QtGui import QSurfaceFormat
 from PySide6.QtWidgets import QApplication
 
@@ -18,6 +18,11 @@ def principal() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Remanence")
     app.setOrganizationName("Remanence")
+    QLocale.setDefault(QLocale(QLocale.French, QLocale.France))
+    traduction = QTranslator(app)
+    if traduction.load(QLocale(QLocale.French), "qtbase", "_",
+                       QLibraryInfo.path(QLibraryInfo.TranslationsPath)):
+        app.installTranslator(traduction)
     debut = time.perf_counter()
 
     from remanence.ui import charte
@@ -55,7 +60,9 @@ def principal() -> int:
     while time.perf_counter() - debut < 1.0:
         app.processEvents()
         time.sleep(0.02)
-    fenetre.show()
+    # Toujours en plein écran au lancement, comme les logiciels de montage (demande de Lewis).
+    fenetre.showMaximized()
+    QTimer.singleShot(0, fenetre.focus_initial)
     ecran.close()
     return app.exec()
 

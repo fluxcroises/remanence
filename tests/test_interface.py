@@ -195,8 +195,11 @@ def test_gestes_ripple_et_marqueurs(fenetre, medias):
     a = video()[0]
     assert (a.debut, a.entree, a.duree) == (10, 5, 20), "slip : seul le contenu glisse"
 
-    w.timeline.b_ripple.setChecked(True)
-    assert w.a_ripple.isChecked()
+    w.a_ripple.trigger()  # Ctrl+L, menu Montage
+    assert w.timeline.b_ripple.isChecked() and w.a_ripple.isChecked()
+    w.a_aimant.trigger()
+    assert not w.timeline.b_aimant.isChecked()
+    w.a_aimant.trigger()
     vue._choisir({video()[0].id})
     w.supprimer()
     assert [c.debut for c in video()] == [10], "le ripple referme le trou"

@@ -168,6 +168,24 @@ def test_fondu_enchaine_au_chevauchement(medias):
     assert [(c.debut, c.duree) for c in pv.clips] == [(0, 14), (14, 20)]
 
 
+def test_ripple_apres_fondu_enchaine(medias):
+    """Supprimer en ripple le premier clip d'un fondu enchaîné : le second prend sa place."""
+    projet, seq, pv = _deux_clips(medias)
+    edition.deplacer(seq, {pv.clips[1].id}, -6, fondus_auto=True)
+    edition.supprimer_ripple(seq, {pv.clips[0].id})
+    assert [(c.debut, c.fondu_entree) for c in pv.clips] == [(0, 0)]
+
+
+def test_imports_fusionnes_dans_l_historique(medias):
+    projet, m = _projet_avec(medias)
+    h = Historique(projet)
+    for nom in ("a", "b"):
+        projet.medias[nom] = Media(nom, m.chemin, m.infos)
+        assert h.valider(projet, "Import de médias", fusionner=True)
+    assert h.libelles()[1:] == ["Import de médias"], "un seul Ctrl+Z pour tout le lot"
+    assert len(h.annuler().medias) == len(projet.medias) - 2
+
+
 def test_ripple_slip_slide_roll(medias):
     projet, seq, pv = _deux_clips(medias)
     a, b = pv.clips

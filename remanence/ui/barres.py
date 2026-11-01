@@ -140,6 +140,9 @@ class BarreEspaces(QWidget):
         for cle, nom, icone, aide in ESPACES:
             b = bouton_icone(icone, aide, variante="espace", texte=nom, cochable=True, taille=16)
             b.setProperty("espace", cle)
+            # Pas de focus clavier : Maj+1, 2, 3 changent d'espace (voir l'info-bulle), et un
+            # cadre de focus restait sinon sur le premier bouton.
+            b.setFocusPolicy(Qt.NoFocus)
             b.clicked.connect(lambda _=False, cle=cle: self.espace_choisi.emit(cle))
             self.groupe.addButton(b)
             self.boutons[cle] = b

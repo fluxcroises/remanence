@@ -9,7 +9,8 @@ import numpy as np
 from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtGui import QAction, QGuiApplication, QImage, QKeySequence
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QFileDialog, QInputDialog,
-                               QMainWindow, QMessageBox, QToolBar, QVBoxLayout, QWidget)
+                               QMainWindow, QMessageBox, QSizePolicy, QToolBar, QVBoxLayout,
+                               QWidget)
 
 from remanence.config import reglages_interface
 from remanence.media import intermediaire
@@ -135,6 +136,8 @@ class FenetrePrincipale(QMainWindow):
         self._docks["droite"] = d
         self.badge_inspecteur = etiquette("", "badge-accent")
         self.badge_inspecteur.hide()
+        # Le badge ne doit pas élargir le panneau : sinon les moniteurs sautent à chaque sélection.
+        self.badge_inspecteur.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self.onglets_droite.ajouter_outil(self.badge_inspecteur)
         d, self.onglets_export = panneau_onglets([("Export", self.formulaire_export)], "export",
                                                  self)
@@ -278,6 +281,14 @@ class FenetrePrincipale(QMainWindow):
         self._espace = espace
         self.barre_espaces.activer(espace)
 
+    def focus_initial(self):
+        """Le clavier va à la timeline si elle est affichée ; sinon à personne, plutôt qu'au
+        premier bouton venu (ou à la liste des médias, qui choisirait le premier média)."""
+        if self._docks["timeline"].isVisible():
+            self.timeline.vue.setFocus()
+        elif QApplication.focusWidget() is not None:
+            QApplication.focusWidget().clearFocus()
+
     def _est_externe(self, nom: str) -> bool:
         return self._double_ecran is not None and nom == "timeline"
 
@@ -357,7 +368,8 @@ class FenetrePrincipale(QMainWindow):
             action.setCheckable(True)
             action.setChecked(bouton.isChecked())
             action.triggered.disconnect()
-            action.triggered.connect(bouton.setChecked)
+            action.triggered.connect(lambda _=False, a=action, b=bouton:
+                                     b.setChecked(a.isChecked()))
             bouton.toggled.connect(action.setChecked)
         mo.addSeparator()
         self._action(mo, "Insérer depuis la source", lambda: self.monter_source(True), "F9",
@@ -642,9 +654,9 @@ class FenetrePrincipale(QMainWindow):
         self.badge_inspecteur.setVisible(bool(self.badge_inspecteur.text())
                                          and self.onglets_droite.currentIndex() == 0)
 
-    def valider(self, libelle: str):
+    def valider(self, libelle: str, fusionner: bool = False):
         """À appeler après toute modification du projet : historique, affichage, aperçu."""
-        if self.historique.valider(self.projet, libelle):
+        if self.historique.valider(self.projet, libelle, fusionner):
             self.modifie = True
         self._afficher_tout()
 
@@ -1128,7 +1140,7 @@ class FenetrePrincipale(QMainWindow):
             if any(c.id == chutier for c in self.projet.chutiers):
                 m.chutier = chutier
             self.projet.medias[m.id] = m
-            self.valider("Import")
+            self.valider("Import de médias", fusionner=True)
             self._preparer(m)
 
         def echec(message, detail):
