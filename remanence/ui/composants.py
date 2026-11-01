@@ -9,9 +9,10 @@ from fractions import Fraction
 from PySide6.QtCore import QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import (QDockWidget, QHBoxLayout, QLabel, QLineEdit, QSizePolicy, QSlider,
-                               QStackedWidget, QToolButton, QWidget)
+                               QStackedWidget, QToolButton, QVBoxLayout, QWidget)
 from shiboken6 import isValid
 
+from remanence.config import reglages_interface
 from remanence.media.timecode import images_vers_tc, tc_vers_images
 from remanence.ui import charte
 
@@ -194,6 +195,57 @@ class ChampTimecode(QStackedWidget):
         self.setCurrentWidget(self.affichage)
         self.affichage.setFocus()
         self.position_demandee.emit(max(0, cible))
+
+
+class SectionRepliable(QWidget):
+    """Section de l'inspecteur : un clic sur le titre replie ou déplie le contenu.
+    L'état est retenu par clé, d'une sélection à l'autre et d'une session à l'autre."""
+
+    def __init__(self, titre: str, cle: str, parent=None):
+        super().__init__(parent)
+        self.cle = cle
+        self.setProperty("role", "section-repliable")
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 10, 0, 0)
+        lay.setSpacing(8)
+        tete = QHBoxLayout()
+        tete.setSpacing(4)
+        self.titre = QToolButton()
+        self.titre.setProperty("variante", "section")
+        self.titre.setText(titre)
+        self.titre.setFont(charte.actuelle().police("caption"))
+        self.titre.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.titre.setCheckable(True)
+        self.titre.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.titre.setAccessibleName(f"Section {titre}")
+        tete.addWidget(self.titre, 1)
+        self._outils = tete
+        lay.addLayout(tete)
+        self.corps = QWidget()
+        self.contenu = QVBoxLayout(self.corps)
+        self.contenu.setContentsMargins(0, 0, 0, 4)
+        self.contenu.setSpacing(8)
+        lay.addWidget(self.corps)
+        ouvert = not reglages_interface().value(f"inspecteur/replie/{cle}", False, type=bool)
+        self.titre.setChecked(ouvert)
+        self._montrer(ouvert)
+        self.titre.toggled.connect(self._basculer)
+
+    def ajouter_outil(self, w: QWidget):
+        self._outils.addWidget(w)
+
+    def ouverte(self) -> bool:
+        return self.titre.isChecked()
+
+    def _montrer(self, ouvert: bool):
+        self.corps.setVisible(ouvert)
+        poser_icone(self.titre, "chevron-down" if ouvert else "chevron-right", 14)
+        self.titre.setToolTip("Replier la section" if ouvert else "Déplier la section")
+
+    def _basculer(self, ouvert: bool):
+        self._montrer(ouvert)
+        reglages_interface().setValue(f"inspecteur/replie/{self.cle}", not ouvert)
 
 
 class LigneParametre(QWidget):

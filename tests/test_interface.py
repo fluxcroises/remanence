@@ -397,3 +397,36 @@ def test_panneau_media(fenetre, medias, monkeypatch):
         QMouseEvent.MouseMove, pos, p.vue.viewport().mapToGlobal(pos), Qt.NoButton, Qt.NoButton,
         Qt.NoModifier))
     assert p.survol is not None and p.survol[0] == h264.id and 0.1 < p.survol[1] < 0.4
+
+
+def test_inspecteur_sections_repliables(fenetre, medias):
+    """Sections repliables retenues d'un clip à l'autre, séquence sans sélection, remise à zéro."""
+    from remanence.ui.composants import SectionRepliable
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    titres = lambda: {s.titre.text(): s for s in w.inspecteur.findChildren(SectionRepliable)
+                      if s.isVisibleTo(w.inspecteur)}
+    assert "Séquence" in titres()
+
+    video = w.projet.sequence.pistes_video[0].clips[0]
+    w.timeline.vue._choisir({video.id})
+    sections = titres()
+    assert {"Clip", "Niveau et fondus"} <= set(sections)
+    sections["Clip"].titre.click()
+    assert not sections["Clip"].ouverte()
+    w.timeline.vue._choisir(set())
+    w.timeline.vue._choisir({video.id})
+    assert not titres()["Clip"].ouverte(), "l'état replié est retenu"
+    titres()["Clip"].titre.click()
+
+    audio = w.projet.sequence.pistes_audio[0].clips[0]
+    w.timeline.vue._choisir({video.id, audio.id})
+    assert w.badge_inspecteur.text() == ""
+
+    w.timeline.vue._choisir({video.id})
+    w.inspecteur.reglage.emit(video.id, "fondu_entree", 5)
+    assert _attendre(lambda: w.projet.sequence.pistes_video[0].clips[0].fondu_entree == 5, 2)
+    w.inspecteur.reglage.emit(video.id, "reinitialiser", None)
+    assert _attendre(lambda: w.projet.sequence.pistes_video[0].clips[0].fondu_entree == 0, 2)

@@ -691,11 +691,8 @@ class FenetrePrincipale(QMainWindow):
                 self.metadonnees.afficher(media)
             if self.onglets_droite.currentIndex() == 1 and self._espace == "montage":
                 self.onglets_droite.choisir(0)
-        elif ids:
-            self.inspecteur.vide()
-            self.message(f"{len(ids)} clips sélectionnés", 3000)
         else:
-            self.inspecteur.vide()
+            self.inspecteur.vide(self.projet, len(ids))
 
     def _media_choisi(self, media):
         if media is not None:
@@ -1017,6 +1014,11 @@ class FenetrePrincipale(QMainWindow):
 
     def _reglage_clip(self, clip_id: str, champ: str, valeur):
         _, c = self.projet.sequence.trouver(clip_id)
+        if champ == "reinitialiser":
+            if c is not None:
+                c.gain, c.fondu_entree, c.fondu_sortie = 1.0, 0, 0
+                QTimer.singleShot(0, lambda: self.valider("Réinitialisation du clip"))
+            return
         if c is None or getattr(c, champ) == valeur:
             return
         if champ in ("fondu_entree", "fondu_sortie"):

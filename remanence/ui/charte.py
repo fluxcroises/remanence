@@ -377,6 +377,10 @@ QToolButton[variante="panneau"]:checked {{ background: {surface_raised}; color: 
 QToolButton[variante="panneau"] {{ background: transparent; border: 1px solid transparent;
     color: {ink_muted}; }}
 QToolButton[variante="panneau"]:hover {{ background: {surface_hover}; color: {ink}; }}
+QToolButton[variante="section"] {{ background: transparent; border: 0; border-radius: 0;
+    color: {ink_muted}; padding: 0; text-align: left; }}
+QToolButton[variante="section"]:hover {{ background: transparent; color: {ink}; }}
+QWidget[role="section-repliable"] {{ border-top: 1px solid {line}; }}
 QToolButton[variante="lettre"] {{ background: transparent; border: 1px solid transparent;
     color: {ink_muted}; font-weight: 600; padding: 0; min-width: 22px; max-width: 22px;
     min-height: 22px; max-height: 22px; }}
