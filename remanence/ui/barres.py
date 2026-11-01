@@ -112,9 +112,9 @@ class BarreTitre(QWidget):
             self.basculer_agrandissement()
 
 
-ESPACES = [("media", "Média", "folder", "Importer, classer et examiner les médias (Maj+1)"),
-           ("montage", "Montage", "clapperboard", "Monter la séquence (Maj+2)"),
-           ("export", "Export", "upload", "Régler et lancer les exports (Maj+3)")]
+ESPACES = [("media", "Média", "folder", "Média (Maj+1)"),
+           ("montage", "Montage", "clapperboard", "Montage (Maj+2)"),
+           ("export", "Export", "upload", "Export (Maj+3)")]
 
 
 class BarreEspaces(QWidget):

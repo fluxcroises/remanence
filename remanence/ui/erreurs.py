@@ -31,7 +31,7 @@ def afficher_erreur(parent, titre: str, message: str, detail: str | None = None)
     lay.addWidget(texte)
     boutons = QDialogButtonBox()
     copier = QPushButton("Copier le détail")
-    copier.setToolTip("Copie le détail technique dans le presse-papiers, pour un rapport de bogue.")
+
 
     def _copier():
         QGuiApplication.clipboard().setText(f"{titre}\n{message}\n\n{detail}")

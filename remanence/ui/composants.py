@@ -95,8 +95,7 @@ class EnTetePanneau(BarreTitrePanneau):
         self._outils = QHBoxLayout()
         self._outils.setSpacing(4)
         self._lay.addLayout(self._outils)
-        detacher = bouton_icone("picture-in-picture-2", f"Détacher le panneau {titre} "
-                                                        "(ou double-clic sur son titre)")
+        detacher = bouton_icone("picture-in-picture-2", f"Détacher le panneau {titre}")
         detacher.clicked.connect(lambda: dock.setFloating(not dock.isFloating()))
         self._lay.addWidget(detacher)
 
@@ -131,8 +130,7 @@ class ChampTimecode(QStackedWidget):
         self.affichage = QLabel()
         self.affichage.setTextFormat(Qt.RichText)
         self.affichage.setFocusPolicy(Qt.StrongFocus)
-        self.affichage.setToolTip("Cliquez pour taper une position, ou +12 et -12 pour "
-                                  "avancer ou reculer de 12 images.")
+        self.affichage.setToolTip("Aller à un timecode, ou +12, -12")
         self.affichage.setAccessibleName("Timecode de la tête de lecture")
         self.saisie = QLineEdit()
         self.saisie.setProperty("role", "timecode")
@@ -264,7 +262,7 @@ class LigneParametre(QWidget):
         self.libelle = etiquette(libelle, "libelle")
         self.libelle.setFixedWidth(100)
         self.libelle.setToolTip((aide + " " if aide else "") +
-                                "Double-cliquez sur le libellé pour revenir à la valeur par défaut.")
+                                "Double-clic : valeur par défaut")
         self.libelle.mouseDoubleClickEvent = lambda e: self._poser(self._defaut, True)
         self.curseur = QSlider(Qt.Horizontal)
         self.curseur.setRange(0, 1000)
@@ -324,7 +322,7 @@ class Vumetres(QWidget):
         self._niveaux = [self.PLANCHER, self.PLANCHER]
         self.setMinimumWidth(64)
         self.setMaximumWidth(64)
-        self.setToolTip("Niveau de crête du son lu, en décibels. Au-dessus de 0, le son sature.")
+        self.setToolTip("Crête (dBFS)")
         self.setAccessibleName("Vumètres")
         self._minuterie = QTimer(self)
         self._minuterie.timeout.connect(self._actualiser)
@@ -418,8 +416,7 @@ class PanneauOnglets(QStackedWidget):
         self._outils = QHBoxLayout()
         self._outils.setSpacing(4)
         lay.addLayout(self._outils)
-        detacher = bouton_icone("picture-in-picture-2", "Détacher le panneau (ou double-clic "
-                                                        "sur sa barre d'onglets)")
+        detacher = bouton_icone("picture-in-picture-2", "Détacher le panneau")
         detacher.clicked.connect(lambda: dock.setFloating(not dock.isFloating()))
         lay.addWidget(detacher)
         dock.setTitleBarWidget(self.entete)

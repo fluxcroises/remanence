@@ -19,6 +19,7 @@ Logiciel Windows de montage vidéo orienté datamosh et glitch art, dans l'espri
 - L'utilisateur, Lewis, ne programme pas. Explique simplement ce que tu fais et comment tester, sans jargon.
 - Une étape à la fois : à la fin de chaque étape, démonstration, tests au vert, puis attendre la validation de Lewis avant la suivante.
 - Tout en français : interface, messages, commentaires du code, commits. Dans les textes français, jamais de tiret cadratin : utiliser deux-points, virgule, parenthèses ou une nouvelle phrase.
+- Textes de l'interface courts (règle de Lewis, 1er novembre 2026) : un libellé ou quelques mots, pas de phrase qui explique en détail ce que fait une action. Rien qui ait sa place dans un guide d'aide ou un tutoriel, aucune tournure d'IA. Info-bulles : le nom de l'action et son raccourci. Messages d'erreur : ce qui ne va pas, en une ligne.
 - Les couleurs, polices et tailles de l'interface viennent de `UI/charte/tokens.json`, générées en feuille de style Qt (QSS) ; aucune couleur codée en dur ailleurs.
 - Chaque bibliothèque ajoutée est inscrite avec sa licence dans `LICENCES.md`.
 - Tiens ce fichier à jour : décisions prises, état d'avancement, commandes utiles.

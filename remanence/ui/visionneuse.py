@@ -187,7 +187,7 @@ class BarreDefilement(QWidget):
         super().__init__(parent)
         self.setFixedHeight(14)
         self.setCursor(Qt.PointingHandCursor)
-        self.setToolTip("Cliquez ou glissez pour vous déplacer dans le média.")
+
         self.duree = 0
         self.position = 0
         self.entree: int | None = None
@@ -263,8 +263,7 @@ class Moniteur(QWidget):
         self.zoom = QComboBox()
         for libelle, valeur in ZOOMS:
             self.zoom.addItem(libelle, valeur)
-        self.zoom.setToolTip("Taille de l'image : ajustée au moniteur, ou à un zoom fixe. "
-                             "Glissez l'image pour la déplacer quand elle dépasse.")
+        self.zoom.setToolTip("Zoom de l'image")
         self.zoom.setAccessibleName(f"Zoom du moniteur {nom}")
         self.zoom.currentIndexChanged.connect(lambda _i: self.zone.definir_zoom(
             self.zoom.currentData()))
@@ -285,18 +284,17 @@ class Moniteur(QWidget):
         self.b_aller_entree = b("arrow-left-to-line", "Aller au point d'entrée",
                                 self.demande_aller_entree)
         self.b_entree = b(None, "Marquer le point d'entrée (I)", self.demande_entree, "[")
-        self.b_prec = b("rewind", "Lecture arrière (J), répétez pour accélérer")
+        self.b_prec = b("rewind", "Lecture arrière (J)")
         self.b_prec.clicked.connect(lambda: self.demande_vitesse.emit(-1))
         self.b_lire = bouton_icone("play", "Lire ou mettre en pause (Espace)", variante="lecture")
         self.b_lire.setFixedSize(40, 32)
         self.b_lire.clicked.connect(lambda: self.demande_lecture.emit())
-        self.b_suiv = b("fast-forward", "Lecture avant (L), répétez pour accélérer")
+        self.b_suiv = b("fast-forward", "Lecture avant (L)")
         self.b_suiv.clicked.connect(lambda: self.demande_vitesse.emit(1))
         self.b_sortie = b(None, "Marquer le point de sortie (O)", self.demande_sortie, "]")
         self.b_aller_sortie = b("arrow-right-to-line", "Aller au point de sortie",
                                 self.demande_aller_sortie)
-        self.b_boucle = bouton_icone("repeat", "Lire en boucle entre les points d'entrée et de "
-                                               "sortie (Ctrl+B)", cochable=True)
+        self.b_boucle = bouton_icone("repeat", "Boucle (Ctrl+B)", cochable=True)
         self.b_boucle.setFixedSize(30, 28)
         self.timecode = ChampTimecode(15)
         self.timecode.position_demandee.connect(self.demande_position)
@@ -304,9 +302,7 @@ class Moniteur(QWidget):
         self.qualite = QToolButton()
         self.qualite.setProperty("variante", "badge")
         self.qualite.setPopupMode(QToolButton.InstantPopup)
-        self.qualite.setToolTip("Résolution de l'aperçu. En 1/2 et 1/4, la lecture utilise les "
-                                "proxies quand ils existent. L'export est toujours en pleine "
-                                "résolution.")
+        self.qualite.setToolTip("Résolution de l'aperçu")
         menu = QMenu(self.qualite)
         for cle in QUALITES:
             menu.addAction(LIBELLES_QUALITE[cle], lambda cle=cle: self.choisir_qualite(cle))

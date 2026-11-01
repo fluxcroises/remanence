@@ -174,8 +174,7 @@ class VueTimeline(QWidget):
             p.setPen(c.c("ink-muted"))
             p.setFont(c.police("body"))
             p.drawText(QRect(0, HAUT_PISTES, self.width(), self.height() - HAUT_PISTES),
-                       Qt.AlignCenter, "Glissez un média depuis le panneau Média, ou montez-le "
-                                       "depuis le moniteur source (F9, F10).")
+                       Qt.AlignCenter, "Timeline vide")
         if self.hasFocus():
             p.setPen(QPen(c.c("focus"), 2))
             p.drawRect(QRectF(1, 1, self.width() - 2, self.height() - 2))
@@ -827,7 +826,7 @@ class EntetePiste(QWidget):
         lay.addWidget(badge)
         if video:
             visible = bouton_icone("eye-off" if piste.masquee else "eye",
-                                   f"Afficher ou masquer la piste {court} (aperçu et export)",
+                                   f"Afficher ou masquer {court}",
                                    cochable=True, taille=14)
             visible.setFixedSize(24, 24)
             visible.setChecked(not piste.masquee)
@@ -835,22 +834,22 @@ class EntetePiste(QWidget):
                                                                         not v))
             lay.addWidget(visible)
         self.nom = etiquette(piste.nom, "")
-        self.nom.setToolTip("Double-cliquez pour renommer la piste.")
+
         self.nom.mouseDoubleClickEvent = lambda e: self.renommer()
         lay.addWidget(self.nom, 1)
         if not video:
-            for lettre, champ, aide in (("M", "muette", "Couper le son de la piste"),
-                                        ("S", "solo", "Solo : seule cette piste est entendue")):
+            for lettre, champ, aide in (("M", "muette", "Muet"),
+                                        ("S", "solo", "Solo")):
                 b = bouton_lettre(lettre, f"{aide} {court} (Ctrl+clic : exclusif)")
                 b.setChecked(getattr(piste, champ))
                 b.clicked.connect(lambda _=False, b=b, champ=champ: self._bascule(champ, b))
                 lay.addWidget(b)
         elif piste.solo:
             solo = etiquette("Solo", "badge-accent")
-            solo.setToolTip("Seule cette piste vidéo est vue. Clic droit pour retirer le solo.")
+            solo.setToolTip("Solo")
             lay.addWidget(solo)
         verrou = bouton_icone("lock" if piste.verrouillee else "lock-open",
-                              f"Verrouiller la piste {court} : ses clips ne bougent plus",
+                              f"Verrouiller {court}",
                               cochable=True, taille=14)
         verrou.setFixedSize(24, 24)
         verrou.setChecked(piste.verrouillee)
@@ -888,7 +887,7 @@ class EntetePiste(QWidget):
         menu.addAction("Renommer…", self.renommer)
         menu.addAction(f"Niveau de la piste ({self._texte_niveau()})…", self._regler_niveau)
         if self.piste.type == "video":
-            solo = menu.addAction("Solo : seule cette piste est vue",
+            solo = menu.addAction("Solo",
                                   lambda: f.regler_piste(self.piste.id, "solo",
                                                          not self.piste.solo))
             solo.setCheckable(True)
@@ -966,24 +965,19 @@ class Timeline(QWidget):
         outils = QHBoxLayout()
         outils.setContentsMargins(10, 4, 10, 4)
         outils.setSpacing(2)
-        self.b_selection = bouton_icone("mouse-pointer-2", "Outil de sélection : déplacer, "
-                                        "rogner, régler les fondus (V)", cochable=True)
-        self.b_couper = bouton_icone("scissors", "Outil de coupe : cliquez sur un clip pour le "
-                                     "couper à cet endroit (C)", cochable=True)
+        self.b_selection = bouton_icone("mouse-pointer-2", "Sélection (V)", cochable=True)
+        self.b_couper = bouton_icone("scissors", "Coupe (C)", cochable=True)
         self.b_selection.setChecked(True)
         self.b_selection.clicked.connect(lambda: self.choisir_outil("selection"))
         self.b_couper.clicked.connect(lambda: self.choisir_outil("couper"))
-        self.b_aimant = bouton_icone("magnet", "Aimantation : les bords s'accrochent aux clips, "
-                                     "à la tête, aux marqueurs et aux points E et S (F8 ou N)",
+        self.b_aimant = bouton_icone("magnet", "Aimantation (F8)",
                                      cochable=True)
         self.b_aimant.setChecked(True)
         self.b_aimant.toggled.connect(lambda v: setattr(self.vue, "aimantation", v))
-        self.b_ripple = bouton_icone("arrow-right-from-line", "Ripple : supprimer ou rogner un "
-                                     "clip décale la suite de ses pistes, sans trou (Ctrl+L)",
+        self.b_ripple = bouton_icone("arrow-right-from-line", "Ripple (Ctrl+L)",
                                      cochable=True)
         self.b_ripple.toggled.connect(self._ripple)
-        self.b_fondus = bouton_icone("blend", "Fondus enchaînés automatiques : poser un clip "
-                                     "sur la fin d'un autre les fond l'un dans l'autre",
+        self.b_fondus = bouton_icone("blend", "Fondus enchaînés automatiques",
                                      cochable=True)
         self.b_fondus.setChecked(True)
         self.b_fondus.toggled.connect(lambda v: setattr(self.vue, "fondus_auto", v))
@@ -991,9 +985,9 @@ class Timeline(QWidget):
         b_lier.clicked.connect(fenetre.lier)
         b_dissocier = bouton_icone("unlink", "Dissocier son et image (U)")
         b_dissocier.clicked.connect(fenetre.dissocier)
-        b_marqueur = bouton_icone("bookmark", "Ajouter un marqueur à la tête de lecture (M)")
+        b_marqueur = bouton_icone("bookmark", "Marqueur (M)")
         b_marqueur.clicked.connect(fenetre.marqueur)
-        self.b_piste = bouton_icone("plus", "Ajouter une piste vidéo ou audio", texte="Piste")
+        self.b_piste = bouton_icone("plus", "Ajouter une piste", texte="Piste")
         self.b_piste.setPopupMode(QToolButton.InstantPopup)
         menu = QMenu(self.b_piste)
         menu.addAction("Piste vidéo", lambda: fenetre.ajouter_piste("video"))
@@ -1002,10 +996,10 @@ class Timeline(QWidget):
         self.zoom = QSlider(Qt.Horizontal)
         self.zoom.setRange(0, 1000)
         self.zoom.setFixedWidth(140)
-        self.zoom.setToolTip("Zoom de la timeline (aussi à la molette)")
+        self.zoom.setToolTip("Zoom")
         self.zoom.setAccessibleName("Zoom de la timeline")
         self.zoom.valueChanged.connect(self._zoom_curseur)
-        b_tout = bouton_icone("maximize-2", "Tout voir : ajuste le zoom à toute la séquence")
+        b_tout = bouton_icone("maximize-2", "Tout voir")
         b_tout.clicked.connect(self.tout_voir)
         for groupe in ((self.b_selection, self.b_couper),
                        (self.b_aimant, self.b_ripple, self.b_fondus),
@@ -1056,7 +1050,7 @@ class Timeline(QWidget):
     def _ripple(self, actif: bool):
         self.vue.ripple = actif
         self.vue.update()
-        self.fenetre.message("Ripple activé : supprimer ou rogner décale la suite." if actif
+        self.fenetre.message("Ripple activé" if actif
                              else "Ripple désactivé.", 3000)
 
     # Affichage

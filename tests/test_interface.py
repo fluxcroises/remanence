@@ -384,7 +384,7 @@ def test_panneau_media(fenetre, medias, monkeypatch):
     assert p.vue.count() == 1
     p.recherche.setText("")
     p._filtrer("audio")
-    assert p.vue.count() == 0 and "correspond" in p.vide.text()
+    assert p.vue.count() == 0 and p.vide.text() == "Aucun résultat"
     p._filtrer("tous")
 
     h264 = next(m for m in w.projet.medias.values() if m.nom.startswith("h264"))

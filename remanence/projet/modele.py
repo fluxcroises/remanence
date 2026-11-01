@@ -85,7 +85,7 @@ class Clip:
     def facteur(self, f: int, sans_fondu_sortie: bool = False) -> float:
         """Opacité (vidéo) ou volume (audio) à l'image f de la séquence.
 
-        sans_fondu_sortie sert au fondu enchaîné vidéo : le clip du dessous reste plein
+        sans_fondu_sortie sert au fondu enchaîné vidéo : le clip du dessous reste plein
         pendant que celui du dessus apparaît, ce qui donne exactement A × (1 − t) + B × t.
         """
         decalage = f - self.debut
@@ -262,8 +262,7 @@ class Projet:
         if d.get("format") != "remanence":
             raise ValueError("Ce fichier n'est pas un projet Remanence.")
         if d.get("version", 0) > VERSION_FORMAT:
-            raise ValueError("Ce projet vient d'une version plus récente de Remanence. "
-                             "Mettez Remanence à jour pour l'ouvrir.")
+            raise ValueError("Projet créé par une version plus récente de Remanence.")
         p = Projet(graine=d.get("graine", 0), sequence_active=d.get("sequence_active"))
         for md in d.get("medias", []):
             m = Media.depuis_dict(md)

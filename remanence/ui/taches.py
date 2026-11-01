@@ -61,7 +61,7 @@ class GestionnaireTaches(QWidget):
         self._barre.setFixedWidth(160)
         self._barre.setRange(0, 1000)
         self._annuler = QPushButton("Annuler")
-        self._annuler.setToolTip("Arrête la tâche affichée. Ce qui a déjà été calculé est jeté.")
+        self._annuler.setToolTip("Annuler la tâche")
         self._annuler.clicked.connect(self._annuler_courante)
         for w in (self._libelle, self._barre, self._annuler):
             lay.addWidget(w)

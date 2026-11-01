@@ -47,8 +47,7 @@ def principal() -> int:
     def erreur_imprevue(type_, valeur, tb):
         detail = "".join(traceback.format_exception(type_, valeur, tb))
         afficher_erreur(fenetre, "Erreur inattendue",
-                        "Remanence a rencontré une erreur imprévue. Votre projet n'est pas perdu : "
-                        "enregistrez-le, puis signalez le problème avec le bouton Copier le détail.",
+                        "Erreur imprévue. Le projet n'est pas perdu : enregistrez-le.",
                         detail)
     sys.excepthook = erreur_imprevue
 

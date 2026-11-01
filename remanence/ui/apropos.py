@@ -29,9 +29,7 @@ class APropos(QDialog):
         titres.addWidget(etiquette(f"Version {__version__} · Montage et datamosh", "secondaire"))
         haut.addLayout(titres, 1)
         lay.addLayout(haut)
-        texte = etiquette(f"Édité par l'association {EDITEUR}. Logiciel libre, distribué en code "
-                          "source, sans but commercial. Il repose sur les projets libres listés "
-                          "ci-dessous.", "")
+        texte = etiquette(f"Édité par {EDITEUR}. Logiciel libre.", "")
         texte.setWordWrap(True)
         lay.addWidget(texte)
         licences = QTextBrowser()

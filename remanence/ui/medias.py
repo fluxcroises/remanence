@@ -338,9 +338,9 @@ class PanneauMedias(QWidget):
         self.b_grille = bouton_icone("layout-grid", "Afficher en vignettes", cochable=True)
         self.b_liste.clicked.connect(lambda: self.vue_mode(False))
         self.b_grille.clicked.connect(lambda: self.vue_mode(True))
-        b_chutier = bouton_icone("folder-plus", "Nouveau chutier dans le chutier choisi")
+        b_chutier = bouton_icone("folder-plus", "Nouveau chutier")
         b_chutier.clicked.connect(self.nouveau_chutier)
-        b_importer = bouton_icone("plus", "Importer des médias dans le chutier choisi (Ctrl+I)",
+        b_importer = bouton_icone("plus", "Importer (Ctrl+I)",
                                   texte="Importer")
         b_importer.clicked.connect(self.importer)
         self.b_importer = b_importer
@@ -420,7 +420,7 @@ class PanneauMedias(QWidget):
         self.arbre.clear()
         racine = QTreeWidgetItem(["Médias du projet", str(self._compte(None))])
         racine.setData(0, ROLE_ID, None)
-        racine.setToolTip(0, "Tous les médias du projet, quel que soit leur chutier.")
+        racine.setToolTip(0, "")
         self.arbre.addTopLevelItem(racine)
         items = {None: racine}
         restants = list(self.projet.chutiers)
@@ -489,13 +489,11 @@ class PanneauMedias(QWidget):
             self._pile.setCurrentWidget(self.vue)
         else:
             if not self.projet.medias:
-                texte = ("Aucun média dans le projet.\n\nGlissez ici des fichiers ou des dossiers "
-                         "depuis l'Explorateur, ou cliquez sur Importer.")
+                texte = ("Aucun média")
             elif self.recherche.text().strip() or self._filtre != "tous":
-                texte = "Aucun média ne correspond à la recherche ou au filtre."
+                texte = "Aucun résultat"
             else:
-                texte = ("Ce chutier est vide.\n\nGlissez-y des médias depuis un autre chutier, "
-                         "ou importez des fichiers.")
+                texte = ("Chutier vide")
             self.vide.setText(texte)
             self._pile.setCurrentWidget(self.vide)
 

@@ -377,7 +377,7 @@ class FenetrePrincipale(QMainWindow):
         self._action(f, "Nouveau projet", self.nouveau, "Ctrl+N")
         self._action(f, "Ouvrir un projet…", self.ouvrir, "Ctrl+O")
         self._action(f, "Enregistrer", self.enregistrer, "Ctrl+S",
-                     "Enregistre le projet et en garde une version numérotée.")
+                     "")
         self._action(f, "Enregistrer sous…", self.enregistrer_sous, "Ctrl+Shift+S")
         f.addSeparator()
         self._action(f, "Importer des médias…", self.importer, "Ctrl+I")
@@ -395,14 +395,13 @@ class FenetrePrincipale(QMainWindow):
         self._action(mo, "Outil de coupe", lambda: self.timeline.choisir_outil("couper"), "C")
         mo.addSeparator()
         self._action(mo, "Couper à la tête de lecture", self.couper, ["S", "B"],
-                     "Coupe les clips sélectionnés, ou tous ceux sous la tête si rien n'est "
-                     "sélectionné.")
+                     "")
         self._action(mo, "Supprimer les clips sélectionnés", self.supprimer, ["Del", "Backspace"])
         self._action(mo, "Dissocier son et image", self.dissocier, "U")
         self._action(mo, "Lier la sélection", self.lier, "G")
         mo.addSeparator()
         self.a_ripple = self._action(mo, "Ripple", self.timeline.b_ripple.toggle, "Ctrl+L",
-                                     "Supprimer ou rogner un clip décale la suite, sans trou.")
+                                     "")
         self.a_aimant = self._action(mo, "Aimantation", self.timeline.b_aimant.toggle,
                                      ["F8", "N"])
         self.a_fondus = self._action(mo, "Fondus enchaînés automatiques",
@@ -418,9 +417,9 @@ class FenetrePrincipale(QMainWindow):
             bouton.toggled.connect(action.setChecked)
         mo.addSeparator()
         self._action(mo, "Insérer depuis la source", lambda: self.monter_source(True), "F9",
-                     "Pose la partie choisie de la source à la tête de lecture et pousse la suite.")
+                     "")
         self._action(mo, "Écraser depuis la source", lambda: self.monter_source(False), "F10",
-                     "Pose la partie choisie de la source à la tête de lecture, par-dessus.")
+                     "")
         mo.addSeparator()
         self._action(mo, "Ajouter une piste vidéo", lambda: self.ajouter_piste("video"))
         self._action(mo, "Ajouter une piste audio", lambda: self.ajouter_piste("audio"))
@@ -428,7 +427,7 @@ class FenetrePrincipale(QMainWindow):
         self._action(mo, "Ajouter un marqueur", self.marqueur, "M")
         mo.addSeparator()
         self._action(mo, "Timecode de début de la séquence…", self.regler_timecode_debut,
-                     aide="01:00:00:00, celui du premier clip, ou un autre de votre choix.")
+                     aide="")
 
         lec = m.addMenu("&Lecture")
         self._action(lec, "Lire / Pause", self._espace_clavier, "Space")
@@ -452,7 +451,7 @@ class FenetrePrincipale(QMainWindow):
         self._action(lec, "Aller à la fin", lambda: self._aller_bord(True), "End")
         lec.addSeparator()
         self._action(lec, "Basculer entre source et programme", self.basculer_moniteur, "Q",
-                     "Les commandes de lecture s'adressent au moniteur actif, souligné en mauve.")
+                     "")
         lec.addSeparator()
         self._action(lec, "Point d'entrée", self.point_entree, "I")
         self._action(lec, "Point de sortie", self.point_sortie, "O")
@@ -478,21 +477,20 @@ class FenetrePrincipale(QMainWindow):
         a.addSeparator()
         self.a_un_seul = self._action(a, "Un seul moniteur", self.basculer_un_seul_moniteur,
                                       "Ctrl+Shift+Q",
-                                      "Ne montre que le moniteur actif, en grand ; Q bascule.")
+                                      "")
         self.a_un_seul.setCheckable(True)
         self.a_programme_externe = self._action(
             a, "Programme en plein écran", self.basculer_programme_externe, "Ctrl+F",
-            "Montre le programme en plein écran, sur le second écran s'il y en a un. Échap ferme.")
+            "")
         double = a.addMenu("Double écran")
         self._groupe_double = QActionGroup(self)
         self.a_doubles = {}
         for mode, texte, aide in (
                 (None, "Un seul écran", None),
                 ("panneaux", "Panneaux sur le second écran",
-                 "Comme DaVinci Resolve : moniteurs, inspecteur et timeline sur l'écran principal ; "
-                 "Média, Métadonnées et Historique sur le second."),
+                 ""),
                 ("timeline", "Timeline sur le second écran",
-                 "La timeline seule sur le second écran, tout le reste sur le principal.")):
+                 "")):
             act = self._action(double, texte, lambda _=False, mode=mode:
                                self.choisir_double_ecran(mode), aide=aide)
             act.setCheckable(True)
@@ -501,7 +499,7 @@ class FenetrePrincipale(QMainWindow):
         self.a_doubles[None].setChecked(True)
         double.addSeparator()
         self.a_echanger = self._action(double, "Échanger les écrans", self.echanger_ecrans,
-                                       aide="L'écran principal devient le second, et inversement.")
+                                       aide="")
         QGuiApplication.instance().screenAdded.connect(lambda _e: self._ecrans_changes())
         QGuiApplication.instance().screenRemoved.connect(lambda _e: self._ecrans_changes())
         self._ecrans_changes()
@@ -770,7 +768,7 @@ class FenetrePrincipale(QMainWindow):
         self.a_retablir.setText(f"Rétablir {self.historique.libelle_retablir().lower()}".strip())
         if not seq.duree():
             self.visionneuse.zone.montrer_message(
-                "Glissez un média sur la timeline pour le voir ici.")
+                "Séquence vide")
 
     def _titre(self):
         nom = self.chemin.stem if self.chemin else "Sans titre"
@@ -875,7 +873,7 @@ class FenetrePrincipale(QMainWindow):
         self.duree_source.setText(images_vers_tc(media.nb_images(cadence), cadence))
         self.source.zone.taille_reference = (v.largeur, v.hauteur) if v else None
         if not v:
-            self.source.zone.montrer_message("Média audio : pas d'image à afficher.")
+            self.source.zone.montrer_message("Média audio")
         self._position_source(self.lecture_source.position)
         self.activer_moniteur("source")
 
@@ -1030,7 +1028,7 @@ class FenetrePrincipale(QMainWindow):
         """F9 insère, F10 écrase : la partie choisie de la source va à la tête du programme."""
         m = self.media_source
         if m is None:
-            self.message("Choisissez d'abord un média : il s'affiche dans le moniteur source.")
+            self.message("Aucun média dans le moniteur source.")
             return
         seq = self.projet.sequence
         entree, sortie = m.plage_source(seq.fraction_cadence)
@@ -1088,7 +1086,7 @@ class FenetrePrincipale(QMainWindow):
             if self.media_source is not None and self.media_source.id == i:
                 self.media_source = None
                 self.lecture_source.pause()
-                self.source.zone.montrer_message("Choisissez un média pour l'afficher ici.")
+                self.source.zone.montrer_message("Aucun média")
                 self._entete_source.precision.setText("")
                 self.activer_moniteur("programme")
         if libres:
@@ -1097,8 +1095,7 @@ class FenetrePrincipale(QMainWindow):
             noms = "\n".join(f"{m.nom} ({self.projet.clips_du_media(m.id)} clip(s))"
                              for m in utilises)
             QMessageBox.information(self, "Médias encore utilisés",
-                                    "Ces médias servent encore sur la timeline et restent dans "
-                                    "le projet. Supprimez d'abord leurs clips.\n\n" + noms)
+                                    "Médias utilisés sur la timeline, non retirés :\n\n" + noms)
 
     def supprimer(self):
         if self.medias.vue.hasFocus():
@@ -1135,8 +1132,7 @@ class FenetrePrincipale(QMainWindow):
         if piste.clips:
             r = QMessageBox.question(
                 self, "Supprimer la piste",
-                f"La piste contient {len(piste.clips)} clip(s). La supprimer avec ses clips ? "
-                "Vous pourrez l'annuler avec Ctrl+Z.",
+                f"Supprimer la piste et ses {len(piste.clips)} clip(s) ?",
                 QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel)
             if r != QMessageBox.Yes:
                 return
@@ -1294,7 +1290,7 @@ class FenetrePrincipale(QMainWindow):
                 cadence, ok = QInputDialog.getItem(
                     self, "Cadence de la séquence d'images",
                     f"{Path(seq_img['motif']).name} contient {seq_img['nombre']} images.\n"
-                    "À quelle cadence faut-il la lire ?",
+                    "Cadence :",
                     ["24000/1001", "24", "25", "30000/1001", "30", "50", "60"], 1, False)
                 if not ok:
                     continue
@@ -1315,8 +1311,7 @@ class FenetrePrincipale(QMainWindow):
                 cible = intermediaire.creer_intermediaire(infos, progression, annule)
                 infos_cfr, _ = analyser(str(cible))
                 infos_cfr.avertissements = [
-                    f"Intermédiaire à cadence fixe ({infos_cfr.video.cadence} i/s) créé depuis "
-                    f"« {infos.nom} », dont la cadence est variable. La source n'est pas modifiée."]
+                    f"Intermédiaire à cadence fixe ({infos_cfr.video.cadence} i/s)."]
                 infos_cfr.nom = infos.nom
                 return infos_cfr
             return infos
@@ -1407,7 +1402,7 @@ class FenetrePrincipale(QMainWindow):
             return True
         r = QMessageBox.question(
             self, "Modifications non enregistrées",
-            "Le projet contient des modifications non enregistrées. Les enregistrer ?",
+            "Enregistrer les modifications ?",
             QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel, QMessageBox.Save)
         if r == QMessageBox.Save:
             return self.enregistrer()
@@ -1439,8 +1434,7 @@ class FenetrePrincipale(QMainWindow):
         if auto is not None:
             r = QMessageBox.question(
                 self, "Sauvegarde automatique plus récente",
-                f"Une sauvegarde automatique de « {chemin.stem} » est plus récente que le projet "
-                "enregistré. Ouvrir la sauvegarde automatique ?",
+                "Ouvrir la sauvegarde automatique ?",
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
             if r == QMessageBox.Yes:
                 source = auto
@@ -1461,8 +1455,7 @@ class FenetrePrincipale(QMainWindow):
         absents = [m.nom for m in projet.medias.values() if m.hors_ligne]
         if absents:
             QMessageBox.warning(self, "Médias introuvables",
-                                "Ces médias ont été déplacés ou renommés, leurs clips sont "
-                                "affichés hors ligne :\n\n" + "\n".join(absents))
+                                "Médias introuvables, clips hors ligne :\n\n" + "\n".join(absents))
         for m in projet.medias.values():
             if not m.hors_ligne:
                 self._preparer(m)
@@ -1474,8 +1467,7 @@ class FenetrePrincipale(QMainWindow):
             version = serialisation.enregistrer(self.projet, self.chemin)
         except OSError as e:
             afficher_erreur(self, "Enregistrement impossible",
-                            f"Le projet n'a pas pu être écrit dans « {self.chemin} » : {e}. "
-                            "Vérifiez que le disque n'est pas plein ou en lecture seule.")
+                            f"Écriture impossible dans « {self.chemin} » : {e}")
             return False
         self.modifie = False
         self._derniere_sauvegarde = time.time()

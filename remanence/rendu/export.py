@@ -105,8 +105,8 @@ def format_source(v: InfosVideo) -> tuple[FormatExport, str | None]:
     if v.codec in ("h264", "hevc"):
         base = FORMATS["h264" if v.codec == "h264" else "hevc10"]
         return FormatExport(**{**base.__dict__, "pix_fmt": v.pix_fmt}), None
-    return FORMATS["prores_hq"], (f"Le codec de la source ({v.codec_long}) ne peut pas être "
-                                  "réencodé à l'identique : export en ProRes 422 HQ.")
+    return FORMATS["prores_hq"], (f"{v.codec_long} non réencodable à l'identique : "
+                                  "export en ProRes 422 HQ.")
 
 
 def _compatible(v: InfosVideo, fmt: FormatExport, seq: Sequence) -> bool:
@@ -159,8 +159,7 @@ def exporter(projet: Projet, seq: Sequence, chemin: Path, cle_format: str = "sou
     fin = fin if fin is not None else (seq.point_sortie if seq.point_sortie is not None
                                        else seq.duree())
     if fin <= debut:
-        raise ValueError("La plage à exporter est vide : posez des clips sur la timeline ou "
-                         "vérifiez les points d'entrée et de sortie.")
+        raise ValueError("Rien à exporter : la plage est vide.")
     avertissements: list[str] = []
     ref = media_reference(projet, seq, debut, fin)
     couleur = ref.infos.video.couleur if ref else Couleur(1, 1, 1, 1)

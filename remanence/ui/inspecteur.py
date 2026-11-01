@@ -120,8 +120,6 @@ class Metadonnees(PanneauFiche):
     def vide(self):
         self._vider()
         self._titre("Aucun média")
-        self._note("Cliquez sur un média ou sur un clip pour lire sa fiche technique : codec, "
-                   "profondeur, cadence, timecode, couleur et audio.")
 
     def afficher(self, media: Media):
         self._vider()
@@ -168,7 +166,7 @@ class Historique(QListWidget):
             texte = libelle if i else "Ouverture du projet"
             item = QListWidgetItem(texte + ("  ·  état actuel" if i == position else ""))
             if i > position:
-                item.setToolTip("Action annulée : cliquez pour la rétablir.")
+                item.setToolTip("Action annulée")
             self.addItem(item)
         self.setCurrentRow(position)
         self.blockSignals(False)
@@ -191,10 +189,10 @@ class Inspecteur(PanneauFiche):
         self.badge.emit("")
         if nombre > 1:
             self._titre(f"{nombre} clips sélectionnés",
-                        "Choisissez un seul clip pour régler son niveau et ses fondus.")
+                        "")
         else:
             self._titre("Aucune sélection",
-                        "Cliquez sur un clip de la timeline pour régler son niveau et ses fondus.")
+                        "")
         if projet is None:
             return
         seq = projet.sequence
@@ -210,7 +208,7 @@ class Inspecteur(PanneauFiche):
             ("Clips", str(sum(len(p.clips) for p in seq.pistes))),
             ("Marqueurs", str(len(seq.marqueurs)))])
         b = QPushButton("Changer le timecode de début…")
-        b.setToolTip("01:00:00:00, celui du premier clip, ou un autre de votre choix.")
+
         b.clicked.connect(self.timecode_demande.emit)
         rang = QHBoxLayout()
         rang.addWidget(b)
@@ -248,18 +246,18 @@ class Inspecteur(PanneauFiche):
 
         section = self._section("Niveau et fondus", "niveau")
         if c.gain != 1.0 or c.fondu_entree or c.fondu_sortie:
-            raz = bouton_icone("rotate-ccw", "Réinitialiser : niveau à 100 %, sans fondus",
+            raz = bouton_icone("rotate-ccw", "Réinitialiser",
                                taille=14)
             raz.clicked.connect(lambda: self.reglage.emit(c.id, "reinitialiser", None))
             section.ajouter_outil(raz)
         niveau = LigneParametre("Opacité" if video else "Volume", 0, 100, c.gain * 100, "%",
-                                100, 1, "Opacité du clip vidéo." if video
-                                else "Volume du clip audio.")
+                                100, 1, "" if video
+                                else "")
         niveau.valeur_finale.connect(lambda v: self.reglage.emit(c.id, "gain", v / 100))
         self._cible.addWidget(niveau)
         for champ, nom in (("fondu_entree", "Fondu d'entrée"), ("fondu_sortie", "Fondu de sortie")):
             ligne = LigneParametre(nom, 0, c.duree, getattr(c, champ), "images", 0, 0,
-                                   "Se règle aussi en tirant la poignée au coin supérieur du clip.")
+                                   "")
             ligne.champ.setFixedWidth(96)
             ligne.valeur_finale.connect(lambda v, champ=champ: self.reglage.emit(c.id, champ,
                                                                                  round(v)))
@@ -269,11 +267,8 @@ class Inspecteur(PanneauFiche):
         if c.enveloppe:
             self._lignes([("Points", str(len(c.enveloppe)))])
             b = QPushButton("Effacer l'enveloppe")
-            b.setToolTip(f"Retire les {len(c.enveloppe)} points de l'enveloppe de ce clip.")
             b.clicked.connect(lambda: self.reglage.emit(c.id, "enveloppe", []))
             rang = QHBoxLayout()
             rang.addWidget(b)
             rang.addStretch(1)
             self._cible.addLayout(rang)
-        self._note("Double-cliquez sur le clip pour ajouter un point, puis tirez-le. "
-                   "Clic droit sur un point pour le retirer.")

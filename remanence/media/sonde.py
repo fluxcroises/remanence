@@ -254,12 +254,10 @@ def analyser(chemin: str, cadence_sequence: str | None = None) -> tuple[InfosMed
     p = Path(chemin)
     if p.suffix.lower() in EXTENSIONS_RAW:
         raise MediaIllisible(
-            f"« {p.name} » est un fichier {EXTENSIONS_RAW[p.suffix.lower()]}. FFmpeg ne sait pas lire "
-            "ce format RAW de caméra. Demandez au monteur un export ProRes 422 HQ ou DNxHR HQX "
-            "du plan, avec son timecode, puis importez ce fichier.")
+            f"« {p.name} » : format RAW illisible "
+            f"({EXTENSIONS_RAW[p.suffix.lower()]}). Importez un export ProRes ou DNxHR.")
     if not p.exists():
-        raise MediaIllisible(f"Le fichier « {chemin} » est introuvable. Vérifiez qu'il n'a pas été "
-                             "déplacé ou renommé.")
+        raise MediaIllisible(f"Fichier introuvable : « {chemin} ».")
     st = p.stat()
     cle = (str(p.resolve()), st.st_size, st.st_mtime, cadence_sequence)
     with _verrou:
@@ -269,9 +267,7 @@ def analyser(chemin: str, cadence_sequence: str | None = None) -> tuple[InfosMed
     try:
         resultat = _analyser(p, st, seq, cadence_sequence)
     except av.error.FFmpegError as e:
-        raise MediaIllisible(f"FFmpeg ne parvient pas à lire « {p.name} » ({e}). Le fichier est "
-                             "peut-être incomplet ou dans un format non pris en charge. Essayez "
-                             "de le réexporter en ProRes ou en H.264.") from e
+        raise MediaIllisible(f"Fichier illisible : « {p.name} » ({e}).") from e
     with _verrou:
         _cache_analyses[cle] = resultat
     return resultat
@@ -316,11 +312,9 @@ def _analyser(p: Path, st: os.stat_result, seq: dict | None, cadence_sequence: s
                 break
             vfr = _cadence_variable(index, cadence)
             if vfr:
-                avert.append("Cadence variable : Remanence créera un intermédiaire à cadence fixe "
-                             "avant tout montage. La source ne sera pas modifiée.")
+                avert.append("Cadence variable : un intermédiaire à cadence fixe sera créé.")
             if entrelace:
-                avert.append("Vidéo entrelacée : elle sera traitée telle quelle. Le désentrelacement "
-                             "sera proposé à l'étape des effets.")
+                avert.append("Vidéo entrelacée.")
             sar = v.sample_aspect_ratio or cc.sample_aspect_ratio
             infos.video = InfosVideo(
                 index_flux=v.index, codec=cc.name, codec_long=cc.codec.long_name,

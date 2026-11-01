@@ -29,13 +29,12 @@ class FormulaireExport(QWidget):
         lay.setSpacing(12)
         lay.addWidget(etiquette("Format", "section"))
         self.format = QComboBox()
-        self.format.setToolTip("« Comme la source » reprend le codec, le profil et la profondeur "
-                               "du plan pour qu'il se réintègre au montage sans recalage.")
+
         self.format.currentIndexChanged.connect(self._extension)
         lay.addWidget(self.format)
         lay.addWidget(etiquette("Plage", "section"))
         self.tout = QRadioButton("Toute la séquence")
-        self.plage = QRadioButton("Entre les points d'entrée et de sortie (I et O)")
+        self.plage = QRadioButton("Entre les points E et S")
         lay.addWidget(self.tout)
         lay.addWidget(self.plage)
         lay.addWidget(etiquette("Fichier", "section"))
@@ -57,7 +56,7 @@ class FormulaireExport(QWidget):
         lay.addStretch(1)
         self.bouton = QPushButton("Exporter")
         self.bouton.setProperty("variante", "principal")
-        self.bouton.setToolTip("Ajoute le rendu à la file et le lance aussitôt (Ctrl+Entrée).")
+        self.bouton.setToolTip("Exporter (Ctrl+Entrée)")
         self.bouton.clicked.connect(self._valider)
         lay.addWidget(self.bouton)
 
@@ -81,8 +80,7 @@ class FormulaireExport(QWidget):
         self.format.blockSignals(False)
         a_plage = seq.point_entree is not None or seq.point_sortie is not None
         self.plage.setEnabled(a_plage)
-        self.plage.setToolTip("" if a_plage else "Posez un point d'entrée (I) et de sortie (O) "
-                                                 "sur la timeline pour exporter une partie seulement.")
+
         if not a_plage:
             self.tout.setChecked(True)
         elif not self.tout.isChecked():
@@ -100,8 +98,7 @@ class FormulaireExport(QWidget):
             f"{float(cad):.3f}".replace(".", ",", 1) + f" i/s, départ "
             f"{images_vers_tc(seq.tc_debut, cad, seq.tc_drop)}")
         self.bouton.setEnabled(seq.duree() > 0)
-        self.bouton.setToolTip("" if seq.duree() else "La timeline est vide : glissez un média "
-                                                       "sur la timeline avant d'exporter.")
+        self.bouton.setToolTip("" if seq.duree() else "Timeline vide")
 
     def _ext(self) -> str:
         cle = self.format.currentData()
@@ -124,8 +121,7 @@ class FormulaireExport(QWidget):
     def _valider(self):
         chemin = Path(self.fichier.text())
         if not chemin.parent.exists():
-            self.erreur.setText(f"Le dossier « {chemin.parent} » n'existe pas. Choisissez un "
-                                "autre emplacement.")
+            self.erreur.setText(f"Dossier introuvable : « {chemin.parent} »")
             self.erreur.show()
             return
         self.erreur.hide()
@@ -178,7 +174,7 @@ class LigneExport(QWidget):
             self.etat.setText("Terminé : conforme à la source")
             self.etat.setProperty("role", "succes")
         else:
-            self.etat.setText("Terminé : écarts avec la source, voir le rapport")
+            self.etat.setText("Terminé avec des écarts")
             self.etat.setProperty("role", "avertissement")
         self.etat.style().polish(self.etat)
         self._bouton("Voir le rapport", lambda: DialogueRapport(rapport, self).exec())
@@ -190,7 +186,7 @@ class LigneExport(QWidget):
         self.bouton.hide()
 
     def annule(self):
-        self.etat.setText("Annulé : aucun fichier n'a été laissé à moitié écrit.")
+        self.etat.setText("Annulé")
         self.bouton.hide()
 
     def _bouton(self, texte, action):
@@ -217,8 +213,7 @@ class FileExport(QWidget):
         self._liste = QVBoxLayout(contenu)
         self._liste.setContentsMargins(8, 8, 8, 8)
         self._liste.setSpacing(6)
-        self._vide = etiquette("Aucun export pour l'instant. Réglez le format à gauche, puis "
-                               "cliquez sur Exporter.", "secondaire")
+        self._vide = etiquette("Aucun export", "secondaire")
         self._vide.setWordWrap(True)
         self._liste.addWidget(self._vide)
         self._liste.addStretch(1)

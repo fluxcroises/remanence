@@ -14,10 +14,8 @@ class DialogueRapport(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Export terminé")
         lay = QVBoxLayout(self)
-        titre = QLabel(("Export vérifié : le fichier a bien le format, la cadence, le timecode "
-                        "et la couleur attendus." if rapport.conforme else
-                        "Le fichier a été écrit, mais il diffère de ce qui était attendu sur les "
-                        "points marqués « Écart »."))
+        titre = QLabel(("Export vérifié." if rapport.conforme else
+                        "Export terminé avec des écarts."))
         titre.setWordWrap(True)
         titre.setStyleSheet("font-weight: 600;")
         lay.addWidget(titre)
