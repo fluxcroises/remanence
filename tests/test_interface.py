@@ -650,6 +650,41 @@ def test_l_inspecteur_ne_saute_pas_apres_un_reglage(fenetre, medias):
         assert barre.value() == depart
 
 
+def test_scripts_depuis_l_interface(fenetre, medias, tmp_path):
+    """Import d'un dossier de scripts, script choisi dans l'inspecteur : les réglages
+    suivent le script."""
+    from PySide6.QtWidgets import QComboBox
+    from remanence.effets import nouvel_effet
+    from remanence.ui.composants import LigneParametre
+    w = fenetre
+    (tmp_path / "Tremblement.js").write_text("var ampleur = 4;\nfunction glitch_frame(f) {}\n",
+                                             encoding="utf-8")
+    w.importer_scripts(str(tmp_path))
+    assert any(p.nom == "Tremblement" for p in w.bibliotheque.prereglages)
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    w.timeline.vue._choisir({clip.id})
+    w.ajouter_effet("clip", clip.id, [nouvel_effet("script_ffglitch", "Moyenne du mouvement")])
+    effet = lambda: w.projet.sequence.pistes_video[0].clips[0].effets[0]
+    assert effet().params["tail_length"] == 10
+    liste = lambda: next((c for c in w.inspecteur.findChildren(QComboBox)
+                          if c.accessibleName() == "Script" and c.isVisibleTo(w.inspecteur)),
+                         None)
+    texte = lambda: liste().currentText() if liste() is not None else None
+    assert _attendre(lambda: texte() == "Moyenne du mouvement", 2)
+    w.reglage_effet(effet().id, "script", liste().itemData(liste().findText("Tremblement")))
+    assert _attendre(lambda: effet().params == {"ampleur": 4, "blocs": 2}, 2)
+    assert _attendre(lambda: any(isinstance(l, LigneParametre) and l.isVisibleTo(w.inspecteur)
+                                 for l in w.inspecteur.findChildren(LigneParametre)), 2)
+    assert _attendre(lambda: texte() == "Tremblement", 2)
+    # Script modifié : la nouvelle valeur écrite dans le script remplace l'ancienne.
+    w.reglage_effet(effet().id, "script", "var ampleur = 9;\nfunction glitch_frame(f) {}\n")
+    assert _attendre(lambda: effet().params["ampleur"] == 9, 2)
+    assert _attendre(lambda: texte() == "Script modifié", 2)
+
+
 def test_losanges_de_la_timeline_et_echap(fenetre, medias):
     """Clic sur un losange d'un clip : la tête y va ; le glisser déplace l'image clé.
     Échap quitte l'outil de coupe."""

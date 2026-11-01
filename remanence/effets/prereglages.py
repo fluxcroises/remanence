@@ -11,7 +11,9 @@ import json
 from dataclasses import dataclass
 
 from remanence.config import dossier_donnees
+from remanence import effets as catalogue
 from remanence.effets import EFFETS
+from remanence.moteurs.codec import scripts
 from remanence.projet.modele import Effet, nouvel_id
 
 FAMILLE_PERSONNELS = "Mes préréglages"
@@ -39,22 +41,35 @@ class Prereglage:
 
     def nouveaux_effets(self) -> list[Effet]:
         """Effets neufs, prêts à poser : chacun garde ses réglages et reste modifiable."""
-        return [Effet(nouvel_id(), e["type"], dict(e["params"]), graine=e.get("graine", 1))
+        return [Effet(nouvel_id(), e["type"], dict(e["params"]), graine=e.get("graine", 1),
+                      script=e.get("script", ""))
                 for e in self.effets if e["type"] in EFFETS]
 
     def correspond(self, effets: list[Effet]) -> bool:
         """Vrai si ces effets sont exactement ceux du préréglage (tuile surlignée)."""
         if len(effets) != len(self.effets):
             return False
-        return all(e.type == d["type"] and all(e.params.get(k) == v for k, v in d["params"].items())
+        return all(e.type == d["type"] and e.script == d.get("script", "")
+                   and all(e.params.get(k) == v for k, v in d["params"].items())
                    for e, d in zip(effets, self.effets))
 
 
 def fournis() -> list[Prereglage]:
+    """Préréglages de chaque effet, puis les scripts importés dans la bibliothèque."""
     resultat = []
     for d in EFFETS.values():
         for nom in d.prereglages:
-            resultat.append(Prereglage(nom, [{"type": d.cle, "params": d.valeurs(nom)}]))
+            e = catalogue.nouvel_effet(d.cle, nom)
+            p = {"type": d.cle, "params": e.params}
+            if e.script:
+                p["script"] = e.script
+            resultat.append(Prereglage(nom, [p]))
+    if "script_ffglitch" in EFFETS:
+        for nom, (texte, fourni) in scripts.bibliotheque().items():
+            if not fourni:
+                e = catalogue.nouvel_effet("script_ffglitch", script=texte)
+                resultat.append(Prereglage(nom, [{"type": e.type, "params": e.params,
+                                                  "script": texte}]))
     return resultat
 
 
@@ -82,7 +97,8 @@ def tous() -> list[Prereglage]:
 
 def enregistrer(nom: str, effets: list[Effet]) -> Prereglage:
     """Nouveau préréglage personnel ; un préréglage du même nom est remplacé."""
-    p = Prereglage(nom, [{"type": e.type, "params": dict(e.params), "graine": e.graine}
+    p = Prereglage(nom, [{"type": e.type, "params": dict(e.params), "graine": e.graine,
+                          **({"script": e.script} if e.script else {})}
                          for e in effets], fourni=False)
     liste = [x for x in personnels() if x.nom != nom]
     liste.append(p)

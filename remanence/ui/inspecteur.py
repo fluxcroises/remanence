@@ -10,13 +10,14 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QGridLayout, 
                                QVBoxLayout, QWidget)
 
 from remanence.effets import EFFETS, valeur_a
-from remanence.moteurs.codec import ffglitch
+from remanence.moteurs.codec import ffglitch, scripts
 from remanence.projet import edition
 from remanence.media.timecode import images_vers_tc
 from remanence.effets.masques import NOMS_FORMES
 from remanence.projet.modele import MODES_FUSION, MODES_MASQUE, Media, Projet
 from remanence.ui.composants import (BoutonCle, LigneParametre, SectionRepliable, bouton_icone,
                                      etiquette, poser_icone)
+from remanence.ui.editeur_script import EditeurScript
 from remanence.ui.menu_effets import remplir_menu_effets
 
 
@@ -252,6 +253,38 @@ class Inspecteur(PanneauFiche):
                     widget.montrer(v)
             sur_cle = anime and any(k[0] == t for k in e.cles[cle])
             bouton.definir("cle" if sur_cle else "anime" if anime else "inactif")
+
+    def _choix_script(self, e) -> QHBoxLayout:
+        """Script FFglitch : le script de la bibliothèque, et l'éditeur (mode expert)."""
+        rang = QHBoxLayout()
+        rang.setSpacing(8)
+        rang.addSpacing(RETRAIT_LOSANGE)
+        libelle = etiquette("Script", "libelle")
+        libelle.setFixedWidth(100)
+        rang.addWidget(libelle)
+        liste = QComboBox()
+        liste.setAccessibleName("Script")
+        bibliotheque = scripts.bibliotheque()
+        for nom, (texte, _fourni) in bibliotheque.items():
+            liste.addItem(nom, texte)
+        actuel = liste.findData(e.script)
+        if actuel < 0:
+            liste.insertItem(0, "Script modifié", e.script)
+            actuel = 0
+        liste.setCurrentIndex(actuel)
+        liste.activated.connect(lambda i: self.reglage_effet.emit(
+            e.id, "script", liste.itemData(i)))
+        rang.addWidget(liste, 1)
+        modifier = QPushButton("Modifier…")
+
+        def editer():
+            nom = liste.currentText()
+            dialogue = EditeurScript(e.script, nom, self.window())
+            if dialogue.exec() and dialogue.contenu() != e.script:
+                self.reglage_effet.emit(e.id, "script", dialogue.contenu())
+        modifier.clicked.connect(editer)
+        rang.addWidget(modifier)
+        return rang
 
     def _bouton_cle(self, e, cle: str, origine: int) -> BoutonCle:
         b = BoutonCle()
@@ -514,7 +547,9 @@ class Inspecteur(PanneauFiche):
                 dessus = edition.clip_au_dessus(seq, clip)
                 media = self._projet_courant.medias.get(dessus.media_id) if dessus else None
                 self._lignes([("Source", media.nom if media else "aucun clip au-dessus")])
-            for p in d.parametres:
+            if d.parametres_de is not None:
+                self._cible.addLayout(self._choix_script(e))
+            for p in d.parametres_pour(e):
                 if not d.animable:
                     # Moteur codec Bavure : un seul calcul pour tout le clip, pas d'image clé.
                     bouton = QWidget()

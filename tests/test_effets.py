@@ -473,3 +473,61 @@ def test_transfert_mouvement(medias):
     prerendu.calculer(projet, seq, clip)
     b = _image(projet, 20)
     assert np.abs(a - b).max() > 0.02, "le mouvement emprunté se voit"
+
+
+# Script écrit pour FFglitch 0.9 (sans export ni setup), comme ceux de dd_GlitchAssist.
+SCRIPT_ANCIEN = """// test
+var force = 3;
+var compteur = 0;
+let seuil = 0.5;
+
+function glitch_frame(frame)
+{
+    compteur++;
+    let mvs = frame["mv"];
+    if ( !mvs )
+        return;
+    let fwd = mvs["forward"];
+    if ( !fwd )
+        return;
+    for ( let i = 0; i < fwd.length; i++ )
+        for ( let j = 0; j < fwd[i].length; j++ )
+            if ( Math.random() > seuil )
+                fwd[i][j][0] = fwd[i][j][0] * force;
+}
+"""
+
+
+def test_scripts_de_la_bibliotheque(medias, tmp_path):
+    """Réglages lus dans le script (pas les compteurs), ancien format accepté, hasard
+    reproductible, import d'un dossier."""
+    from remanence.effets import prereglages
+    from remanence.moteurs.codec import ffglitch, prerendu, scripts
+    assert scripts.reglages(SCRIPT_ANCIEN) == {"force": 3.0, "seuil": 0.5}
+    adapte = scripts.adapter(SCRIPT_ANCIEN, {"force": 6, "seuil": 0.25}, 9)
+    assert "var force = 6;" in adapte and "let seuil = 0.25;" in adapte
+    assert "export function glitch_frame" in adapte and "Math.random = hasard" in adapte
+    fournis = scripts.bibliotheque()
+    assert {"Moyenne du mouvement", "Panoramique"} <= set(fournis)
+    source = tmp_path / "mes scripts" / "dd"
+    source.mkdir(parents=True)
+    (source / "Multiplier_X.js").write_text(SCRIPT_ANCIEN, encoding="utf-8")
+    assert scripts.importer(tmp_path / "mes scripts") == 1
+    p = next(p for p in prereglages.fournis() if p.nom == "Multiplier X")
+    assert p.famille == "Scripts"
+    effet = p.nouveaux_effets()[0]
+    assert effet.script == SCRIPT_ANCIEN and effet.params["force"] == 3
+    assert not EFFETS["script_ffglitch"].animable
+    if not ffglitch.disponible():
+        return
+    projet, clip = _projet(medias)
+    seq = projet.sequence
+    source_img = _image(projet, 20)
+    effet.params["force"] = 8
+    clip.effets = [effet]
+    a = prerendu.calculer(projet, seq, clip)
+    image = _image(projet, 20)
+    assert np.abs(image - source_img).max() > 0.02, "le script agit"
+    a.unlink()
+    prerendu.calculer(projet, seq, clip)
+    assert np.array_equal(_image(projet, 20), image), "même graine, même résultat"

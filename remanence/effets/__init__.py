@@ -49,6 +49,10 @@ class DescriptionEffet:
     # clip de la piste au-dessus. Sans FFglitch, ils restent sans action.
     script: object = None
     transfert: bool = False
+    # Script de la bibliothèque : réglages lus dans le texte de l'effet (parametres_de(effet)),
+    # et texte de chaque préréglage fourni.
+    parametres_de: object = None
+    textes: dict[str, str] = field(default_factory=dict)
 
     @property
     def codec(self) -> bool:
@@ -60,9 +64,13 @@ class DescriptionEffet:
 
     @property
     def animable(self) -> bool:
-        """Images clés possibles : en temps réel, et pour les effets FFglitch (le script
-        reçoit la valeur de chaque image)."""
-        return not self.codec or self.ffglitch
+        """Images clés possibles : en temps réel, et pour les effets FFglitch générés (le
+        script reçoit la valeur de chaque image). Un script de la bibliothèque ne lit ses
+        réglages qu'une fois."""
+        return not self.codec or (self.ffglitch and self.parametres_de is None)
+
+    def parametres_pour(self, effet: Effet | None) -> list[Parametre]:
+        return self.parametres_de(effet) if self.parametres_de else self.parametres
 
     def valeurs(self, prereglage: str | None = None) -> dict:
         v = {p.cle: p.defaut for p in self.parametres}
@@ -114,25 +122,36 @@ EFFETS: dict[str, DescriptionEffet] = {}
 
 def _charger():
     for module in pkgutil.iter_modules(__path__):
-        d = getattr(importlib.import_module(f"{__name__}.{module.name}"), "DESCRIPTION", None)
-        if d is not None:  # les autres modules du dossier ne sont pas des effets
-            EFFETS[d.cle] = d
+        m = importlib.import_module(f"{__name__}.{module.name}")
+        # Les autres modules du dossier ne sont pas des effets ; certains en déclarent deux.
+        for d in [getattr(m, "DESCRIPTION", None)] + [v for k, v in vars(m).items()
+                                                       if isinstance(v, DescriptionEffet)
+                                                       and k != "DESCRIPTION"]:
+            if d is not None:
+                EFFETS[d.cle] = d
 
 
 _charger()
 
-FAMILLES = ["Datamosh", "Corruption", "Couleur", "Pixels", "Signal"]
+FAMILLES = ["Datamosh", "Corruption", "Couleur", "Pixels", "Signal", "Scripts"]
 
 
-def nouvel_effet(cle: str, prereglage: str | None = None) -> Effet:
-    return Effet(nouvel_id(), cle, EFFETS[cle].valeurs(prereglage))
+def nouvel_effet(cle: str, prereglage: str | None = None, script: str | None = None) -> Effet:
+    """script : texte d'un Script FFglitch (sinon celui du préréglage fourni)."""
+    d = EFFETS[cle]
+    e = Effet(nouvel_id(), cle, d.valeurs(prereglage) if prereglage in d.prereglages
+              else d.valeurs())
+    e.script = script if script is not None else d.textes.get(prereglage or "", "")
+    if d.parametres_de:
+        e.params = {**{p.cle: p.defaut for p in d.parametres_de(e)}, **e.params}
+    return e
 
 
 def valeur(effet: Effet, cle: str) -> float:
     """Valeur d'un paramètre ; celle par défaut s'il manque (effet enregistré avant un ajout)."""
     if cle in effet.params:
         return effet.params[cle]
-    return next(p.defaut for p in EFFETS[effet.type].parametres if p.cle == cle)
+    return next(p.defaut for p in EFFETS[effet.type].parametres_pour(effet) if p.cle == cle)
 
 
 def valeur_a(effet: Effet, cle: str, t: float) -> float:
@@ -177,7 +196,8 @@ def instantane(effet: Effet, t: float) -> Effet:
         if p.cle in effet.cles:
             params[p.cle] = valeur_a(effet, p.cle, t)
     return Effet(effet.id, effet.type, params, effet.actif, effet.graine,
-                 valeur_a(effet, "opacite", t), effet.fusion, masques=effet.masques)
+                 valeur_a(effet, "opacite", t), effet.fusion, masques=effet.masques,
+                 script=effet.script)
 
 
 def poser_cle(effet: Effet, cle: str, t: int, v: float, mode: str | None = None):

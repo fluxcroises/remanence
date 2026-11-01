@@ -33,3 +33,11 @@ Remanence est distribué en code source, sans but commercial. Ce fichier liste c
 - Le script des vecteurs de mouvement (`remanence/effets/vecteurs.py`) reprend les idées des
   scripts du tutoriel de ffglitch-scripts (Ramiro Polla, domaine public, Unlicense) :
   `mv_pan`, `mv_average`, `mv_sink_and_rise`. Aucun shader tiers n'est inclus.
+- Scripts fournis de la bibliothèque (`remanence/ressources/scripts_ffglitch/`) : adaptés des
+  scripts du tutoriel de ffglitch-scripts (domaine public, Unlicense), avec mention d'origine
+  en tête de chaque fichier.
+- Écho de mouvement, Zoom de mouvement, Inversion et Zoom par saccades : idées des scripts
+  Delay, Buffer, Zoom, Invert-reverse et Slice de dd_GlitchAssist (Daz Disley, licence non
+  précisée), tels que repris par Datamosher Pro (MIT). Le code est écrit pour Remanence, sans
+  reprise. Les scripts de dd_GlitchAssist ne sont pas inclus : l'utilisateur importe sa propre
+  copie (Fichier > Importer des scripts FFglitch), qui reste sur sa machine.

@@ -79,7 +79,8 @@ def cle(projet: Projet, seq: Sequence, clip: Clip) -> str | None:
                "cadence": seq.cadence, "ffglitch": ffglitch.disponible(),
                "dessus": None if dessus is None else [_signature(projet, dessus),
                                                       dessus.debut - clip.debut],
-               "effets": [[e.type, sorted(e.params.items()), e.graine, e.cles] for e in effets]}
+               "effets": [[e.type, sorted(e.params.items()), e.graine, e.cles, e.script]
+                          for e in effets]}
     return _empreinte(donnees)
 
 
@@ -266,8 +267,9 @@ def encoder(images, n: int, largeur: int, hauteur: int, cadence: Fraction, blocs
                             progression, n, annule, outils)
     d = EFFETS[effet.type] if effet is not None else None
     if d is not None and d.script is not None:
-        valeurs = [{p.cle: valeur_a(effet, p.cle, t) for p in d.parametres} for t in range(n)]
-        flux = ffglitch.appliquer_script(flux, d.script(valeurs, effet.graine),
+        valeurs = [{p.cle: valeur_a(effet, p.cle, t) for p in d.parametres_pour(effet)}
+                   for t in range(n)]
+        flux = ffglitch.appliquer_script(flux, d.script(valeurs, effet.graine, effet),
                                          travail / "script.avi", annule, outils)
     elif d is not None and d.transfert and mouvement is not None:
         autre = ffglitch.encoder(mouvement, largeur, hauteur, cadence, blocs, set(),

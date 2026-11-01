@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QFileDial
 from remanence.config import reglages_interface
 from remanence.effets import EFFETS, poser_cle, retirer_cle, valeur_a
 from remanence.effets.masques import nouveau_masque
-from remanence.moteurs.codec import bavure, prerendu
+from remanence.moteurs.codec import bavure, prerendu, scripts
 from remanence.effets import prereglages
 from remanence.media import intermediaire
 from remanence.media.lecteur import LecteurVideo, generer_cache_audio
@@ -397,6 +397,7 @@ class FenetrePrincipale(QMainWindow):
         self._action(f, "Enregistrer sous…", self.enregistrer_sous, "Ctrl+Shift+S")
         f.addSeparator()
         self._action(f, "Importer des médias…", self.importer, "Ctrl+I")
+        self._action(f, "Importer des scripts FFglitch…", self.importer_scripts)
         self._action(f, "Exporter la séquence…", lambda: self.choisir_espace("export"), "Ctrl+E")
         f.addSeparator()
         self._action(f, "Quitter", self.close, "Ctrl+Q")
@@ -1029,8 +1030,20 @@ class FenetrePrincipale(QMainWindow):
         if champ == "retirer":
             porteur.effets.remove(e)
             libelle = f"Effet {nom} retiré"
+        elif champ == "script":
+            if e.script == valeur:
+                return
+            # Les réglages du nouveau script, à la valeur écrite dans le script ; un réglage
+            # changé dans l'inspecteur garde sa valeur si le script n'a pas changé la sienne.
+            d = EFFETS[e.type]
+            anciens = {p.cle: p.defaut for p in d.parametres_pour(e)}
+            e.script = valeur
+            neufs = {p.cle: p.defaut for p in d.parametres_pour(e)}
+            e.params = {k: e.params[k] if k in e.params and anciens.get(k) == v else v
+                        for k, v in neufs.items()}
+            libelle = f"Script ({nom})"
         elif champ == "reinitialiser":
-            e.params = EFFETS[e.type].valeurs()
+            e.params = {p.cle: p.defaut for p in EFFETS[e.type].parametres_pour(e)}
             e.cles, e.opacite, e.fusion = {}, 1.0, "normal"
             libelle = f"Effet {nom} réinitialisé"
         elif champ in ("actif", "graine", "fusion"):
@@ -1590,6 +1603,21 @@ class FenetrePrincipale(QMainWindow):
             self._remplacer_projet(p)
 
     # Import
+
+    def importer_scripts(self, dossier: str | None = None):
+        """Les scripts .js d'un dossier (dd_GlitchAssist, ffglitch-scripts…) dans la
+        bibliothèque d'effets, famille Scripts."""
+        if not dossier:
+            dossier = QFileDialog.getExistingDirectory(self, "Importer des scripts FFglitch")
+        if not dossier:
+            return
+        try:
+            n = scripts.importer(Path(dossier))
+        except OSError as e:
+            afficher_erreur(self, "Import impossible", str(e))
+            return
+        self.bibliotheque.recharger()
+        self.message(f"{n} script{'s' if n > 1 else ''} importé{'s' if n > 1 else ''}", 3000)
 
     def importer(self):
         chemins, _ = QFileDialog.getOpenFileNames(

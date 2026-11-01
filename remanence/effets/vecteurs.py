@@ -57,7 +57,7 @@ export function glitch_frame(frame) {
 """
 
 
-def script(valeurs: list[dict], graine: int) -> str:
+def script(valeurs: list[dict], graine: int, effet=None) -> str:
     colonnes = {cle: [round(v[cle], 3) for v in valeurs] for cle in CLES}
     return MODELE % {"valeurs": json.dumps(colonnes), "graine": graine}
 

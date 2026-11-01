@@ -104,6 +104,8 @@ class Effet:
     cles: dict = field(default_factory=dict)
     # Sans masque, l'effet couvre toute l'image.
     masques: list[Masque] = field(default_factory=list)
+    # Script FFglitch : le texte JavaScript de l'effet (vide pour les autres effets).
+    script: str = ""
 
 
 # Modes de fusion du cahier des charges : clé enregistrée -> nom affiché.
