@@ -18,6 +18,7 @@ from remanence.media.proxy import chemin_audio, chemin_proxy
 from remanence.media.sonde import analyser
 from remanence.projet.modele import Clip, Media, Projet, Sequence
 from remanence.rendu.couleur import vers_rvb16_apercu, vers_rvba
+from remanence.rendu.gpu import RenduGPU, gpu_demande
 
 
 @dataclass
@@ -59,15 +60,34 @@ def identite(pile: list[Couche]) -> Couche | None:
 
 
 class Compositeur:
-    """Un compositeur par fil d'exécution : il garde ses propres décodeurs ouverts."""
+    """Un compositeur par fil d'exécution : il garde ses propres décodeurs ouverts, et son
+    contexte de carte graphique, créé au premier calcul dans ce fil.
 
-    def __init__(self, projet: Projet, apercu: bool = False):
+    gpu : None pour le choix automatique (carte graphique si possible), False pour le
+    processeur seul (référence des tests)."""
+
+    def __init__(self, projet: Projet, apercu: bool = False, gpu: bool | None = None):
         self.projet = projet
         self.pool = Pool()
         self.apercu = apercu
+        self._gpu_voulu = gpu_demande() if gpu is None else gpu
+        self._gpu: RenduGPU | None = None
 
     def fermer(self):
         self.pool.fermer()
+        if self._gpu is not None:
+            self._gpu.fermer()
+            self._gpu = None
+
+    def gpu(self) -> RenduGPU | None:
+        """Le contexte de la carte graphique, ou None si elle n'est pas utilisable ici."""
+        if self._gpu is None and self._gpu_voulu:
+            try:
+                self._gpu = RenduGPU()
+            except Exception:
+                # Pas d'OpenGL 4.3 : le processeur prend le relais, avec le même résultat.
+                self._gpu_voulu = False
+        return self._gpu
 
     def lecteur(self, media: Media, proxy: bool) -> LecteurVideo:
         chemin = media.chemin
@@ -90,6 +110,13 @@ class Compositeur:
         hauteur = max(2, round(seq.hauteur * echelle))
         sortie = np.zeros((hauteur, largeur, 4), np.float32)
         pile = couches(self.projet, seq, f)
+        g = self.gpu()
+        if g is not None:
+            g.commencer(largeur, hauteur)
+            for couche in pile:
+                trame, x0, y0 = self._trame_couche(couche, largeur, hauteur, proxy)
+                g.ajouter(trame, couche.media.infos.video.couleur, couche.opacite, x0, y0)
+            return g.lire()
         for i, couche in enumerate(pile):
             rvba = self._image_couche(couche, largeur, hauteur, proxy)
             if i == 0 and couche.opacite >= 1.0 and rvba.shape == sortie.shape and \
@@ -117,18 +144,26 @@ class Compositeur:
         rvba = self.image(seq, f, echelle, proxy)
         return np.ascontiguousarray(rvba[..., :3].astype(np.float16))
 
-    def _image_couche(self, couche: Couche, largeur: int, hauteur: int, proxy: bool) -> np.ndarray:
+    def _trame_couche(self, couche: Couche, largeur: int, hauteur: int,
+                      proxy: bool) -> tuple[object, int, int]:
+        """L'image décodée de la couche, à sa taille dans la séquence, et sa position.
+        Adapter à la séquence sans déformer : l'image tient entière, centrée."""
         v = couche.media.infos.video
         image = self.lecteur(couche.media, proxy).image(couche.image_source)
         if (image.width, image.height) == (largeur, hauteur):
-            return vers_rvba(image, v.couleur, self.apercu)
-        # Adapter à la séquence sans déformer : l'image tient entière, centrée.
+            return image, 0, 0
         s = min(largeur / v.largeur, hauteur / v.hauteur)
         lp, hp = max(2, round(v.largeur * s)), max(2, round(v.hauteur * s))
         reduite = image.reformat(width=lp, height=hp, interpolation="BICUBIC")
-        rvba = vers_rvba(reduite, v.couleur, self.apercu)
+        return reduite, (largeur - lp) // 2, (hauteur - hp) // 2
+
+    def _image_couche(self, couche: Couche, largeur: int, hauteur: int, proxy: bool) -> np.ndarray:
+        trame, x0, y0 = self._trame_couche(couche, largeur, hauteur, proxy)
+        rvba = vers_rvba(trame, couche.media.infos.video.couleur, self.apercu)
+        if (x0, y0) == (0, 0) and rvba.shape[:2] == (hauteur, largeur):
+            return rvba
         toile = np.zeros((hauteur, largeur, 4), np.float32)
-        y0, x0 = (hauteur - hp) // 2, (largeur - lp) // 2
+        hp, lp = rvba.shape[:2]
         toile[y0:y0 + hp, x0:x0 + lp] = rvba[:hauteur - y0, :largeur - x0]
         return toile
 

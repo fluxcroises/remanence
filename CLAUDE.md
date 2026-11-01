@@ -28,7 +28,7 @@ Logiciel Windows de montage vidéo orienté datamosh et glitch art, dans l'espri
 
 - Étape 1 (socle et visionneuse) : validée par Lewis le 1er novembre 2026 (charte intégrée, refonte de l'interface en cinq lots, corrections du test manuel, timecode au choix, double écran façon Resolve, textes courts), 91 tests au vert.
 - Captures de référence de l'état actuel : `UI/captures/`.
-- Étape 2 (effets en temps réel et ciblage) : plan présenté le 1er novembre 2026, en attente de l'accord de Lewis.
+- Étape 2 (effets en temps réel et ciblage) : plan en cinq lots accepté par Lewis le 1er novembre 2026 avec les choix par défaut (garantie au pixel près : images sans effet recopiées, image calculée avant encodage, formats sans perte ; info-bulle d'effet = nom et famille, pas de panneau « Premiers pas » ; ordre : 1 moteur GPU, 2 effets du prototype, 3 bibliothèque, 4 images clés et modes de fusion, 5 masques et formats d'export). Lot 1 fait le 1er novembre 2026, 98 tests au vert.
 - Étapes 3 à 6 : non commencées. Ne pas passer à l'étape suivante sans validation explicite.
 
 ## Commandes
@@ -43,6 +43,7 @@ Logiciel Windows de montage vidéo orienté datamosh et glitch art, dans l'espri
 
 - Python 3.12 dans `.venv` (le Python système est en 3.14). FFmpeg est utilisé uniquement via PyAV, qui l'embarque avec x264 et x265 ; pas de ffmpeg.exe pour l'instant (son exécution depuis un téléchargement a été refusée par la sécurité de session).
 - Recopie des images non modifiées (smart rendering) : c'est elle qui garantit « mêmes pixels que la source », car ProRes, DNxHR, H.264 et HEVC sont avec perte. Codecs intra : recopie image par image. Codecs à GOP : recopie seulement si l'export reprend le média entier sans modification, sinon tout est réencodé.
+- Composition sur la carte graphique (`rendu/gpu.py`, lot 1 de l'étape 2) : contexte moderngl hors écran OpenGL 4.3, un par fil (lecture, export), créé au premier calcul ; plans YUV envoyés en textures entières (`u1`/`u2`, `texelFetch` exact), conversion avec la matrice et la plage du fichier dans le shader, fusion en ping-pong sur des textures RGBA32F. 32 bits flottants et non 16 comme le cahier des charges : en 16 bits, le 4444 décodé en 12 bits perdrait de la précision. Le redimensionnement d'une couche plus petite reste fait par swscale (bicubique) avant l'envoi. Repli automatique sur le processeur si OpenGL 4.3 manque ; `REMANENCE_RENDU=cpu` le force. `tests/test_gpu.py` vérifie l'identité avec le calcul processeur et le retour exact aux valeurs de la source pour les cinq formats. Mesure UHD, deux couches ProRes : 86 ms par image contre 688 ms au processeur (le décodage domine le reste).
 - Composition interne en float32 RVBA prémultiplié ; conversion YUV vers RVB explicite avec la matrice et la plage du fichier, sans toucher à la courbe de transfert.
 - Proxies : ProRes 422 Proxy en demi-résolution (4444 si alpha), seulement au-delà de 1280 px de large et pour les sources YUV, dans `%LOCALAPPDATA%\Remanence\cache`. Cache audio : float32 stéréo 48 kHz au même endroit.
 - Cadence variable : intermédiaire ProRes 422 HQ à la cadence standard la plus proche de la moyenne, niveaux ramenés en plage vidéo.
