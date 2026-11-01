@@ -55,14 +55,22 @@ class Encodeur:
         self._n = 0
         self._precedente: np.ndarray | None = None
 
-    def encoder(self, image: av.VideoFrame) -> list[bytes]:
+    def est_coupe(self, image: av.VideoFrame) -> bool:
+        """Vrai si cette image commence un nouveau plan (et la retient pour la suivante)."""
+        reduite = image.reformat(width=32, height=18, format="gray").to_ndarray()
+        reduite = reduite.astype(np.float32)
+        coupe = (self._precedente is not None
+                 and np.abs(reduite - self._precedente).mean() / 255.0 > SEUIL_COUPE)
+        self._precedente = reduite
+        return coupe
+
+    def encoder(self, image: av.VideoFrame, cle: bool = False) -> list[bytes]:
+        """cle : image clé forcée (raccord d'une transition, retour au net)."""
         image = image.reformat(width=self.cc.width, height=self.cc.height, format="yuv420p")
-        reduite = image.reformat(width=32, height=18, format="gray").to_ndarray().astype(np.float32)
-        if self._precedente is not None and                 np.abs(reduite - self._precedente).mean() / 255.0 > SEUIL_COUPE:
+        if self.est_coupe(image) or cle:
             image.pict_type = av.video.frame.PictureType.I
         else:
             image.pict_type = av.video.frame.PictureType.NONE
-        self._precedente = reduite
         image.pts = self._n
         image.time_base = self.cc.time_base
         self._n += 1
@@ -125,6 +133,17 @@ def supprimer_cles(paquets: list[bytes], debut: int = 0, fin: int | None = None)
     return sortie
 
 
+def supprimer_cles_aux(paquets: list[bytes], indices: set[int]) -> list[bytes]:
+    """Seules les images clés aux indices donnés sont remplacées par l'image d'avant."""
+    sortie = []
+    for i, p in enumerate(paquets):
+        if i > 0 and i in indices and type_image(p) == "I" and sortie:
+            sortie.append(sortie[-1])
+        else:
+            sortie.append(p)
+    return sortie
+
+
 def bloom(paquets: list[bytes], instant: int, repetitions: int) -> list[bytes]:
     """Le mouvement de l'image `instant` répété sur les `repetitions` images suivantes."""
     if not paquets:
@@ -157,3 +176,23 @@ def abimer(paquets: list[bytes], force: float, graine: int) -> list[bytes]:
             b[rnd.randrange(min(debut, len(b) - 1), len(b))] = rnd.randrange(2, 256)
         sortie.append(bytes(b))
     return sortie
+
+
+def coupes_du_media(chemin: str, sequence_images: dict | None = None,
+                    cadence: str | None = None, annule=None) -> list[int]:
+    """Images où commence un nouveau plan : là où l'encodeur posera une image clé, donc
+    celles que l'on peut supprimer pour faire baver un plan dans le suivant."""
+    from remanence.media.sonde import ouvrir_conteneur
+    coupes = []
+    precedente = None
+    with ouvrir_conteneur(chemin, sequence_images, cadence) as c:
+        for i, image in enumerate(c.decode(c.streams.video[0])):
+            if annule is not None and annule.is_set():
+                raise InterruptedError
+            reduite = image.reformat(width=32, height=18, format="gray").to_ndarray()
+            reduite = reduite.astype(np.float32)
+            if precedente is not None and \
+                    np.abs(reduite - precedente).mean() / 255.0 > SEUIL_COUPE:
+                coupes.append(i)
+            precedente = reduite
+    return coupes

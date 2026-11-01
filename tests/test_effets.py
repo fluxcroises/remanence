@@ -325,3 +325,59 @@ def test_effets_codec(medias, tmp_path, cle):
     assert rapport.conforme and rapport.images_calculees == 30
     with pytest.raises(edition.EditionImpossible):
         edition.ajouter_effet(seq.pistes_video[0], nouvel_effet(cle))
+
+
+def _deux_plans(medias):
+    """Deux plans ProRes à la suite : 422 HQ (20 images), puis 422 LT."""
+    projet = Projet.nouveau()
+    seq = projet.sequence
+    for cle in ("prores_hq", "sans_audio_2997"):
+        infos, _ = analyser(str(medias[cle]))
+        m = Media(nouvel_id(), str(medias[cle]), infos)
+        projet.medias[m.id] = m
+    a, b = projet.medias.values()
+    edition.ajouter_media(projet, seq, a, 0, duree=20)
+    edition.ajouter_media(projet, seq, b, 20)
+    return projet, seq, seq.pistes_video[0].clips[0], seq.pistes_video[0].clips[1]
+
+
+def test_transition_datamosh(medias, tmp_path):
+    """Validation de l'étape 3 : deux plans ProRes enchaînés produisent une transition qui
+    bave, et le plan exporté se réintègre au montage sans décalage."""
+    from remanence.moteurs.codec import prerendu
+    projet, seq, a, b = _deux_plans(medias)
+    fin_a = _image(projet, a.fin - 1)
+    propre = [_image(projet, b.debut + t) for t in range(b.duree)]
+    edition.basculer_transition(seq, b.id, 8)
+    assert b.transition.duree == 8
+    prerendu.calculer_source(projet, seq, b)
+    moshe = [_image(projet, b.debut + t) for t in range(b.duree)]
+    ecart = lambda x, y: float(np.abs(x[..., :3] - y[..., :3]).mean())
+    assert ecart(moshe[1], fin_a) < ecart(propre[1], fin_a), "le premier plan bave dans le second"
+    assert all(np.array_equal(moshe[t], propre[t]) for t in range(8, b.duree)), \
+        "après la transition, la source intacte"
+    sortie = tmp_path / "plan_b.mov"
+    rapport = exporter(projet, seq, sortie, debut=b.debut, fin=b.fin)
+    assert rapport.conforme, [(v.critere, v.obtenu) for v in rapport.verifications if not v.ok]
+    # Le plan LT est en 29,97 dans une séquence en 23,976 : réencodé en entier, pas recopié.
+    assert rapport.images_calculees + rapport.images_recopiees == b.duree
+    infos, _ = analyser(str(sortie))
+    assert infos.video.nb_images == b.duree
+    assert infos.video.tc_debut == seq.tc_debut + b.debut, "même timecode que dans le montage"
+
+
+def test_transition_et_coupes_au_montage(medias):
+    projet, seq, a, b = _deux_plans(medias)
+    with pytest.raises(edition.EditionImpossible):
+        edition.basculer_transition(seq, a.id)  # rien avant le premier clip
+    edition.basculer_transition(seq, b.id)
+    edition.couper(seq, b.debut + 5)
+    gauche, droite = seq.pistes_video[0].clips[1:]
+    assert gauche.transition is not None and droite.transition is None, "la coupe reste franche"
+    edition.basculer_cle(seq, gauche.id, 3)
+    edition.rogner(projet, seq, gauche.id, "debut", 1)
+    assert seq.trouver(gauche.id)[1].cles_supprimees == [2]
+    relu = Projet.depuis_dict(projet.vers_dict()).sequence.trouver(gauche.id)[1]
+    assert relu.transition.duree == gauche.transition.duree and relu.cles_supprimees == [2]
+    edition.basculer_transition(seq, gauche.id)
+    assert seq.trouver(gauche.id)[1].transition is None

@@ -359,6 +359,18 @@ class Inspecteur(PanneauFiche):
             rang.addWidget(b)
             rang.addStretch(1)
             self._cible.addLayout(rang)
+        if video and c.transition is not None:
+            section = self._section("Transition datamosh", "transition")
+            retirer = bouton_icone("x", "Retirer la transition", taille=14)
+            retirer.clicked.connect(lambda: self.reglage.emit(c.id, "transition_retirer", None))
+            section.ajouter_outil(retirer)
+            for champ, nom, mini, maxi, unite in (("duree", "Durée", 1, c.duree, "images"),
+                                                  ("blocs", "Blocs", 1, 31, "")):
+                ligne = LigneParametre(nom, mini, maxi, getattr(c.transition, champ), unite,
+                                       24 if champ == "duree" else 4, 0)
+                ligne.valeur_finale.connect(lambda v, champ=champ: self.reglage.emit(
+                    c.id, "transition_" + champ, v))
+                self._cible.addWidget(ligne)
         if video:
             self._effets("clip", c.id, c.effets, "Effets", origine=c.debut)
 

@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QFileDial
 from remanence.config import reglages_interface
 from remanence.effets import EFFETS, poser_cle, retirer_cle, valeur_a
 from remanence.effets.masques import nouveau_masque
-from remanence.moteurs.codec import prerendu
+from remanence.moteurs.codec import bavure, prerendu
 from remanence.effets import prereglages
 from remanence.media import intermediaire
 from remanence.media.lecteur import LecteurVideo, generer_cache_audio
@@ -128,6 +128,8 @@ class FenetrePrincipale(QMainWindow):
         self._masques_effet = ""
         # Pré-rendus codec en cours : empreinte -> clip.
         self._prerendus: dict[str, str] = {}
+        # Médias dont les coupes s'analysent.
+        self._analyses_coupes: set[str] = set()
         self._un_seul = False
         self._double_ecran: QMainWindow | None = None
         # Double écran : None, "panneaux" (comme Resolve) ou "timeline" (timeline seule à côté).
@@ -738,6 +740,7 @@ class FenetrePrincipale(QMainWindow):
         self.bibliotheque.appliquer.connect(self.appliquer_prereglage)
         self.bibliotheque.personnels_changes.connect(self._remplir_menus_effets)
         vue.prereglage_depose.connect(self._prereglage_depose)
+        vue.cle_basculee.connect(self.basculer_cle)
         self.inspecteur.timecode_demande.connect(self.regler_timecode_debut)
         self.liste_historique.aller.connect(self._aller_historique)
         self.formulaire_export.lancer.connect(self._lancer_export)
@@ -780,8 +783,12 @@ class FenetrePrincipale(QMainWindow):
         arrière-plan ; l'aperçu le montre dès qu'il est prêt."""
         seq = self.projet.sequence
         for _, clip in seq.tous_les_clips():
-            k = prerendu.cle(self.projet, seq, clip)
-            if k is None or k in self._prerendus or prerendu.chemin(k).exists():
+            k_source = prerendu.cle_source(self.projet, seq, clip)
+            k_effets = prerendu.cle(self.projet, seq, clip)
+            manque = (k_source is not None and not prerendu.chemin_source(k_source).exists()) \
+                or (k_effets is not None and not prerendu.chemin(k_effets).exists())
+            k = f"{k_source}/{k_effets}"
+            if not manque or k in self._prerendus:
                 continue
             # Le calcul travaille sur une copie : le montage peut continuer pendant ce temps.
             projet = Projet.depuis_dict(self.projet.vers_dict())
@@ -793,6 +800,7 @@ class FenetrePrincipale(QMainWindow):
             nom = self.projet.medias[clip.media_id].nom
 
             def travail(progression, annule, projet=projet, s=copie_seq, c=copie_clip):
+                prerendu.calculer_source(projet, s, c, progression, annule)
                 return prerendu.calculer(projet, s, c, progression, annule)
 
             def fini(_r, k=k):
@@ -868,6 +876,7 @@ class FenetrePrincipale(QMainWindow):
         self._afficher_tout()
         self._actualiser_calque()
         self._lancer_prerendus()
+        self._analyser_coupes()
 
     def _remplacer_projet(self, projet: Projet):
         hors_ligne = {m.id: m.hors_ligne for m in self.projet.medias.values()}
@@ -1073,6 +1082,44 @@ class FenetrePrincipale(QMainWindow):
         # Différé : l'inspecteur est reconstruit, le réglage qui a parlé ne doit pas disparaître
         # pendant son propre signal.
         QTimer.singleShot(0, lambda: self.valider(libelle))
+
+    # Datamosh : raccords et coupes
+
+    def basculer_cle(self, genre: str, clip_id: str, t: int):
+        """Piste des images clés : au raccord, la transition datamosh ; à une coupe, l'image
+        clé supprimée ou rendue."""
+        seq = self.projet.sequence
+        if genre == "raccord":
+            self._tenter("Transition datamosh", lambda: edition.basculer_transition(seq, clip_id))
+        else:
+            self._tenter("Image clé", lambda: edition.basculer_cle(seq, clip_id, t))
+
+    def _analyser_coupes(self):
+        """Repère en arrière-plan les changements de plan des médias pas encore analysés."""
+        for media in self.projet.medias.values():
+            if media.coupes is not None or media.infos.video is None or media.hors_ligne \
+                    or media.id in self._analyses_coupes:
+                continue
+            self._analyses_coupes.add(media.id)
+            infos = media.infos
+
+            def travail(progression, annule, infos=infos, chemin=media.chemin):
+                return bavure.coupes_du_media(
+                    chemin, infos.sequence_images,
+                    infos.video.cadence if infos.sequence_images else None, annule)
+
+            def fini(coupes, mid=media.id):
+                self._analyses_coupes.discard(mid)
+                if mid in self.projet.medias:
+                    # Une donnée du média, pas une action : elle n'entre pas dans l'historique.
+                    self.projet.medias[mid].coupes = coupes
+                    self.historique.retoucher(lambda p: setattr(p.medias[mid], "coupes", coupes)
+                                              if mid in p.medias else None)
+                    self.timeline.vue.update()
+
+            self.taches.lancer(Tache(f"Coupes de {media.nom}", travail), fini,
+                               lambda *_a, mid=media.id: self._analyses_coupes.discard(mid),
+                               lambda mid=media.id: self._analyses_coupes.discard(mid))
 
     # Masques
 
@@ -1438,6 +1485,15 @@ class FenetrePrincipale(QMainWindow):
 
     def _reglage_clip(self, clip_id: str, champ: str, valeur):
         _, c = self.projet.sequence.trouver(clip_id)
+        if champ.startswith("transition_"):
+            if c is None or c.transition is None:
+                return
+            if champ == "transition_retirer":
+                c.transition = None
+            else:
+                setattr(c.transition, champ[len("transition_"):], round(valeur))
+            QTimer.singleShot(0, lambda: self.valider("Transition datamosh"))
+            return
         if champ == "reinitialiser":
             if c is not None:
                 c.gain, c.fondu_entree, c.fondu_sortie = 1.0, 0, 0

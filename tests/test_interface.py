@@ -642,3 +642,30 @@ def test_datamosh_calcule_en_arriere_plan(fenetre, medias):
     assert _attendre(lambda: prerendu.pret(w.projet, w.projet.sequence,
                                            w.projet.sequence.pistes_video[0].clips[0]), 10)
     assert _attendre(lambda: not w.timeline.vue.en_calcul, 5)
+
+
+def test_piste_des_images_cles_et_transition(fenetre, medias):
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+    from remanence.ui.timeline import HAUT_CLES
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    mid = next(iter(w.projet.medias))
+    assert _attendre(lambda: w.projet.medias[mid].coupes is not None, 10), "coupes analysées"
+    w.poser_medias([mid], 0, "")
+    w.poser_medias([mid], 30, "")
+    vue = w.timeline.vue
+    raccord = next(r for r in vue.reperes_cles() if r[1] == "raccord")
+    assert raccord[0] == 30 and not raccord[4]
+    vue.px_par_image, vue.decalage_x = 10.0, 0.0
+    x = int(vue.x_de(30))
+    QTest.mouseClick(vue, Qt.LeftButton, Qt.NoModifier, QPoint(x, HAUT_CLES + 9))
+    b = w.projet.sequence.pistes_video[0].clips[1]
+    assert b.transition is not None and b.transition.duree == 24
+    assert any(r[4] for r in vue.reperes_cles() if r[1] == "raccord")
+    assert len(w.historique.libelles()) > 1 and w.historique.libelles()[-1] == "Transition datamosh"
+    w._reglage_clip(b.id, "transition_duree", 10.0)
+    assert _attendre(lambda: w.projet.sequence.pistes_video[0].clips[1].transition.duree == 10, 2)
+    w._reglage_clip(b.id, "transition_retirer", None)
+    assert _attendre(lambda: w.projet.sequence.pistes_video[0].clips[1].transition is None, 2)

@@ -10,7 +10,7 @@ from __future__ import annotations
 import copy
 
 from remanence.projet.modele import (ENTREE_CLIP_EFFET, Clip, Effet, Media, Piste, Projet,
-                                     Sequence, nouvel_id, valeur_enveloppe)
+                                     Sequence, Transition, nouvel_id, valeur_enveloppe)
 
 
 class EditionImpossible(Exception):
@@ -120,6 +120,7 @@ def liberer(piste: Piste, debut: int, fin: int, exclure: set[str]):
                 # La partie gauche garde l'identité du clip ; celle-ci devient un autre clip.
                 droite.id = nouvel_id()
                 _renouveler_effets(droite)
+                droite.transition = None
             _rogner_debut(droite, fin - c.debut)
             nouveaux.append(droite)
     piste.clips = nouveaux
@@ -132,6 +133,7 @@ def decaler_cles(c: Clip, delta: int):
         for cles in e.cles.values():
             for k in cles:
                 k[0] -= delta
+    c.cles_supprimees = [k - delta for k in c.cles_supprimees if k - delta > 0]
 
 
 def _rogner_debut(c: Clip, coupe: int):
@@ -415,6 +417,7 @@ def couper(seq: Sequence, f: int, ids: set[str] | None = None) -> list[str]:
             droite = copy.deepcopy(c)
             droite.id = nouvel_id()
             _renouveler_effets(droite)
+            droite.transition = None  # la nouvelle coupe est franche
             if c.lien:
                 droite.lien = nouveaux_liens.setdefault(c.lien, nouvel_id())
             _rogner_debut(droite, f - c.debut)
@@ -585,3 +588,39 @@ def ajouter_clip_effet(seq: Sequence, debut: int, duree: int, effets: list[Effet
     haut.clips.append(c)
     haut.trier()
     return c
+
+
+# Datamosh : transitions et images clés supprimées
+
+def precedent(piste: Piste, clip: Clip) -> Clip | None:
+    """Le clip de média qui finit exactement là où celui-ci commence, sur la même piste."""
+    return next((o for o in piste.clips if o.fin == clip.debut and o.id != clip.id
+                 and not o.est_effet), None)
+
+
+def basculer_transition(seq: Sequence, clip_id: str, duree: int | None = None):
+    """Pose ou retire la transition datamosh à l'entrée du clip."""
+    piste, c = seq.trouver(clip_id)
+    if c is None:
+        return
+    if piste.verrouillee:
+        raise EditionImpossible(f"La piste « {piste.nom} » est verrouillée.")
+    if c.transition is not None:
+        c.transition = None
+        return
+    if precedent(piste, c) is None:
+        raise EditionImpossible("Une transition datamosh se pose entre deux clips qui se suivent.")
+    c.transition = Transition("datamosh", max(1, min(duree or 24, c.duree)))
+
+
+def basculer_cle(seq: Sequence, clip_id: str, t: int):
+    """Supprime (ou rend) l'image clé de la coupe à l'image t du clip."""
+    piste, c = seq.trouver(clip_id)
+    if c is None or t <= 0:
+        return
+    if piste.verrouillee:
+        raise EditionImpossible(f"La piste « {piste.nom} » est verrouillée.")
+    if t in c.cles_supprimees:
+        c.cles_supprimees.remove(t)
+    else:
+        c.cles_supprimees = sorted(c.cles_supprimees + [t])

@@ -33,6 +33,8 @@ class Couche:
     # cette image (images clés évaluées).
     effets: list[Effet] = field(default_factory=list)
     fusion: str = "normal"
+    # Image prise dans la source modifiée du clip (transition datamosh, images clés supprimées).
+    modifiee: bool = False
 
 
 def actifs(effets: list[Effet], t: float = 0) -> list[Effet]:
@@ -64,7 +66,7 @@ def couches(projet: Projet, seq: Sequence, f: int) -> list[Couche]:
             n = min(c.entree + (f - c.debut), media.infos.video.nb_images - 1)
             resultat.append(Couche(c, media, n, min(opacite, 1.0),
                                    actifs(c.effets, f - c.debut) + actifs(piste.effets, f),
-                                   c.fusion))
+                                   c.fusion, prerendu.dans_plages(projet, seq, c, f - c.debut)))
     return resultat
 
 
@@ -74,7 +76,8 @@ def identite(pile: list[Couche], seq: Sequence | None = None) -> Couche | None:
     if not pile or (seq is not None and actifs(seq.effets)):
         return None
     haut = pile[-1]
-    if haut.media is None or haut.effets or haut.opacite < 1.0 or haut.fusion != "normal":
+    if haut.media is None or haut.effets or haut.opacite < 1.0 or haut.fusion != "normal" \
+            or haut.modifiee:
         return None
     if haut.media.infos.video.alpha and len(pile) > 1:
         return None
@@ -145,6 +148,8 @@ class Compositeur:
                     g.effet_dessous(couche.effets, couche.opacite, f, couche.fusion)
                     continue
                 trame, x0, y0 = self._trame_couche(couche, largeur, hauteur, proxy)
+                if couche.modifiee:
+                    trame = self._trame_modifiee(seq, couche, f, trame)
                 codec = None
                 if any(EFFETS[e.type].codec for e in couche.effets):
                     codec = self._trame_codec(seq, couche, f, trame)
@@ -196,6 +201,26 @@ class Compositeur:
         reduite = image.reformat(width=lp, height=hp, interpolation="BICUBIC")
         return reduite, (largeur - lp) // 2, (hauteur - hp) // 2
 
+    def _lire_prerendu(self, fichier, t: int, trame):
+        def fabrique():
+            _, index = analyser(str(fichier))
+            return LecteurVideo(str(fichier), index)
+        image = self.pool.video(("datamosh", str(fichier)), fabrique).image(max(0, t))
+        if (image.width, image.height) != (trame.width, trame.height):
+            image = image.reformat(width=trame.width, height=trame.height)
+        return image
+
+    def _trame_modifiee(self, seq: Sequence, couche: Couche, f: int, trame):
+        """L'image de la source modifiée du clip ; l'image d'origine si elle n'est pas prête."""
+        clip = couche.clip
+        fichier = prerendu.source_prete(self.projet, seq, clip)
+        if fichier is None and self.synchrone:
+            fichier = prerendu.calculer_source(self.projet, seq, clip)
+        if fichier is None:
+            self.manquants.add(clip.id)
+            return trame
+        return self._lire_prerendu(fichier, min(f - clip.debut, clip.duree - 1), trame)
+
     def _trame_codec(self, seq: Sequence, couche: Couche, f: int, trame):
         """L'image du pré-rendu codec du clip, à la taille de sa couche ; None s'il n'est pas
         encore calculé (aperçu)."""
@@ -207,14 +232,7 @@ class Compositeur:
             self.manquants.add(clip.id)
             return None
 
-        def fabrique():
-            _, index = analyser(str(fichier))
-            return LecteurVideo(str(fichier), index)
-        image = self.pool.video(("datamosh", str(fichier)), fabrique).image(
-            max(0, min(f - clip.debut, clip.duree - 1)))
-        if (image.width, image.height) != (trame.width, trame.height):
-            image = image.reformat(width=trame.width, height=trame.height)
-        return image
+        return self._lire_prerendu(fichier, min(f - clip.debut, clip.duree - 1), trame)
 
     def _image_couche(self, couche: Couche, largeur: int, hauteur: int, proxy: bool) -> np.ndarray:
         trame, x0, y0 = self._trame_couche(couche, largeur, hauteur, proxy)

@@ -29,6 +29,8 @@ class Media:
     point_sortie: int | None = None
     # Chutier où le média est rangé ; None : à la racine du projet.
     chutier: str | None = None
+    # Changements de plan détectés (images du média) ; None : pas encore analysé.
+    coupes: list[int] | None = None
 
     @property
     def nom(self) -> str:
@@ -53,13 +55,16 @@ class Media:
             d["points"] = [self.point_entree, self.point_sortie]
         if self.chutier:
             d["chutier"] = self.chutier
+        if self.coupes is not None:
+            d["coupes"] = self.coupes
         return d
 
     @staticmethod
     def depuis_dict(d: dict) -> "Media":
         entree, sortie = d.get("points", [None, None])
         return Media(d["id"], d["chemin"], InfosMedia.depuis_dict(d["infos"]),
-                     point_entree=entree, point_sortie=sortie, chutier=d.get("chutier"))
+                     point_entree=entree, point_sortie=sortie, chutier=d.get("chutier"),
+                     coupes=d.get("coupes"))
 
 
 @dataclass
@@ -107,6 +112,16 @@ MODES_FUSION = {"normal": "Normal", "addition": "Addition", "ecran": "Écran",
                 "luminosite": "Luminosité seule", "couleur": "Couleur seule"}
 
 
+@dataclass
+class Transition:
+    """Transition à l'entrée d'un clip, depuis le clip qui le précède sur sa piste. Datamosh :
+    l'image clé du raccord est supprimée, le clip précédent bave avec le mouvement de celui-ci
+    pendant `duree` images, puis une image clé le rend net."""
+    type: str = "datamosh"
+    duree: int = 24
+    blocs: int = 4
+
+
 # Un clip d'effet n'a pas de média : il transforme tout ce qui est sous lui. Son entrée est
 # placée loin dans une source imaginaire, pour qu'on puisse le rallonger des deux côtés.
 ENTREE_CLIP_EFFET = 1_000_000
@@ -126,6 +141,10 @@ class Clip:
     fondu_sortie: int = 0
     effets: list[Effet] = field(default_factory=list)
     fusion: str = "normal"
+    # Datamosh : transition depuis le clip précédent, et images clés supprimées aux coupes du
+    # clip (images depuis son début).
+    transition: Transition | None = None
+    cles_supprimees: list[int] = field(default_factory=list)
 
     @property
     def fin(self) -> int:
@@ -336,7 +355,9 @@ class Projet:
                 for c in pd.pop("clips", []):
                     c = dict(c)
                     effets = _effets(c.pop("effets", None))
-                    clips.append(Clip(**c, effets=effets))
+                    transition = c.pop("transition", None)
+                    clips.append(Clip(**c, effets=effets,
+                                      transition=Transition(**transition) if transition else None))
                 effets = _effets(pd.pop("effets", None))
                 pistes.append(Piste(**pd, clips=clips, effets=effets))
             marqueurs = [Marqueur(**m) for m in sd.pop("marqueurs", [])]

@@ -19,7 +19,7 @@ class Historique:
     def valider(self, projet: Projet, libelle: str, fusionner: bool = False) -> bool:
         """Enregistre l'état courant. Renvoie False si rien n'a changé.
 
-        fusionner : si la dernière action porte le même libellé et qu'on n'a rien annulé
+        fusionner : si la dernière action porte le même libellé et qu'on n'a rien annulé
         depuis, elle est remplacée au lieu d'ajouter une ligne (import de plusieurs fichiers).
         """
         etat = self._figer(projet)
@@ -37,6 +37,16 @@ class Historique:
     @property
     def position(self) -> int:
         return self._position
+
+    def retoucher(self, modifier):
+        """Applique une donnée calculée après coup (coupes d'un média) à tous les états
+        retenus, sans créer d'action : annuler ne doit pas la faire disparaître."""
+        etats = []
+        for libelle, etat in self._etats:
+            p = Projet.depuis_dict(json.loads(etat))
+            modifier(p)
+            etats.append((libelle, self._figer(p)))
+        self._etats = etats
 
     def libelles(self) -> list[str]:
         return [libelle for libelle, _ in self._etats]

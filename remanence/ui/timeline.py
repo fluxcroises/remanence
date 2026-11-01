@@ -36,7 +36,10 @@ from remanence.ui.menu_effets import remplir_menu_effets
 
 HAUTEUR_REGLE = 28
 HAUTEUR_MARQUEURS = 20
-HAUT_PISTES = HAUTEUR_REGLE + HAUTEUR_MARQUEURS
+# Piste des images clés de la vidéo : raccords entre clips et coupes dans les clips.
+HAUTEUR_CLES = 18
+HAUT_CLES = HAUTEUR_REGLE + HAUTEUR_MARQUEURS
+HAUT_PISTES = HAUT_CLES + HAUTEUR_CLES
 LARGEUR_ENTETE = 200
 BANDEAU = 18
 MARGE_BORD = 6
@@ -71,6 +74,8 @@ class VueTimeline(QWidget):
     tete_changee = Signal(int)
     selection_changee = Signal(set)
     media_depose = Signal(list, int, str)
+    # ("raccord" | "coupe", identifiant du clip, image depuis le début du clip)
+    cle_basculee = Signal(str, str, int)
     # (préréglage, "clip" | "vide", identifiant du clip ou de la piste, image)
     prereglage_depose = Signal(object, str, str, int)
 
@@ -171,6 +176,7 @@ class VueTimeline(QWidget):
         p.restore()
         self._dessiner_regle(p, seq)
         self._dessiner_marqueurs(p, seq)
+        self._dessiner_cles_video(p)
         if self._repere is not None:
             self._ligne_pointillee(p, self._repere, "accent-2", 0)
         xt = round(self.x_de(self.tete))
@@ -254,6 +260,59 @@ class VueTimeline(QWidget):
         p.setPen(c.c("line"))
         p.drawLine(0, HAUT_PISTES - 1, self.width(), HAUT_PISTES - 1)
 
+    def reperes_cles(self) -> list[tuple[int, str, str, int, bool]]:
+        """Repères de la piste des images clés : (image de la séquence, "raccord" | "coupe",
+        clip, image dans le clip, supprimée). Un repère par instant, celui de la piste la plus
+        haute s'il y en a plusieurs."""
+        reperes = {}
+        if self.projet is None:
+            return []
+        for piste in self.projet.sequence.pistes_video:
+            for c in piste.clips:
+                if c.est_effet:
+                    continue
+                media = self.projet.medias.get(c.media_id)
+                if media is None:
+                    continue
+                if edition.precedent(piste, c) is not None:
+                    reperes.setdefault(c.debut, (c.debut, "raccord", c.id, 0,
+                                                 c.transition is not None))
+                for m in media.coupes or []:
+                    t = m - c.entree
+                    if 0 < t < c.duree:
+                        reperes.setdefault(c.debut + t, (c.debut + t, "coupe", c.id, t,
+                                                         t in c.cles_supprimees))
+        return sorted(reperes.values())
+
+    def _dessiner_cles_video(self, p: QPainter):
+        c = charte.actuelle()
+        p.fillRect(QRect(0, HAUT_CLES, self.width(), HAUTEUR_CLES), c.c("surface"))
+        p.save()
+        p.setRenderHint(QPainter.Antialiasing, True)
+        for f, _genre, _clip, _t, supprimee in self.reperes_cles():
+            x = self.x_de(f)
+            if x < -6 or x > self.width() + 6:
+                continue
+            r = QRectF(x - 3, HAUT_CLES + 4, 6, HAUTEUR_CLES - 8)
+            if supprimee:
+                p.setPen(Qt.NoPen)
+                p.setBrush(c.c("accent"))
+            else:
+                p.setPen(QPen(c.c("ink-muted"), 1.2))
+                p.setBrush(Qt.NoBrush)
+            p.drawRoundedRect(r, 1.5, 1.5)
+        p.restore()
+        p.setPen(c.c("line"))
+        p.drawLine(0, HAUT_PISTES - 1, self.width(), HAUT_PISTES - 1)
+
+    def _repere_a(self, pos):
+        if not (HAUT_CLES <= pos.y() < HAUT_PISTES):
+            return None
+        for repere in self.reperes_cles():
+            if abs(self.x_de(repere[0]) - pos.x()) <= 5:
+                return repere
+        return None
+
     def _dessiner_clip(self, p: QPainter, piste: Piste, clip: Clip, y: int, h: int):
         c = charte.actuelle()
         r = self.rect_clip(clip, y, h)
@@ -275,6 +334,11 @@ class VueTimeline(QWidget):
         self._dessiner_fondus(p, clip, r)
         self._dessiner_enveloppe(p, clip, r)
         self._dessiner_cles(p, clip, r)
+        if clip.transition is not None and edition.precedent(piste, clip) is not None:
+            largeur = min(clip.transition.duree, clip.duree) * self.px_par_image
+            zone = QRectF(r.left(), r.top() + BANDEAU, largeur, r.height() - BANDEAU)
+            p.fillRect(zone, QBrush(c.c("accent", 0.55), Qt.BDiagPattern))
+            p.fillRect(QRectF(zone.right() - 2, zone.top(), 2, zone.height()), c.c("accent"))
         # Bandeau du nom, sur la couleur du clip : lisible même par-dessus les vignettes.
         p.fillRect(QRectF(r.left(), r.top(), r.width(), BANDEAU), fond)
         p.setPen(c.c("ink"))
@@ -477,6 +541,10 @@ class VueTimeline(QWidget):
                 continue
             if self.outil == "couper":
                 return ("corps", piste, clip, -1) if r.contains(pos) else ("vide", piste, None, -1)
+            if clip.transition is not None and pos.y() > r.top() + BANDEAU:
+                bord = self.x_de(clip.debut + min(clip.transition.duree, clip.duree))
+                if abs(pos.x() - bord) <= 5:
+                    return "transition", piste, clip, -1
             for rang, (x, v) in enumerate(clip.enveloppe):
                 px, py = self.x_de(clip.debut + x), self._y_enveloppe(r, v * clip.gain)
                 if abs(pos.x() - px) <= 5 and abs(pos.y() - py) <= 5:
@@ -534,8 +602,19 @@ class VueTimeline(QWidget):
             curseurs = {"bord_debut": Qt.SizeHorCursor, "bord_fin": Qt.SizeHorCursor,
                         "roll_debut": Qt.SplitHCursor, "roll_fin": Qt.SplitHCursor,
                         "fondu_entree": Qt.SizeHorCursor, "fondu_sortie": Qt.SizeHorCursor,
+                        "transition": Qt.SizeHorCursor,
                         "point": Qt.SizeAllCursor, "deplacer": Qt.OpenHandCursor,
                         "slip": Qt.SizeHorCursor, "slide": Qt.SizeHorCursor}
+            repere = self._repere_a(pos)
+            if repere is not None:
+                self.setCursor(Qt.PointingHandCursor)
+                self.setToolTip({("raccord", False): "Raccord : poser une transition datamosh",
+                                 ("raccord", True): "Raccord : retirer la transition datamosh",
+                                 ("coupe", False): "Image clé : la supprimer",
+                                 ("coupe", True): "Image clé supprimée : la rendre"}
+                                [(repere[1], repere[4])])
+                return
+            self.setToolTip("")
             if self._marqueur_a(pos) is not None:
                 self.setCursor(Qt.PointingHandCursor)
             else:
@@ -599,6 +678,10 @@ class VueTimeline(QWidget):
                 cible = cible2
             edition.rogner(self.projet, seq, clip.id, cote, cible - bord, inclure_lies=lies,
                            ripple=self.ripple)
+        elif g.type == "transition":
+            _, clip = seq.trouver(g.clip_id)
+            clip.transition.duree = max(1, min(round(self.f_de(pos.x())) - clip.debut,
+                                               clip.duree))
         elif g.type in ("fondu_entree", "fondu_sortie"):
             _, clip = seq.trouver(g.clip_id)
             f = round(self.f_de(pos.x()))
@@ -645,6 +728,10 @@ class VueTimeline(QWidget):
             return
         pos = e.position()
         seq = self.projet.sequence
+        repere = self._repere_a(pos)
+        if repere is not None and e.button() == Qt.LeftButton:
+            self.cle_basculee.emit(repere[1], repere[2], repere[3])
+            return
         marqueur = self._marqueur_a(pos)
         if marqueur is not None:
             if e.button() == Qt.RightButton:
@@ -697,7 +784,8 @@ class VueTimeline(QWidget):
         libelles = {"deplacer": "Déplacement", "bord_debut": "Rognage", "bord_fin": "Rognage",
                     "fondu_entree": "Fondu d'entrée", "fondu_sortie": "Fondu de sortie",
                     "point": "Point d'enveloppe", "slip": "Slip", "slide": "Slide",
-                    "roll_debut": "Roll", "roll_fin": "Roll", "marqueur": "Marqueur déplacé"}
+                    "roll_debut": "Roll", "roll_fin": "Roll", "marqueur": "Marqueur déplacé",
+                    "transition": "Durée de la transition"}
         if g.type in libelles:
             if g.type == "marqueur" and g.marqueurs is not None and \
                     [m.position for m in g.marqueurs] == \
@@ -760,6 +848,12 @@ class VueTimeline(QWidget):
                 self._choisir({clip.id})
             menu.addAction("Couper à la tête de lecture (S)", fenetre.couper)
             menu.addAction("Supprimer (Suppr)", fenetre.supprimer)
+            piste_clip = self.projet.sequence.trouver(clip.id)[0]
+            if piste_clip.type == "video" and edition.precedent(piste_clip, clip) is not None:
+                a = menu.addAction("Transition datamosh à l'entrée",
+                                   lambda: fenetre.basculer_cle("raccord", clip.id, 0))
+                a.setCheckable(True)
+                a.setChecked(clip.transition is not None)
             if self.projet.sequence.trouver(clip.id)[0].type == "video":
                 effets = menu.addMenu("Ajouter un effet")
                 remplir_menu_effets(effets, lambda liste: fenetre.ajouter_effet(
@@ -1068,6 +1162,9 @@ class Timeline(QWidget):
         self.zone_entetes.setFixedWidth(LARGEUR_ENTETE)
         self._entetes: list[EntetePiste] = []
         self.timecode = ChampTimecode(20, self.zone_entetes)
+        self._nom_cles = etiquette("Images clés", "section")
+        self._nom_cles.setParent(self.zone_entetes)
+        self._nom_cles.setToolTip("Raccords et coupes de la vidéo")
         self.timecode.position_demandee.connect(fenetre.aller_a)
         self.vumetres = Vumetres(fenetre.lecture.cretes)
 
@@ -1184,8 +1281,10 @@ class Timeline(QWidget):
             y, h = lignes.get(e.piste.id, (0, 0))
             e.setGeometry(0, y, LARGEUR_ENTETE, h - 1)
             e.setVisible(y + h > HAUT_PISTES)
-        self.timecode.setGeometry(12, 4, self.timecode.width(), HAUT_PISTES - 8)
+        self.timecode.setGeometry(12, 4, self.timecode.width(), HAUT_CLES - 8)
         self.timecode.raise_()
+        self._nom_cles.setGeometry(12, HAUT_CLES, LARGEUR_ENTETE - 24, HAUTEUR_CLES)
+        self._nom_cles.raise_()
 
     def bornes(self):
         if self.vue.projet is None:
