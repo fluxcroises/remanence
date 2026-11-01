@@ -30,7 +30,7 @@ Logiciel Windows de montage vidéo orienté datamosh et glitch art, dans l'espri
 - Étape 1 (socle et visionneuse) : validée par Lewis le 1er novembre 2026 (charte intégrée, refonte de l'interface en cinq lots, corrections du test manuel, timecode au choix, double écran façon Resolve, textes courts), 91 tests au vert.
 - Captures de référence de l'état actuel : `UI/captures/`.
 - Étape 2 (effets en temps réel et ciblage) : plan en cinq lots accepté par Lewis le 1er novembre 2026 avec les choix par défaut (garantie au pixel près : images sans effet recopiées, image calculée avant encodage, formats sans perte ; info-bulle d'effet = nom et famille, pas de panneau « Premiers pas » ; ordre : 1 moteur GPU, 2 effets du prototype, 3 bibliothèque, 4 images clés et modes de fusion, 5 masques et formats d'export). Lots 1 à 5 faits le 1er novembre 2026, 130 tests au vert. Validée par Lewis le 1er novembre 2026.
-- Étape 3 (moteur codec) : plan à présenter.
+- Étape 3 (moteur codec) : plan présenté le 1er novembre 2026, en attente de l'accord de Lewis (question bloquante : FFglitch téléchargé par Lewis et autorisation de l'exécuter).
 - Étapes 4 à 6 : non commencées. Ne pas passer à l'étape suivante sans validation explicite.
 
 ## Commandes
