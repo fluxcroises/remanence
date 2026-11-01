@@ -1,7 +1,7 @@
 """Écran de démarrage : la carte de la maquette, entourée d'éclats qui jaillissent de ses bords.
 
 Les éclats sont tirés d'une suite pseudo-aléatoire à graine fixe : l'écran est identique
-à chaque lancement. Rien ne s'anime : seule la ligne de chargement change.
+à chaque lancement. Rien ne s'anime : seule la ligne de chargement change.
 """
 
 from __future__ import annotations
@@ -100,21 +100,30 @@ class EcranDemarrage(QWidget):
         # Nom centré verticalement sur le symbole de 64 px.
         p.drawText(QRectF(g + 80, haut, 320, 64), Qt.AlignLeft | Qt.AlignVCenter, "Remanence")
 
-        # Bas de la carte : l'étape de chargement, puis copyright et version ; l'éditeur à droite.
+        # Bas de la carte : l'étape de chargement, puis copyright et version, sur toute la largeur.
+        # Au-dessus, à droite : Creative Orbit (24 px, taille minimale de son kit), et l'éditeur
+        # plus haut, séparés par l'espace libre du kit (au moins la hauteur de la grande étoile).
         gauche = QRectF(g, CARTE.bottom() - 58, CARTE.width() - 80, 18)
         p.setFont(c.police("label"))
-        p.drawText(gauche, Qt.AlignLeft | Qt.AlignVCenter, self._message)
+        p.drawText(gauche, Qt.AlignLeft | Qt.AlignVCenter,
+                   p.fontMetrics().elidedText(self._message, Qt.ElideRight, int(gauche.width())))
         p.setFont(c.police("body", 11))
         p.drawText(gauche.translated(0, 20), Qt.AlignLeft | Qt.AlignVCenter,
                    f"© {ANNEE} {EDITEUR} · Version {__version__}")
+        droite = gauche.right()
+        haut_famille = gauche.top() - 16 - 24
+        famille = c.logo_famille(24)
+        if famille is not None:
+            l = famille.width() / famille.devicePixelRatio()
+            p.drawPixmap(int(droite - l), int(haut_famille), famille)
+        haut_editeur = haut_famille - 16 - 16
         logo = c.logo_editeur(16)
-        milieu = gauche.bottom() + 1
         if logo is not None:
             l = logo.width() / logo.devicePixelRatio()
-            p.drawPixmap(int(gauche.right() - l), int(milieu - 8), logo)
+            p.drawPixmap(int(droite - l), int(haut_editeur), logo)
         else:
             p.setFont(c.police("label"))
             p.setPen(c.c("ink"))
-            p.drawText(QRectF(gauche.left(), milieu - 9, gauche.width(), 18),
+            p.drawText(QRectF(gauche.left(), haut_editeur - 1, gauche.width(), 18),
                        Qt.AlignRight | Qt.AlignVCenter, EDITEUR)
         p.end()

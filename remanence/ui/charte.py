@@ -1,4 +1,4 @@
-"""Charte graphique : tout ce qui se voit vient de UI/charte/tokens.json.
+"""Charte graphique : tout ce qui se voit vient de UI/charte/tokens.json.
 
 Ce module lit les tokens d'un thème, fabrique la feuille de style Qt, les polices
 IBM Plex embarquées, les icônes Lucide teintées et le symbole du logo. Aucun autre
@@ -112,11 +112,11 @@ class Charte:
         feuille = MODELE_QSS.format(**valeurs)
         reste = re.findall(r"\{[a-z_]+\}", feuille)
         if reste:
-            raise ValueError(f"Tokens absents de la charte : {sorted(set(reste))}")
+            raise ValueError(f"Tokens absents de la charte : {sorted(set(reste))}")
         return feuille
 
     def palette(self) -> QPalette:
-        """Palette Qt tirée de la charte : les éléments que la feuille de style ne dessine pas
+        """Palette Qt tirée de la charte : les éléments que la feuille de style ne dessine pas
         (indicateurs, sélection de texte, menus natifs) restent dans le thème."""
         pal = QPalette()
         for role, token in [
@@ -140,7 +140,7 @@ class Charte:
     # Icônes et logo
 
     def icone(self, nom: str, taille: int = 16) -> QIcon:
-        """Icône Lucide : ink-muted au repos, ink au survol, accent quand elle est enclenchée."""
+        """Icône Lucide : ink-muted au repos, ink au survol, accent quand elle est enclenchée."""
         icone = QIcon()
         for mode, etat, couleur in [(QIcon.Normal, QIcon.Off, "ink-muted"),
                                     (QIcon.Active, QIcon.Off, "ink"),
@@ -159,6 +159,16 @@ class Charte:
 
     def symbole(self, taille: int) -> QPixmap:
         return rendre_symbole(self.fichier_symbole(taille), taille)
+
+    def logo_famille(self, hauteur: int) -> QPixmap | None:
+        """Logo de Creative Orbit, la famille de logiciels de Remanence (version pour fond
+        sombre). En PNG : le SVG du kit utilise un masque, que QtSvg ignore."""
+        fichier = DOSSIER_LOGOS / "creative-orbit-sombre.png"
+        if not fichier.exists():
+            return None
+        pm = QPixmap(str(fichier)).scaledToHeight(hauteur * 2, Qt.SmoothTransformation)
+        pm.setDevicePixelRatio(2.0)
+        return pm
 
     def logo_editeur(self, hauteur: int) -> QPixmap | None:
         """Logo de l'association éditrice, s'il a été déposé dans les logos de la charte."""
@@ -184,7 +194,7 @@ class Charte:
         return None
 
     def icone_application(self) -> QIcon:
-        """Le symbole sur surface-raised, carré aux angles arrondis, symbole à 65 % du côté."""
+        """Le symbole sur surface-raised, carré aux angles arrondis, symbole à 65 % du côté."""
         icone = QIcon()
         for taille in (16, 24, 32, 48, 64, 128, 256):
             pm = QPixmap(taille, taille)
@@ -218,7 +228,7 @@ def rendre_svg(contenu: bytes, taille: int, ratio: float = 2.0) -> QPixmap:
 
 
 def rendre_symbole(fichier: Path, taille: int, ratio: float = 2.0) -> QPixmap:
-    """Symbole Tranches : disques découpés en bandes. QtSvg ignore les clipPath du fichier,
+    """Symbole Tranches : disques découpés en bandes. QtSvg ignore les clipPath du fichier,
     on relit donc ses bandes et ses disques pour les peindre nous-mêmes."""
     ns = {"s": "http://www.w3.org/2000/svg"}
     racine = ET.parse(fichier).getroot()
@@ -282,7 +292,7 @@ def definir(theme: str) -> Charte:
 
 
 def texte_timecode(tc: str, charte: Charte) -> str:
-    """Timecode en texte riche : les images en accent, comme sur la tête de lecture."""
+    """Timecode en texte riche : les images en accent, comme sur la tête de lecture."""
     debut, images = tc[:-2], tc[-2:]
     return f'{debut}<span style="color:{charte.hex("accent")}">{images}</span>'
 
