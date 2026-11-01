@@ -9,6 +9,10 @@ Logiciel Windows de montage vidéo orienté datamosh et glitch art, dans l'espri
 - `UI/maquettes/` : maquettes validées de l'écran principal et de l'écran de démarrage (à lire comme références visuelles, couleur d'accent : mauve). L'interface s'inspire de Vegas Pro (en-têtes de pistes, enveloppes sous les pistes, badge fx sur les clips) et de DaVinci Resolve (interface plate, vue d'ensemble de la séquence, inspecteur à droite, espaces de travail en bas).
 - `prototype/` : le prototype Bavure (tkinter). Ses algorithmes de datamosh (`moteur_mosh.py`) et ses effets (`effets.py`) sont validés et réutilisables ; son interface ne l'est pas.
 
+## Éditeur
+
+- Remanence est édité par l'association de Lewis, Flux Croisés (`EDITEUR` dans `remanence/__init__.py`) : mentionné sur l'écran de démarrage et dans À propos. Son logo s'affiche automatiquement s'il est déposé en `UI/charte/assets/Logos/flux-croises.svg` (ou `.png`, fond transparent) ; sinon le nom est écrit en texte.
+
 ## Règles de travail
 
 - L'utilisateur, Lewis, ne programme pas. Explique simplement ce que tu fais et comment tester, sans jargon.

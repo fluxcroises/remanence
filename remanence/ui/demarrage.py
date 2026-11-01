@@ -10,7 +10,7 @@ from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QFont, QPainter, QPainterPath
 from PySide6.QtWidgets import QApplication, QWidget
 
-from remanence import __version__
+from remanence import EDITEUR, __version__
 from remanence.ui import charte
 
 LARGEUR, HAUTEUR = 880, 600
@@ -107,9 +107,23 @@ class EcranDemarrage(QWidget):
         bas = CARTE.bottom() - 28
         largeur = CARTE.width() - 80
         p.setFont(c.police("body", 11))
-        p.drawText(QRectF(g, bas - 15, largeur, 30), Qt.AlignLeft | Qt.TextWordWrap,
-                   "Logiciel libre, distribué en code source. Repose sur FFmpeg, Qt et d'autres "
-                   "projets libres : voir À propos, dans le menu Aide.")
+        p.drawText(QRectF(g, bas - 15, largeur - 120, 30), Qt.AlignLeft | Qt.TextWordWrap,
+                   "Logiciel libre, distribué en code source.\n"
+                   "Licences : menu Aide, À propos.")
+        # Éditeur en bas à droite : son logo s'il est fourni, sinon son nom.
+        droite = QRectF(g + largeur - 110, bas - 15, 110, 30)
+        p.setFont(c.police("caption", 10))
+        p.drawText(QRectF(droite.left(), droite.top() - 2, droite.width(), 12),
+                   Qt.AlignRight | Qt.AlignTop, "Édité par")
+        logo = c.logo_editeur(16)
+        if logo is not None:
+            l = logo.width() / logo.devicePixelRatio()
+            p.drawPixmap(int(droite.right() - l), int(droite.top() + 12), logo)
+        else:
+            p.setFont(c.police("label"))
+            p.setPen(c.c("ink"))
+            p.drawText(QRectF(droite.left(), droite.top() + 10, droite.width(), 18),
+                       Qt.AlignRight | Qt.AlignVCenter, EDITEUR)
         barre = QRectF(g, bas - 34, largeur, 3)
         chemin = QPainterPath()
         chemin.addRoundedRect(barre, 1.5, 1.5)

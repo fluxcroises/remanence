@@ -22,4 +22,5 @@ Remanence est distribué en code source, sans but commercial. Ce fichier liste c
 
 - Prototype Bavure (`prototype/`) : code du même auteur, utilisé comme référence pour les algorithmes à partir de l'étape 2.
 - Charte graphique, maquettes et logo (symbole Tranches) : fournis par l'auteur du projet, dans `UI/`.
+- Remanence est édité par l'association Flux Croisés ; son logo lui appartient.
 - Aucun shader et aucun script tiers n'est inclus à ce stade.

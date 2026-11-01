@@ -160,6 +160,28 @@ class Charte:
     def symbole(self, taille: int) -> QPixmap:
         return rendre_symbole(self.fichier_symbole(taille), taille)
 
+    def logo_editeur(self, hauteur: int) -> QPixmap | None:
+        """Logo de l'association éditrice, s'il a été déposé dans les logos de la charte."""
+        for nom in ("flux-croises.svg", "flux-croises.png"):
+            fichier = DOSSIER_LOGOS / nom
+            if not fichier.exists():
+                continue
+            if fichier.suffix == ".svg":
+                rendu = QSvgRenderer(str(fichier))
+                taille = rendu.defaultSize()
+                largeur = round(taille.width() * hauteur / max(1, taille.height()))
+                pm = QPixmap(QSize(largeur * 2, hauteur * 2))
+                pm.fill(Qt.transparent)
+                peintre = QPainter(pm)
+                rendu.render(peintre)
+                peintre.end()
+                pm.setDevicePixelRatio(2.0)
+                return pm
+            pm = QPixmap(str(fichier)).scaledToHeight(hauteur * 2, Qt.SmoothTransformation)
+            pm.setDevicePixelRatio(2.0)
+            return pm
+        return None
+
     def icone_application(self) -> QIcon:
         """Le symbole sur surface-raised, carré aux angles arrondis, symbole à 65 % du côté."""
         icone = QIcon()
