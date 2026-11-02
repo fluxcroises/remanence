@@ -43,6 +43,7 @@ from remanence.ui.panneau_export import FileExport, FormulaireExport
 from remanence.ui.taches import GestionnaireTaches, Tache
 from remanence.ui.timeline import Timeline
 from remanence.ui import accueil
+from remanence.ui.aide import FenetreAide
 from remanence.ui.panneau_datamosh import CalqueVecteurs, PanneauDatamosh
 from remanence.ui.timeline import NOUVELLE_PISTE
 from remanence.ui.visionneuse import (LIBELLES_QUALITE, CalqueMasques, Moniteur, ZoneImage,
@@ -580,7 +581,7 @@ class FenetrePrincipale(QMainWindow):
 
         ai = m.addMenu("&Aide")
         self._action(ai, "Accueil…", self.montrer_accueil)
-        self._action(ai, "Prise en main…", lambda: self.montrer_accueil("aide"), "F1")
+        self._action(ai, "Prise en main…", lambda: FenetreAide.ouvrir(), "F1")
         ai.addSeparator()
         self._action(ai, "À propos de Remanence", lambda: APropos(self).exec())
 

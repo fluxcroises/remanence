@@ -339,10 +339,18 @@ def test_ecran_d_accueil(fenetre, medias, tmp_path):
     d = accueil.Accueil(w, "aide")
     titres = [c.accessibleName() for c in d.cartes]
     assert "Animer un effet" in titres and len(titres) >= 8
+    # Une carte ouvre la fenêtre de prise en main, à part.
+    from remanence.ui.aide import FenetreAide
     d.cartes[titres.index("Animer un effet")].choisie.emit()
-    assert d.aide.currentIndex() == 1
-    assert "première et sa dernière image clé" in d.lecteur.toPlainText()
-    assert all((accueil.AIDE / img).exists() for img in
+    aide = FenetreAide._instance
+    assert aide is not None and aide.isVisible() and aide.parent() is None
+    assert aide.liste.currentItem().text() == "Animer un effet"
+    assert "première et sa dernière image clé" in aide.lecteur.toPlainText()
+    aide.close()
+    assert FenetreAide.ouvrir(0) is aide and aide.liste.currentRow() == 0
+    aide.close()
+    from remanence.ui.aide import AIDE
+    assert all((AIDE / img).exists() for img in
                ("montage.png", "transition.png", "inspecteur.png", "compression.png"))
     d.au_demarrage.setChecked(False)
     assert not accueil.au_demarrage()

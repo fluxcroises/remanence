@@ -9,24 +9,23 @@ datamoshée par Remanence (`scripts/captures_aide.py` la refait).
 from __future__ import annotations
 
 import json
-import re
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, QSize, Qt, QUrl, Signal
-from PySide6.QtGui import QIcon, QImage, QPainter, QTextBlockFormat, QTextCursor
+from PySide6.QtCore import QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QIcon, QImage, QPainter
 from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog, QFileDialog,
                                QGridLayout, QHBoxLayout, QHeaderView, QLabel, QPushButton,
-                               QScrollArea, QSizePolicy, QStackedWidget, QTextBrowser,
+                               QScrollArea, QSizePolicy, QStackedWidget,
                                QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
 from remanence.config import reglages_interface
 from remanence.ui import charte
 from remanence.ui.charte import pixmap_icone
+from remanence.ui.aide import FenetreAide, fiches
 from remanence.ui.composants import bouton_icone, etiquette
 
 RESSOURCES = Path(__file__).resolve().parents[1] / "ressources"
-AIDE = RESSOURCES / "aide"
 BANDEAU = RESSOURCES / "accueil" / "bandeau.png"
 
 # Format -> (nom affiché, icône, résolutions proposées : la première par défaut).
@@ -82,17 +81,6 @@ def retenir(chemin: Path):
 
 def au_demarrage() -> bool:
     return str(reglages_interface().value(CLE_AU_DEMARRAGE, "true")).lower() == "true"
-
-
-def fiches() -> list[tuple[str, Path, Path | None]]:
-    """(titre, fichier, première capture) de chaque fiche, dans l'ordre de leur nom."""
-    resultat = []
-    for f in sorted(AIDE.glob("*.md")):
-        texte = f.read_text(encoding="utf-8")
-        titre = texte.splitlines()[0].lstrip("# ").strip()
-        image = re.search(r"!\[[^\]]*\]\(([^)]+)\)", texte)
-        resultat.append((titre, f, AIDE / image.group(1) if image else None))
-    return resultat
 
 
 def icone_tuile(nom: str, taille: int) -> QIcon:
@@ -190,6 +178,8 @@ class Accueil(QDialog):
 
     def __init__(self, parent=None, onglet: str = "nouveau"):
         super().__init__(parent, Qt.Dialog | Qt.FramelessWindowHint)
+        # Modale pour la fenêtre principale seulement : la prise en main reste utilisable.
+        self.setWindowModality(Qt.WindowModal)
         self.setWindowTitle("Remanence")
         self.setProperty("role", "accueil")
         self.resize(940, 660)
@@ -265,8 +255,6 @@ class Accueil(QDialog):
         cle = onglet if onglet in self._boutons else "nouveau"
         self._boutons[cle].setChecked(True)
         self.pages.setCurrentIndex(list(self._boutons).index(cle))
-        if cle == "aide":
-            self.aide.setCurrentIndex(0)
 
     # Nouveau projet
 
@@ -412,10 +400,9 @@ class Accueil(QDialog):
             self.resultat = ("ouvrir", chemin)
             self.accept()
 
-    # Prise en main : les fiches en cartes, puis la fiche choisie
+    # Prise en main : les fiches en cartes ; un clic ouvre la fenêtre de prise en main
 
     def _page_aide(self) -> QWidget:
-        self.aide = QStackedWidget()
         fond = Image(BANDEAU, assombrir=0.72)
         lay_fond = QVBoxLayout(fond)
         lay_fond.setContentsMargins(0, 0, 0, 0)
@@ -437,58 +424,9 @@ class Accueil(QDialog):
             self.cartes.append(carte)
         defil.setWidget(cartes)
         lay_fond.addWidget(defil)
-        self.aide.addWidget(fond)
 
-        lecture = QWidget()
-        lay = QVBoxLayout(lecture)
-        lay.setContentsMargins(0, 8, 0, 0)
-        lay.setSpacing(4)
-        retour = bouton_icone("arrow-left", "Toutes les fiches", texte="Toutes les fiches")
-        retour.clicked.connect(lambda: self.aide.setCurrentIndex(0))
-        haut = QHBoxLayout()
-        haut.setContentsMargins(12, 0, 12, 0)
-        haut.addWidget(retour)
-        haut.addStretch(1)
-        lay.addLayout(haut)
-        self.lecteur = QTextBrowser()
-        self.lecteur.setAccessibleName("Fiche")
-        self.lecteur.setOpenExternalLinks(False)
-        self.lecteur.setSearchPaths([str(AIDE)])
-        self.lecteur.document().setDocumentMargin(24)
-        lay.addWidget(self.lecteur, 1)
-        self.aide.addWidget(lecture)
-        return self.aide
+        return fond
 
     def ouvrir_fiche(self, i: int):
-        self.aide.setCurrentIndex(1)
-        chemin = self._fiches[i][1]
-        doc = self.lecteur.document()
-        doc.setBaseUrl(QUrl.fromLocalFile(str(chemin.parent) + "/"))
-        self.lecteur.setMarkdown(chemin.read_text(encoding="utf-8"))
-        # Le Markdown de Qt colle les paragraphes et montre les images à leur taille : un peu
-        # d'air entre les blocs, captures ramenées à la largeur du texte.
-        largeur = max(360, self.lecteur.viewport().width() - 2 * doc.documentMargin() - 8)
-        curseur = QTextCursor(doc)
-        bloc = doc.begin()
-        while bloc.isValid():
-            forme = bloc.blockFormat()
-            forme.setBottomMargin(10 if bloc.textList() is None else 4)
-            forme.setLineHeight(130, QTextBlockFormat.ProportionalHeight.value)
-            curseur.setPosition(bloc.position())
-            curseur.setBlockFormat(forme)
-            it = bloc.begin()
-            while not it.atEnd():
-                fragment = it.fragment()
-                image = fragment.charFormat().toImageFormat()
-                if image.isValid():
-                    taille = QImage(str(AIDE / image.name())).size()
-                    if taille.width() > largeur:
-                        image.setWidth(largeur)
-                        image.setHeight(taille.height() * largeur / taille.width())
-                        curseur.setPosition(fragment.position())
-                        curseur.setPosition(fragment.position() + fragment.length(),
-                                            QTextCursor.KeepAnchor)
-                        curseur.setCharFormat(image)
-                it += 1
-            bloc = bloc.next()
-        self.lecteur.verticalScrollBar().setValue(0)
+        """La fiche dans la fenêtre de prise en main, qui reste ouverte à côté."""
+        FenetreAide.ouvrir(i)
