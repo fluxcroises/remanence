@@ -216,6 +216,10 @@ class CalqueMasques(QWidget):
         self.setMouseTracking(True)
         self.montrer_masques(None)
 
+    def en_prise(self) -> bool:
+        """Vrai pendant qu'un masque est tiré à la souris."""
+        return self._prise is not None
+
     def montrer_masques(self, masques: list | None):
         """masques : ceux de l'effet modifié (copiés), None pour cacher le calque."""
         self.masques = copy.deepcopy(masques) if masques else []

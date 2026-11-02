@@ -740,7 +740,7 @@ class VueTimeline(QWidget):
                     if any(k[0] == g.rang for k in cles):
                         effet.cles[cle] = sorted(
                             [k for k in cles if k[0] not in (t, g.rang)] +
-                            [[t, k[1], k[2]] for k in cles if k[0] == g.rang],
+                            [[t] + k[1:] for k in cles if k[0] == g.rang],
                             key=lambda k: k[0])
             self._placer_tete(clip.debut + t)
         elif g.type == "transition":
@@ -1336,9 +1336,12 @@ class Timeline(QWidget):
         self.zoom.valueChanged.connect(self._zoom_curseur)
         b_tout = bouton_icone("maximize-2", "Tout voir")
         b_tout.clicked.connect(self.tout_voir)
+        self.b_courbes = bouton_icone("spline", "Courbes", cochable=True)
+        self.b_courbes.toggled.connect(lambda v: self.fenetre.basculer_courbes(v))
         for groupe in ((self.b_selection, self.b_couper),
                        (self.b_aimant, self.b_ripple, self.b_fondus),
-                       (b_lier, b_dissocier, b_marqueur, self.b_piste)):
+                       (b_lier, b_dissocier, b_marqueur, self.b_piste),
+                       (self.b_courbes,)):
             for w in groupe:
                 outils.addWidget(w)
             separateur = QWidget()

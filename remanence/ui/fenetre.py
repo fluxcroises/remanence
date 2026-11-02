@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import time
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QFileDial
                                QWidget)
 
 from remanence.config import reglages_interface
-from remanence.effets import EFFETS, poser_cle, retirer_cle, valeur_a
+from remanence.effets import EFFETS, courbes, masque_a, poser_cle, retirer_cle, valeur_a
 from remanence.effets.masques import nouveau_masque
 from remanence.moteurs.codec import analyse, bavure, prerendu, scripts
 from remanence.effets import prereglages
@@ -44,6 +45,7 @@ from remanence.ui.taches import GestionnaireTaches, Tache
 from remanence.ui.timeline import Timeline
 from remanence.ui import accueil
 from remanence.ui.aide import FenetreAide
+from remanence.ui.panneau_courbes import PanneauCourbes
 from remanence.ui.panneau_datamosh import CalqueVecteurs, PanneauDatamosh
 from remanence.ui.timeline import NOUVELLE_PISTE
 from remanence.ui.visionneuse import (LIBELLES_QUALITE, CalqueMasques, Moniteur, ZoneImage,
@@ -56,13 +58,13 @@ EXTENSIONS_MEDIAS = ("*.mov *.mp4 *.mxf *.mkv *.avi *.webm *.mts *.m2ts *.m4v *.
 HAUTEUR_VIGNETTE = 48
 BORD = 5
 # À augmenter quand les panneaux changent : les dispositions mémorisées avant sont ignorées.
-VERSION_DISPOSITION = 4
+VERSION_DISPOSITION = 5
 # Panneaux visibles dans chaque espace de travail.
 PANNEAUX_ESPACE = {
     "media": {"medias", "source", "droite"},
-    "montage": {"medias", "source", "visionneuse", "droite", "timeline"},
+    "montage": {"medias", "source", "visionneuse", "droite", "timeline", "courbes"},
     # Compression : facultatif, ouvert depuis le menu Fenêtre.
-    "effets": {"medias", "visionneuse", "droite", "timeline", "analyse"},
+    "effets": {"medias", "visionneuse", "droite", "timeline", "analyse", "courbes"},
     "export": {"export", "visionneuse", "file_export", "timeline"},
 }
 
@@ -193,6 +195,12 @@ class FenetrePrincipale(QMainWindow):
         self._entete_visionneuse.ajouter(self.duree_programme)
         d, _ = panneau("Timeline", self.timeline, "timeline", self, titre_visible=False)
         self._docks["timeline"] = d
+        self.panneau_courbes = PanneauCourbes()
+        d, _ = panneau("Courbes", self.panneau_courbes, "courbes", self)
+        self._docks["courbes"] = d
+        d.visibilityChanged.connect(self._courbes_visibles)
+        self.panneau_courbes.modifie.connect(self.valider)
+        self.panneau_courbes.tete_demandee.connect(self.aller_a)
         self.panneau_datamosh = PanneauDatamosh()
         d, _ = panneau("Compression", self.panneau_datamosh, "analyse", self)
         self._docks["analyse"] = d
@@ -331,9 +339,12 @@ class FenetrePrincipale(QMainWindow):
             self.resizeDocks([d["medias"], d["source"], d["visionneuse"], d["droite"]],
                              [300, 480, 480, 340], Qt.Horizontal)
             self.resizeDocks([d["visionneuse"], d["timeline"]], [500, 440], Qt.Vertical)
+        if "courbes" in visibles and not self._est_externe("timeline"):
+            # Les courbes : un onglet de la timeline, fermé au départ.
+            self.tabifyDockWidget(d["timeline"], d["courbes"])
         for nom, dock in d.items():
             if not self._est_externe(nom):
-                dock.setVisible(nom in visibles and nom != "analyse")
+                dock.setVisible(nom in visibles and nom not in ("analyse", "courbes"))
         if espace == "effets":
             # Après avoir caché la compression : sinon la timeline reste à sa petite hauteur.
             colonne = d["medias"] if not self._est_externe("medias") else d["visionneuse"]
@@ -566,7 +577,8 @@ class FenetrePrincipale(QMainWindow):
                                  ("visionneuse", self._docks["visionneuse"], "Programme"),
                                  ("droite", self._docks["droite"], "Inspecteur"),
                                  ("timeline", self._docks["timeline"], "Timeline"),
-                                 ("analyse", self._docks["analyse"], "Compression")):
+                                 ("analyse", self._docks["analyse"], "Compression"),
+                                 ("courbes", self._docks["courbes"], "Courbes")):
             act = dock.toggleViewAction()
             act.setText(titre)
             fe.addAction(act)
@@ -943,6 +955,10 @@ class FenetrePrincipale(QMainWindow):
         self.timeline.timecode.afficher(f, seq.tc_debut, seq.fraction_cadence, seq.tc_drop)
         self.timeline.suivre_tete(f)
         self.inspecteur.actualiser_temps(f)
+        if hasattr(self, "panneau_courbes"):
+            self.panneau_courbes.suivre(f)
+        if self._masques_effet and not self.visionneuse.zone.calque.en_prise():
+            self._actualiser_calque()
         self._suivre_datamosh(f)
 
     def _position_source(self, f: int):
@@ -976,6 +992,42 @@ class FenetrePrincipale(QMainWindow):
         else:
             self.inspecteur.vide(self.projet, len(ids))
         self._actualiser_datamosh()
+        self._actualiser_courbes()
+
+    # Courbes : les réglages animables du clip choisi, sinon de la piste, sinon de la séquence
+
+    def _courbes_visibles(self, visible: bool):
+        """Le bouton de la timeline suit l'onglet, sans le rouvrir ni le refermer : en onglet,
+        Qt dit l'onglet caché pendant qu'il change d'onglet."""
+        b = self.timeline.b_courbes
+        b.blockSignals(True)
+        b.setChecked(visible)
+        b.blockSignals(False)
+        self._actualiser_courbes()
+
+    def basculer_courbes(self, montrer: bool):
+        dock = self._docks["courbes"]
+        if montrer:
+            dock.show()
+            dock.raise_()
+        else:
+            dock.hide()
+            self._docks["timeline"].raise_()
+
+    def _actualiser_courbes(self):
+        if not hasattr(self, "panneau_courbes") or not self._docks["courbes"].isVisible():
+            return
+        seq = self.projet.sequence
+        ids = self.timeline.vue.selection
+        piste_choisie = next((p for p in seq.pistes if p.id == self._piste_choisie), None)
+        if len(ids) == 1 and seq.trouver(next(iter(ids)))[1] is not None:
+            c = seq.trouver(next(iter(ids)))[1]
+            self.panneau_courbes.afficher(c, c.debut, c.duree)
+        elif piste_choisie is not None:
+            self.panneau_courbes.afficher(piste_choisie, 0, seq.duree())
+        else:
+            self.panneau_courbes.afficher(seq, 0, seq.duree())
+        self.panneau_courbes.suivre(self.lecture.position)
 
     # Espace Datamosh : compression du clip choisi, vecteurs sur le programme
 
@@ -1275,8 +1327,16 @@ class FenetrePrincipale(QMainWindow):
 
     # Masques
 
+    def _temps_effet(self, porteur) -> int:
+        """Temps des images clés d'un effet à la tête de lecture : depuis le début du clip,
+        ou de la séquence pour un effet de piste ou de séquence."""
+        t = self.lecture.position
+        if isinstance(porteur, Clip):
+            t = max(0, min(t - porteur.debut, porteur.duree - 1))
+        return t
+
     def reglage_masque(self, effet_id: str, masque_id: str, champ: str, valeur):
-        _, e = edition.trouver_effet(self.projet.sequence, effet_id)
+        porteur, e = edition.trouver_effet(self.projet.sequence, effet_id)
         if e is None:
             return
         if champ == "ajouter":
@@ -1289,9 +1349,28 @@ class FenetrePrincipale(QMainWindow):
             m = next((m for m in e.masques if m.id == masque_id), None)
             if m is None:
                 return
+            t = self._temps_effet(porteur)
             if champ == "retirer":
                 e.masques.remove(m)
                 libelle = "Masque retiré"
+            elif champ.startswith("cle:"):
+                # Image clé du masque à la tête de lecture : posée avec la valeur du moment,
+                # ou retirée si elle existe.
+                cle = champ[4:]
+                cles = m.cles.setdefault(cle, [])
+                if any(k[0] == t for k in cles):
+                    cles[:] = [k for k in cles if k[0] != t]
+                    if not cles:
+                        setattr(m, cle, copy.deepcopy(getattr(masque_a(m, t), cle)))
+                        m.cles.pop(cle)
+                    libelle = "Image clé de masque retirée"
+                else:
+                    courbes.poser(cles, t, copy.deepcopy(getattr(masque_a(m, t), cle)))
+                    libelle = "Image clé de masque"
+            elif m.cles.get(champ):
+                # Réglage animé : l'image clé à la tête de lecture prend la valeur.
+                courbes.poser(m.cles[champ], t, valeur)
+                libelle = "Image clé de masque"
             else:
                 if getattr(m, champ) == valeur:
                     return
@@ -1313,7 +1392,13 @@ class FenetrePrincipale(QMainWindow):
         if e is None or not e.masques:
             self._masques_effet = ""
         self.inspecteur.masques_edites = self._masques_effet
-        self.visionneuse.zone.calque.montrer_masques(e.masques if self._masques_effet else None)
+        if not self._masques_effet:
+            self.visionneuse.zone.calque.montrer_masques(None)
+            return
+        # Les masques tels qu'ils sont à la tête de lecture (animés ou non).
+        porteur, _ = edition.trouver_effet(self.projet.sequence, self._masques_effet)
+        t = self._temps_effet(porteur)
+        self.visionneuse.zone.calque.montrer_masques([masque_a(m, t) for m in e.masques])
 
     def _media_choisi(self, media):
         if media is not None:

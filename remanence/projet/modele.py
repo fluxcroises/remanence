@@ -80,6 +80,9 @@ class Masque:
     inverse: bool = False
     mode: str = "addition"      # avec les masques précédents : addition, soustraction, intersection
     actif: bool = True
+    # Images clés : "points" | "adoucissement" | "expansion" -> [[temps, valeur, passage], ...]
+    # (voir effets/courbes.py) ; au même temps que celles de l'effet.
+    cles: dict = field(default_factory=dict)
 
 
 MODES_MASQUE = {"addition": "Addition", "soustraction": "Soustraction",

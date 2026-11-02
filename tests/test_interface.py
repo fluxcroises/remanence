@@ -824,6 +824,65 @@ def test_espace_effets(fenetre, medias):
     assert not calque.isVisible() and not w._docks["analyse"].isVisible()
 
 
+def test_panneau_courbes_et_masques_animes(fenetre, medias):
+    """Courbes : onglet de la timeline ; double-clic, glisser, passage, Suppr. Masque : la
+    forme s'anime depuis l'inspecteur et l'image."""
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+    from remanence.effets import nouvel_effet
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    w.ajouter_effet("clip", clip.id, [nouvel_effet("decalage_rvb")])
+    w.timeline.vue._choisir({clip.id})
+    w.timeline.b_courbes.setChecked(True)
+    assert _attendre(lambda: w._docks["courbes"].isVisible(), 2)
+    panneau = w.panneau_courbes
+    assert panneau.liste.count() >= 2 and panneau.liste.currentRow() == 0
+    g = panneau.graphe
+    effet = lambda: w.projet.sequence.pistes_video[0].clips[0].effets[0]
+    _attendre(lambda: False, 0.3)
+    QTest.mouseDClick(g, Qt.LeftButton, Qt.NoModifier,
+                      QPoint(round(g.x_de(5)), round(g.y_de(g.courbe(), 80))))
+    assert _attendre(lambda: len(effet().cles.get("force", [])) == 1, 2)
+    QTest.mouseDClick(g, Qt.LeftButton, Qt.NoModifier,
+                      QPoint(round(g.x_de(20)), round(g.y_de(g.courbe(), 20))))
+    assert _attendre(lambda: len(effet().cles.get("force", [])) == 2, 2)
+    assert abs(effet().cles["force"][0][1] - 80) < 3
+    # Glisser la première image clé.
+    depart = QPoint(round(g.x_de(5)), round(g.y_de(g.courbe(), effet().cles["force"][0][1])))
+    arrivee = QPoint(round(g.x_de(8)), round(g.y_de(g.courbe(), 50)))
+    QTest.mousePress(g, Qt.LeftButton, Qt.NoModifier, depart)
+    QTest.mouseMove(g, arrivee)
+    QTest.mouseRelease(g, Qt.LeftButton, Qt.NoModifier, arrivee)
+    assert _attendre(lambda: effet().cles["force"][0][0] == 8, 2)
+    assert abs(effet().cles["force"][0][1] - 50) < 3
+    g.choisie = 0
+    g._passage("bezier")
+    assert _attendre(lambda: effet().cles["force"][0][2] == "bezier", 2)
+    assert "Passage de l'image clé" in w.historique.libelles()
+    g.choisie = 0
+    QTest.keyClick(g, Qt.Key_Delete)
+    assert _attendre(lambda: len(effet().cles["force"]) == 1, 2)
+    # Masque animé : losange de la forme, puis la forme change à un autre instant.
+    w.reglage_masque(effet().id, "", "ajouter", "rectangle")
+    assert _attendre(lambda: len(effet().masques) == 1, 2)
+    m_id = effet().masques[0].id
+    w.aller_a(2)
+    w.reglage_masque(effet().id, m_id, "cle:points", None)
+    assert _attendre(lambda: len(effet().masques[0].cles.get("points", [])) == 1, 2)
+    w.aller_a(12)
+    w.reglage_masque(effet().id, m_id, "points", [[0.5, 0.5], [0.9, 0.9]])
+    assert _attendre(lambda: [k[0] for k in effet().masques[0].cles["points"]] == [2, 12], 2)
+    w.aller_a(7)
+    assert _attendre(lambda: w.visionneuse.zone.calque.masques
+                     and w.visionneuse.zone.calque.masques[0].points[1][0] != 0.9, 2),         "le calque montre le masque à la tête de lecture"
+    w.timeline.b_courbes.setChecked(False)
+    assert _attendre(lambda: not w._docks["courbes"].isVisible(), 2)
+
+
 def test_losanges_de_la_timeline_et_echap(fenetre, medias):
     """Clic sur un losange d'un clip : la tête y va ; le glisser déplace l'image clé.
     Échap quitte l'outil de coupe."""

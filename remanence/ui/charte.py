@@ -349,6 +349,12 @@ QToolButton[variante="onglet"]:hover {{ color: {ink}; }}
 QToolButton[variante="onglet"]:checked {{ color: {ink}; font-weight: 500;
     border-bottom: 2px solid {accent}; }}
 QWidget[role="panneau"] {{ background: {surface}; }}
+QMainWindow > QTabBar {{ background: {bg_app}; }}
+QMainWindow > QTabBar::tab {{ background: transparent; color: {ink_muted}; border: 0;
+    border-top: 2px solid transparent; padding: {space_1} 14px; }}
+QMainWindow > QTabBar::tab:hover {{ color: {ink}; }}
+QMainWindow > QTabBar::tab:selected {{ color: {ink}; background: {surface};
+    border-top: 2px solid {accent}; }}
 QDialog[role="accueil"] {{ background: {surface}; border: 1px solid {line}; }}
 QWidget[role="accueil-identite"] {{ background: {bg_app}; }}
 QPushButton[variante="fiche"] {{ background: transparent; border: 1px solid {line};

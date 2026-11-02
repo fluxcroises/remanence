@@ -10,11 +10,13 @@ donnent le même rendu.
 
 from __future__ import annotations
 
+import copy
 import importlib
 import pkgutil
 from dataclasses import dataclass, field
 
-from remanence.projet.modele import Effet, nouvel_id
+from remanence.effets import courbes
+from remanence.projet.modele import Effet, Masque, nouvel_id
 
 
 @dataclass
@@ -164,14 +166,23 @@ def valeur_a(effet: Effet, cle: str, t: float) -> float:
     cles = effet.cles.get(cle)
     if not cles:
         return effet.opacite if cle == "opacite" else valeur(effet, cle)
-    if t <= cles[0][0]:
-        return cles[0][1]
-    for (t0, v0, mode), (t1, v1, _) in zip(cles, cles[1:]):
-        if t < t1:
-            if mode == "palier" or t1 == t0:
-                return v0
-            return v0 + (v1 - v0) * (t - t0) / (t1 - t0)
-    return cles[-1][1]
+    return courbes.interpoler(cles, t)
+
+
+# Réglages d'un masque qui s'animent : sa forme (tous ses points), son adoucissement, son
+# expansion. Leurs images clés sont dans Masque.cles, au même temps que celles de l'effet.
+CLES_MASQUE = ("points", "adoucissement", "expansion")
+
+
+def masque_a(m: Masque, t: float) -> Masque:
+    """Le masque tel qu'il est au temps t."""
+    if not m.cles:
+        return m
+    copie = copy.copy(m)
+    for champ in CLES_MASQUE:
+        if m.cles.get(champ):
+            setattr(copie, champ, copy.deepcopy(courbes.interpoler(m.cles[champ], t)))
+    return copie
 
 
 def plage_cles(effet: Effet) -> tuple[float, float] | None:
@@ -193,16 +204,17 @@ def agit_a(effet: Effet, t: float) -> bool:
 
 def instantane(effet: Effet, t: float) -> Effet:
     """L'effet tel qu'il est au temps t : paramètres et opacité fixés, prêt pour le rendu."""
-    if not effet.cles:
+    if not effet.cles and not any(m.cles for m in effet.masques):
         return effet
     d = EFFETS.get(effet.type)
     params = dict(effet.params)
     for p in (d.parametres if d else []):
         if p.cle in effet.cles:
-            params[p.cle] = valeur_a(effet, p.cle, t)
+            # Une courbe de Bézier peut déborder : le rendu reste dans la plage du réglage.
+            params[p.cle] = min(p.maximum, max(p.minimum, valeur_a(effet, p.cle, t)))
     return Effet(effet.id, effet.type, params, effet.actif, effet.graine,
-                 valeur_a(effet, "opacite", t), effet.fusion, masques=effet.masques,
-                 script=effet.script)
+                 min(1.0, max(0.0, valeur_a(effet, "opacite", t))), effet.fusion,
+                 masques=[masque_a(m, t) for m in effet.masques], script=effet.script)
 
 
 def poser_cle(effet: Effet, cle: str, t: int, v: float, mode: str | None = None):

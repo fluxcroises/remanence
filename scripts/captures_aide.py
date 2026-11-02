@@ -92,6 +92,12 @@ def main():
     barre.setValue(barre.maximum())
     photo(w._docks["droite"], "inspecteur.png")
     photo(w._docks["timeline"], "images_cles.png", 820, 215)
+    effet.cles["force"][0][2] = "bezier"
+    w.timeline.b_courbes.setChecked(True)
+    attendre(app, delai=0.6)
+    w.panneau_courbes.graphe.choisie = 0
+    photo(w._docks["courbes"], "courbes.png", 1100)
+    w.timeline.b_courbes.setChecked(False)
 
     # Script FFglitch dans l'inspecteur.
     w.ajouter_effet("clip", premier.id, [nouvel_effet("script_ffglitch", "Moyenne du mouvement")])

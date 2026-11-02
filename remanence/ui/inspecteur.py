@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QGridLayout, 
                                QMenu, QPushButton, QScrollArea, QSizePolicy, QToolButton,
                                QVBoxLayout, QWidget)
 
-from remanence.effets import EFFETS, valeur_a
+from remanence.effets import EFFETS, courbes, masque_a, valeur_a
 from remanence.moteurs.codec import ffglitch, scripts
 from remanence.projet import edition
 from remanence.media.timecode import images_vers_tc
@@ -242,16 +242,24 @@ class Inspecteur(PanneauFiche):
         self.temps = f
         for e, cle, origine, widget, bouton, echelle in self._animes:
             t = f - origine
-            anime = cle in e.cles
-            if anime:
-                v = valeur_a(e, cle, t) * echelle
+            if isinstance(cle, tuple):
+                # Réglage d'un masque : (identifiant du masque, champ).
+                m = next((m for m in e.masques if m.id == cle[0]), None)
+                cles = m.cles.get(cle[1]) if m is not None else None
+                valeur = (lambda m=m, champ=cle[1]: getattr(masque_a(m, t), champ))
+            else:
+                cles = e.cles.get(cle)
+                valeur = (lambda cle=cle: valeur_a(e, cle, t))
+            anime = bool(cles)
+            if anime and widget is not None:
+                v = valeur() * echelle
                 if isinstance(widget, QCheckBox):
                     widget.blockSignals(True)
                     widget.setChecked(v > 0.5)
                     widget.blockSignals(False)
                 else:
                     widget.montrer(v)
-            sur_cle = anime and any(k[0] == t for k in e.cles[cle])
+            sur_cle = anime and any(k[0] == t for k in cles)
             bouton.definir("cle" if sur_cle else "anime" if anime else "inactif")
 
     def _choix_script(self, e) -> QHBoxLayout:
@@ -296,7 +304,7 @@ class Inspecteur(PanneauFiche):
             cles = e.cles.get(cle, [])
             t = self.temps - origine
             courante = next((k[2] for k in cles if k[0] <= t), cles[0][2] if cles else "lineaire")
-            for mode, nom in (("lineaire", "Linéaire"), ("palier", "Palier")):
+            for mode, nom in courbes.MODES.items():
                 a = m.addAction(nom, lambda mode=mode: self.reglage_effet.emit(
                     e.id, "interp:" + cle, mode))
                 a.setCheckable(True)
@@ -433,12 +441,21 @@ class Inspecteur(PanneauFiche):
             self._effets("clip", c.id, c.effets, "Effets", origine=c.debut)
             self._clip_courant = None
 
-    def _masques(self, e):
-        """Masques de l'effet : forme, combinaison, inversion, adoucissement, expansion."""
+    def _bouton_cle_masque(self, e, m, champ: str, origine: int, widget=None) -> BoutonCle:
+        b = BoutonCle()
+        b.clicked.connect(lambda: self.reglage_masque.emit(e.id, m.id, "cle:" + champ, None))
+        self._animes.append((e, (m.id, champ), origine, widget, b, 1.0))
+        return b
+
+    def _masques(self, e, origine: int = 0):
+        """Masques de l'effet : forme, combinaison, inversion, adoucissement, expansion. La
+        forme (tous les points), l'adoucissement et l'expansion s'animent."""
+        t = self.temps - origine
         for m in e.masques:
+            vu = masque_a(m, t)
             rang = QHBoxLayout()
             rang.setSpacing(8)
-            rang.addSpacing(RETRAIT_LOSANGE)
+            rang.addWidget(self._bouton_cle_masque(e, m, "points", origine))
             nom = etiquette(NOMS_FORMES.get(m.forme, m.forme), "libelle")
             nom.setFixedWidth(100)
             rang.addWidget(nom)
@@ -462,10 +479,12 @@ class Inspecteur(PanneauFiche):
             self._cible.addLayout(rang)
             for champ, nom_reglage, mini in (("adoucissement", "Adoucissement", 0),
                                              ("expansion", "Expansion", -25)):
-                vide = QWidget()
-                vide.setFixedSize(18, 18)
-                ligne = LigneParametre(nom_reglage, mini, 25, getattr(m, champ), "%", 0, 1,
-                                       cle=vide)
+                bouton = BoutonCle()
+                ligne = LigneParametre(nom_reglage, mini, 25, getattr(vu, champ), "%", 0, 1,
+                                       cle=bouton)
+                bouton.clicked.connect(lambda m=m, champ=champ: self.reglage_masque.emit(
+                    e.id, m.id, "cle:" + champ, None))
+                self._animes.append((e, (m.id, champ), origine, ligne, bouton, 1.0))
                 ligne.valeur_finale.connect(lambda v, m=m, champ=champ: self.reglage_masque.emit(
                     e.id, m.id, champ, v))
                 self._cible.addWidget(ligne)
@@ -586,7 +605,7 @@ class Inspecteur(PanneauFiche):
             self._cible.addLayout(self._choix_fusion(
                 e.fusion, lambda mode, e=e: self.reglage_effet.emit(e.id, "fusion", mode),
                 retrait=True))
-            self._masques(e)
+            self._masques(e, origine)
             rang = QHBoxLayout()
             rang.setSpacing(8)
             rang.addSpacing(RETRAIT_LOSANGE)

@@ -568,3 +568,48 @@ def test_moteur_flux_optique(medias):
     assert abs(float(np.median(mouvement[..., 0])) + 3) < 0.6, "d'où vient chaque pixel"
     assert np.abs(flux.deplacer(a, mouvement, 1.0)[20:100, 20:140]
                   - b[20:100, 20:140]).mean() < 0.05
+
+
+def test_courbes_lisse_bezier_et_listes():
+    from remanence.effets import courbes
+    cles = [[0, 0.0, "lisse"], [10, 100.0, "lineaire"]]
+    assert courbes.interpoler(cles, 5) == 50.0
+    assert courbes.interpoler(cles, 2) < 20.0, "départ en douceur"
+    cles[0][2] = "bezier"
+    assert abs(courbes.interpoler(cles, 5) - 50.0) < 0.5, "poignées à plat : symétrique"
+    courbes.regler_poignee(cles, 0, "d", 3.0, 60.0)
+    assert courbes.interpoler(cles, 2) > 30.0, "la poignée tire la courbe vers le haut"
+    g, d = courbes.poignees(cles, 0)
+    assert d == [3.0, 60.0] and g[0] < 0 and g[1] < 0, "poignées liées : alignées"
+    cles[0][2] = "palier"
+    assert courbes.interpoler(cles, 9) == 0.0
+    points = [[0, [[0.0, 0.0], [0.2, 0.2]], "lineaire"], [10, [[0.5, 0.0], [0.7, 0.2]], "lineaire"]]
+    assert np.allclose(courbes.interpoler(points, 5), [[0.25, 0.0], [0.45, 0.2]])
+    autre = [[0, [[0.0, 0.0]], "lineaire"], [10, [[0.5, 0.0], [0.7, 0.2]], "lineaire"]]
+    assert courbes.interpoler(autre, 5) == [[0.0, 0.0]], "nombre de points différent : palier"
+
+
+def test_masque_anime_dans_l_image(medias):
+    """Un masque qui glisse de la moitié gauche à la moitié droite emmène l'effet avec lui."""
+    from remanence.effets import courbes, instantane
+    from remanence.effets.masques import nouveau_masque
+    projet, clip = _projet(medias)
+    source = {f: _image(projet, f) for f in (0, 20)}
+    effet = nouvel_effet("decalage_rvb")
+    effet.params["force"] = 100
+    m = nouveau_masque("rectangle")
+    m.points = [[0.0, 0.0], [0.5, 1.0]]
+    m.cles["points"] = []
+    courbes.poser(m.cles["points"], 0, [[0.0, 0.0], [0.5, 1.0]])
+    courbes.poser(m.cles["points"], 20, [[0.5, 0.0], [1.0, 1.0]])
+    effet.masques = [m]
+    clip.effets = [effet]
+    assert instantane(effet, 10).masques[0].points == [[0.25, 0.0], [0.75, 1.0]]
+    gauche, droite = slice(5, 150), slice(170, 315)
+    a, b = _image(projet, 0), _image(projet, 20)
+    assert np.abs(a[:, gauche] - source[0][:, gauche]).max() > 0.05
+    assert np.abs(a[:, droite] - source[0][:, droite]).max() < 1e-6
+    assert np.abs(b[:, gauche] - source[20][:, gauche]).max() < 1e-6
+    assert np.abs(b[:, droite] - source[20][:, droite]).max() > 0.05
+    relu = Projet.depuis_dict(projet.vers_dict())
+    assert relu.sequence.pistes_video[0].clips[0].effets[0].masques[0].cles["points"][1][0] == 20
