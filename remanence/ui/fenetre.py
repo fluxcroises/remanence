@@ -1923,10 +1923,10 @@ class FenetrePrincipale(QMainWindow):
         self._afficher_tout()
         return True
 
-    def montrer_accueil(self, onglet: str = "nouveau"):
+    def montrer_accueil(self):
         """Écran d'accueil : nouveau projet (format choisi ou d'après le premier média),
         projet récent, prise en main."""
-        d = accueil.Accueil(self, onglet)
+        d = accueil.Accueil(self)
         if d.exec() != QDialog.Accepted or d.resultat is None:
             return
         genre = d.resultat[0]

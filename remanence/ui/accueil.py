@@ -1,9 +1,8 @@
-"""Écran d'accueil, ouvert au lancement, sur le modèle de celui de Vegas Pro : nouveau projet,
-projets récents, prise en main.
+"""Écran d'accueil, ouvert au lancement : une seule page qui prolonge l'écran de démarrage.
 
-Les fiches de prise en main sont des fichiers Markdown de `remanence/ressources/aide`, avec
-leurs captures. Les textes détaillés vivent là, pas dans l'interface. Le bandeau est une image
-datamoshée par Remanence (`scripts/captures_aide.py` la refait).
+À gauche, l'identité de Remanence (symbole, nom, éclats de l'écran de démarrage) et les deux
+actions ; à droite, le format du nouveau projet sur une ligne, les projets récents en grand,
+et les fiches de prise en main, qui s'ouvrent dans leur propre fenêtre (`ui/aide.py`).
 """
 
 from __future__ import annotations
@@ -12,50 +11,57 @@ import json
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QIcon, QImage, QPainter
-from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog, QFileDialog,
-                               QGridLayout, QHBoxLayout, QHeaderView, QLabel, QPushButton,
-                               QScrollArea, QSizePolicy, QStackedWidget,
-                               QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
+from PySide6.QtCore import QRectF, Qt
+from PySide6.QtGui import QPainter
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog, QGridLayout,
+                               QHBoxLayout, QHeaderView, QLabel, QPushButton, QSizePolicy,
+                               QTreeWidget,
+                               QTreeWidgetItem, QVBoxLayout, QWidget)
 
+from remanence import ANNEE, EDITEUR, __version__
 from remanence.config import reglages_interface
 from remanence.ui import charte
-from remanence.ui.charte import pixmap_icone
 from remanence.ui.aide import FenetreAide, fiches
 from remanence.ui.composants import bouton_icone, etiquette
+from remanence.ui.demarrage import eclats
 
-RESSOURCES = Path(__file__).resolve().parents[1] / "ressources"
-BANDEAU = RESSOURCES / "accueil" / "bandeau.png"
-
-# Format -> (nom affiché, icône, résolutions proposées : la première par défaut).
+# Format -> (nom affiché, résolutions proposées : la première par défaut).
 FORMATS = {
-    "16:9": ("Écran large (16:9)", "monitor",
-             [("Full HD", 1920, 1080), ("4K UHD", 3840, 2160), ("QHD", 2560, 1440),
-              ("HD", 1280, 720)]),
-    "4:3": ("Plein écran (4:3)", "tv-minimal",
-            [("HDV", 1440, 1080), ("XGA", 1024, 768), ("SD", 640, 480)]),
-    "9:16": ("Portrait (9:16)", "smartphone",
-             [("Full HD", 1080, 1920), ("HD", 720, 1280)]),
-    "1:1": ("Carré (1:1)", "square", [("Full HD", 1080, 1080), ("4K", 2160, 2160)]),
-    "2.39:1": ("Scope (2,39:1)", "rectangle-horizontal",
-               [("Full HD", 1920, 804), ("4K UHD", 3840, 1608)]),
+    "16:9": ("16:9", [("Full HD", 1920, 1080), ("4K UHD", 3840, 2160), ("QHD", 2560, 1440),
+                      ("HD", 1280, 720)]),
+    "4:3": ("4:3", [("HDV", 1440, 1080), ("XGA", 1024, 768), ("SD", 640, 480)]),
+    "9:16": ("9:16 vertical", [("Full HD", 1080, 1920), ("HD", 720, 1280)]),
+    "1:1": ("1:1 carré", [("Full HD", 1080, 1080), ("4K", 2160, 2160)]),
+    "2.39:1": ("2,39:1 scope", [("Full HD", 1920, 804), ("4K UHD", 3840, 1608)]),
 }
-CADENCES = [("24000/1001", "23,976p"), ("24", "24p"), ("25", "25p"), ("30000/1001", "29,97p"),
-            ("30", "30p"), ("50", "50p"), ("60000/1001", "59,94p"), ("60", "60p")]
+CADENCES = [("24000/1001", "23,976"), ("24", "24"), ("25", "25"), ("30000/1001", "29,97"),
+            ("30", "30"), ("50", "50"), ("60000/1001", "59,94"), ("60", "60")]
 
 CLE_RECENTS = "projets_recents_dates"
 CLE_AU_DEMARRAGE = "accueil/au_demarrage"
-JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
 MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre",
         "octobre", "novembre", "décembre"]
 
 
-def date_longue(instant: float) -> str:
-    """« mardi 30 juin 2026 22:53:31 »."""
-    t = time.localtime(instant)
-    return f"{JOURS[t.tm_wday]} {t.tm_mday} {MOIS[t.tm_mon - 1]} {t.tm_year} " \
-           f"{time.strftime('%H:%M:%S', t)}"
+def date_relative(instant: float, maintenant: float | None = None) -> str:
+    """« à l'instant », « il y a 5 min », « il y a 2 h », « hier », « il y a 3 jours »,
+    puis la date."""
+    maintenant = time.time() if maintenant is None else maintenant
+    ecart = max(0.0, maintenant - instant)
+    jour = time.localtime(instant)
+    jours = (time.mktime(time.localtime(maintenant)[:3] + (0, 0, 0, 0, 0, -1))
+             - time.mktime(jour[:3] + (0, 0, 0, 0, 0, -1))) / 86400
+    if ecart < 60:
+        return "à l'instant"
+    if ecart < 3600:
+        return f"il y a {int(ecart // 60)} min"
+    if round(jours) == 0:
+        return f"il y a {int(ecart // 3600)} h"
+    if round(jours) == 1:
+        return "hier"
+    if jours < 7:
+        return f"il y a {round(jours)} jours"
+    return f"{jour.tm_mday} {MOIS[jour.tm_mon - 1]} {jour.tm_year}"
 
 
 def _recents_bruts() -> list[list]:
@@ -83,259 +89,164 @@ def au_demarrage() -> bool:
     return str(reglages_interface().value(CLE_AU_DEMARRAGE, "true")).lower() == "true"
 
 
-def icone_tuile(nom: str, taille: int) -> QIcon:
-    """Icône d'une tuile : grise au repos, claire au survol, sur le mauve quand choisie."""
-    c = charte.actuelle()
-    icone = QIcon()
-    for mode, etat, couleur in [(QIcon.Normal, QIcon.Off, "ink-muted"),
-                                (QIcon.Active, QIcon.Off, "ink"),
-                                (QIcon.Normal, QIcon.On, "on-accent"),
-                                (QIcon.Active, QIcon.On, "on-accent")]:
-        icone.addPixmap(pixmap_icone(nom, c.hex(couleur), taille), mode, etat)
-    return icone
+class Identite(QWidget):
+    """Colonne de gauche : les éclats de l'écran de démarrage jaillissent de son bord droit,
+    sous le nom et les deux actions. Elle déplace la fenêtre, qui n'a pas de cadre."""
 
-
-def tuile(texte: str, icone: str, variante: str, taille: int = 28) -> QToolButton:
-    b = QToolButton()
-    b.setProperty("variante", variante)
-    b.setText(texte)
-    b.setIcon(icone_tuile(icone, taille))
-    b.setIconSize(QSize(taille, taille))
-    b.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-    b.setCheckable(True)
-    b.setAccessibleName(texte)
-    b.setFocusPolicy(Qt.TabFocus)
-    return b
-
-
-class Image(QWidget):
-    """Image qui remplit le cadre en gardant ses proportions (rognée au besoin), assombrie
-    si demandé (fond de la prise en main)."""
-
-    def __init__(self, chemin: Path | None, assombrir: float = 0.0, hauteur: int | None = None):
+    def __init__(self):
         super().__init__()
-        self.image = QImage(str(chemin)) if chemin is not None and chemin.exists() else QImage()
-        self.assombrir = assombrir
-        if hauteur:
-            self.setFixedHeight(hauteur)
+        self.setFixedWidth(300)
+        self.setProperty("role", "accueil-identite")
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        # La gerbe de gauche de l'écran de démarrage, recalée sur ce bord.
+        self._eclats = [e for e in eclats() if e[0] < 220]
 
-    def paintEvent(self, _e):
-        p = QPainter(self)
+    def paintEvent(self, e):
+        super().paintEvent(e)
         c = charte.actuelle()
-        p.fillRect(self.rect(), c.c("viewer-bg"))
-        if not self.image.isNull():
-            r = self.rect()
-            s = max(r.width() / self.image.width(), r.height() / self.image.height())
-            l, h = r.width() / s, r.height() / s
-            source = QRectF((self.image.width() - l) / 2, (self.image.height() - h) / 2, l, h)
-            p.setRenderHint(QPainter.SmoothPixmapTransform)
-            p.drawImage(QRectF(r), self.image, source)
-        if self.assombrir:
-            p.fillRect(self.rect(), c.c("bg-app", self.assombrir))
+        p = QPainter(self)
+        haut = self.height() - 380
+        for x, y, l, h, ton, opacite in self._eclats:
+            p.fillRect(QRectF(x + self.width() - 220, haut + (y - 120), l, h), c.c(ton, opacite))
         p.end()
 
-
-class Carte(QWidget):
-    """Carte d'une fiche : capture en vignette, titre, « Remanence »."""
-    choisie = Signal()
-
-    def __init__(self, titre: str, image: Path | None):
-        super().__init__()
-        self.setFixedSize(220, 152)
-        self.setCursor(Qt.PointingHandCursor)
-        self.setProperty("role", "carte-fiche")
-        self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setAccessibleName(titre)
-        self.setFocusPolicy(Qt.TabFocus)
-        self.setAttribute(Qt.WA_Hover, True)
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 10)
-        lay.setSpacing(2)
-        lay.addWidget(Image(image, hauteur=92))
-        nom = etiquette(titre, "titre-carte")
-        nom.setWordWrap(True)
-        for w in (nom, etiquette("Remanence", "secondaire")):
-            marge = QHBoxLayout()
-            marge.setContentsMargins(10, 0, 10, 0)
-            marge.addWidget(w)
-            lay.addLayout(marge)
-        lay.addStretch(1)
-
-    def mouseReleaseEvent(self, e):
-        if e.button() == Qt.LeftButton and self.rect().contains(e.position().toPoint()):
-            self.choisie.emit()
-
-    def keyPressEvent(self, e):
-        if e.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space):
-            self.choisie.emit()
-        else:
-            super().keyPressEvent(e)
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton and self.window().windowHandle() is not None:
+            self.window().windowHandle().startSystemMove()
 
 
 class Accueil(QDialog):
     """resultat : ("nouveau", largeur, hauteur, cadence, tc_une_heure), ("auto",),
     ("ouvrir", chemin) ou None."""
 
-    def __init__(self, parent=None, onglet: str = "nouveau"):
+    def __init__(self, parent=None):
         super().__init__(parent, Qt.Dialog | Qt.FramelessWindowHint)
         # Modale pour la fenêtre principale seulement : la prise en main reste utilisable.
         self.setWindowModality(Qt.WindowModal)
         self.setWindowTitle("Remanence")
         self.setProperty("role", "accueil")
-        self.resize(940, 660)
+        self.resize(980, 640)
         self.resultat = None
-        racine = QVBoxLayout(self)
-        racine.setContentsMargins(1, 0, 1, 1)
+        racine = QHBoxLayout(self)
+        racine.setContentsMargins(1, 1, 1, 1)
         racine.setSpacing(0)
-        racine.addWidget(self._barre_titre())
+        racine.addWidget(self._colonne_identite())
+        racine.addWidget(self._contenu(), 1)
+        self._creer_bouton.setFocus()
 
-        milieu = QHBoxLayout()
-        milieu.setContentsMargins(4, 0, 4, 0)
-        milieu.setSpacing(4)
-        cote = QVBoxLayout()
-        cote.setSpacing(4)
-        self.pages = QStackedWidget()
-        self.pages.setProperty("role", "accueil-page")
-        self.pages.setAttribute(Qt.WA_StyledBackground, True)
-        self._boutons: dict[str, QToolButton] = {}
-        groupe = QButtonGroup(self)
-        for i, (cle, nom, icone, page) in enumerate((
-                ("nouveau", "Nouveau projet", "file", self._page_nouveau()),
-                ("ouvrir", "Ouvrir un projet", "folder", self._page_ouvrir()),
-                ("aide", "Prise en main", "graduation-cap", self._page_aide()))):
-            b = tuile(nom, icone, "accueil-onglet")
-            b.setFixedSize(110, 84)
-            b.clicked.connect(lambda _=False, i=i: self.pages.setCurrentIndex(i))
-            groupe.addButton(b)
-            self._boutons[cle] = b
-            cote.addWidget(b)
-            self.pages.addWidget(page)
-        cote.addStretch(1)
-        milieu.addLayout(cote)
-        milieu.addWidget(self.pages, 1)
-        racine.addLayout(milieu, 1)
+    # À gauche : identité et actions
 
-        bas = QHBoxLayout()
-        bas.setContentsMargins(14, 8, 14, 8)
-        self.au_demarrage = QCheckBox("Afficher l'écran d'accueil au démarrage")
+    def _colonne_identite(self) -> QWidget:
+        colonne = Identite()
+        lay = QVBoxLayout(colonne)
+        lay.setContentsMargins(28, 32, 28, 20)
+        lay.setSpacing(0)
+        nom = QHBoxLayout()
+        nom.setSpacing(12)
+        symbole = QLabel()
+        symbole.setPixmap(charte.actuelle().symbole(40))
+        symbole.setAccessibleName("Remanence")
+        nom.addWidget(symbole)
+        titre = QLabel("Remanence")
+        # La feuille de style l'emporte sur setFont : la police du titre passe par elle.
+        titre.setStyleSheet("QLabel { %s font-size: 26px; letter-spacing: -0.5px; }"
+                            % charte.actuelle().css_police("display"))
+        nom.addWidget(titre)
+        nom.addStretch(1)
+        lay.addLayout(nom)
+        lay.addSpacing(6)
+        lay.addWidget(etiquette(f"Version {__version__} · © {ANNEE} {EDITEUR}", "secondaire"))
+        lay.addSpacing(32)
+        self._creer_bouton = QPushButton("Nouveau projet")
+        self._creer_bouton.setProperty("variante", "principal")
+        self._creer_bouton.setDefault(True)
+        self._creer_bouton.clicked.connect(self._creer)
+        ouvrir = QPushButton("Ouvrir…")
+        ouvrir.clicked.connect(self._parcourir)
+        for b in (self._creer_bouton, ouvrir):
+            b.setFixedWidth(200)
+            lay.addWidget(b)
+            lay.addSpacing(8)
+        lay.addStretch(1)
+        self.au_demarrage = QCheckBox("Afficher au démarrage")
         self.au_demarrage.setChecked(au_demarrage())
         self.au_demarrage.toggled.connect(
             lambda v: reglages_interface().setValue(CLE_AU_DEMARRAGE, "true" if v else "false"))
-        bas.addWidget(self.au_demarrage)
-        bas.addStretch(1)
-        racine.addLayout(bas)
-        self.choisir(onglet)
-        self._creer_bouton.setFocus()
+        lay.addWidget(self.au_demarrage)
+        return colonne
 
-    def _barre_titre(self) -> QWidget:
-        barre = QWidget()
-        barre.setFixedHeight(48)
-        lay = QHBoxLayout(barre)
-        lay.setContentsMargins(48, 0, 4, 0)
-        lay.addStretch(1)
-        symbole = QLabel()
-        symbole.setPixmap(charte.actuelle().symbole(26))
-        symbole.setAccessibleName("Remanence")
-        lay.addWidget(symbole)
-        lay.addSpacing(8)
-        lay.addWidget(etiquette("Remanence", "titre-accueil"))
-        lay.addStretch(1)
+    # À droite : nouveau projet, récents, prise en main
+
+    def _contenu(self) -> QWidget:
+        page = QWidget()
+        page.setProperty("role", "panneau")
+        page.setAttribute(Qt.WA_StyledBackground, True)
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(28, 12, 12, 24)
+        lay.setSpacing(0)
+        haut = QHBoxLayout()
+        haut.addStretch(1)
         fermer = bouton_icone("x", "Fermer (Échap)", variante="fenetre-fermer")
         fermer.clicked.connect(self.reject)
-        lay.addWidget(fermer)
-        barre.mousePressEvent = self._deplacer
-        return barre
+        haut.addWidget(fermer)
+        lay.addLayout(haut)
 
-    def _deplacer(self, e):
-        """La barre de titre déplace la fenêtre, qui n'a pas de cadre."""
-        if e.button() == Qt.LeftButton and self.windowHandle() is not None:
-            self.windowHandle().startSystemMove()
+        marge = QVBoxLayout()
+        marge.setContentsMargins(0, 0, 16, 0)
+        marge.setSpacing(10)
+        marge.addWidget(etiquette("Nouveau projet", "section"))
+        marge.addLayout(self._ligne_format())
+        marge.addSpacing(18)
+        marge.addWidget(etiquette("Récents", "section"))
+        marge.addWidget(self._liste_recents(), 1)
+        marge.addSpacing(18)
+        marge.addWidget(etiquette("Prise en main", "section"))
+        marge.addLayout(self._fiches())
+        lay.addLayout(marge, 1)
+        return page
 
-    def choisir(self, onglet: str):
-        cle = onglet if onglet in self._boutons else "nouveau"
-        self._boutons[cle].setChecked(True)
-        self.pages.setCurrentIndex(list(self._boutons).index(cle))
-
-    # Nouveau projet
-
-    def _page_nouveau(self) -> QWidget:
-        page = QWidget()
-        lay = QVBoxLayout(page)
-        lay.setContentsMargins(0, 0, 0, 14)
-        lay.setSpacing(12)
-        lay.addWidget(Image(BANDEAU, hauteur=250))
-        tuiles = QHBoxLayout()
-        tuiles.setContentsMargins(4, 0, 4, 0)
-        tuiles.setSpacing(4)
-        self._formats = QButtonGroup(page)
-        for cle, nom, icone in [("auto", "D'après le média", "film")] + \
-                [(c, v[0], v[1]) for c, v in FORMATS.items()]:
-            b = tuile(nom, icone, "accueil-format", 26)
-            b.setProperty("format", cle)
-            b.setMinimumHeight(74)
-            b.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            self._formats.addButton(b)
-            tuiles.addWidget(b)
-        self._formats.buttons()[0].setChecked(True)
-        self._formats.buttonClicked.connect(lambda _b: self._format_change())
-        lay.addLayout(tuiles)
-
-        bloc = QVBoxLayout()
-        bloc.setContentsMargins(14, 0, 14, 0)
-        bloc.setSpacing(8)
-        bloc.addWidget(etiquette("Créer un nouveau projet", "titre-section"))
+    def _ligne_format(self) -> QGridLayout:
         grille = QGridLayout()
-        grille.setHorizontalSpacing(12)
-        grille.setVerticalSpacing(6)
+        grille.setHorizontalSpacing(8)
+        grille.setVerticalSpacing(4)
+        self.format = QComboBox()
+        self.format.setAccessibleName("Format")
+        self.format.addItem("D'après le média", "auto")
+        for cle, (nom, _r) in FORMATS.items():
+            self.format.addItem(nom, cle)
+        self.format.currentIndexChanged.connect(lambda _i: self._format_change())
         self.resolution = QComboBox()
         self.resolution.setAccessibleName("Résolution")
         self.cadence = QComboBox()
-        self.cadence.setAccessibleName("Fréquence image")
+        self.cadence.setAccessibleName("Cadence")
         for cle, nom in CADENCES:
-            self.cadence.addItem(nom, cle)
+            self.cadence.addItem(f"{nom} i/s", cle)
         self.cadence.setCurrentIndex(2)
         self.timecode = QComboBox()
         self.timecode.setAccessibleName("Timecode de début")
         self.timecode.addItem("01:00:00:00", True)
         self.timecode.addItem("00:00:00:00", False)
-        for ligne, (nom, champ) in enumerate((("Résolution :", self.resolution),
-                                              ("Fréquence image :", self.cadence),
-                                              ("Timecode de début :", self.timecode))):
-            libelle = etiquette(nom, "")
-            libelle.setFixedWidth(130)
-            grille.addWidget(libelle, ligne, 0)
-            grille.addWidget(champ, ligne, 1)
-        grille.setColumnStretch(1, 1)
-        bloc.addLayout(grille)
-        self._note_auto = etiquette("Taille, cadence et timecode du premier média posé",
-                                    "secondaire")
-        bloc.addWidget(self._note_auto)
-        boutons = QHBoxLayout()
-        boutons.addSpacing(142)
-        creer = QPushButton("Créer un projet")
-        creer.setProperty("variante", "principal")
-        creer.setDefault(True)
-        creer.clicked.connect(self._creer)
-        self._creer_bouton = creer
-        boutons.addWidget(creer)
-        boutons.addStretch(1)
-        bloc.addLayout(boutons)
-        lay.addLayout(bloc)
-        lay.addStretch(1)
+        for colonne, (nom, champ, etire) in enumerate((
+                ("Format", self.format, 3), ("Résolution", self.resolution, 4),
+                ("Cadence", self.cadence, 2), ("Timecode", self.timecode, 2))):
+            grille.addWidget(etiquette(nom, "libelle"), 0, colonne)
+            grille.addWidget(champ, 1, colonne)
+            grille.setColumnStretch(colonne, etire)
         self._format_change()
-        return page
+        return grille
 
     def format_choisi(self) -> str:
-        return self._formats.checkedButton().property("format")
+        return self.format.currentData()
 
     def _format_change(self):
         cle = self.format_choisi()
         auto = cle == "auto"
         for champ in (self.resolution, self.cadence, self.timecode):
             champ.setEnabled(not auto)
-        self._note_auto.setVisible(auto)
         self.resolution.clear()
-        for nom, l, h in ([] if auto else FORMATS[cle][2]):
+        if auto:
+            self.resolution.addItem("Celle du premier média", None)
+        for nom, l, h in ([] if auto else FORMATS[cle][1]):
             self.resolution.addItem(f"{nom} ({l} × {h})", (l, h))
 
     def _creer(self):
@@ -348,44 +259,35 @@ class Accueil(QDialog):
                              self.timecode.currentData())
         self.accept()
 
-    # Ouvrir un projet
-
-    def _page_ouvrir(self) -> QWidget:
-        page = QWidget()
-        lay = QVBoxLayout(page)
-        lay.setContentsMargins(14, 14, 14, 14)
-        lay.setSpacing(8)
-        lay.addWidget(etiquette("Ouverture d'un projet existant", "titre-section"))
-        parcourir = QPushButton("Parcourir…")
-        parcourir.setFixedWidth(130)
-        parcourir.clicked.connect(self._parcourir)
-        lay.addWidget(parcourir)
-        lay.addSpacing(8)
-        lay.addWidget(etiquette("Projets récents", "titre-section"))
+    def _liste_recents(self) -> QTreeWidget:
         self.liste_recents = QTreeWidget()
         self.liste_recents.setAccessibleName("Projets récents")
         self.liste_recents.setHeaderHidden(True)
-        self.liste_recents.setColumnCount(2)
+        self.liste_recents.setColumnCount(3)
         self.liste_recents.setRootIsDecorated(False)
         self.liste_recents.setIndentation(0)
         self.liste_recents.setProperty("role", "liste-plate")
         entete = self.liste_recents.header()
         entete.setStretchLastSection(False)
-        entete.setSectionResizeMode(0, QHeaderView.Stretch)
-        entete.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        entete.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        entete.setSectionResizeMode(1, QHeaderView.Stretch)
+        entete.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        gris = charte.actuelle().c("ink-muted")
         for chemin, instant in recents():
-            item = QTreeWidgetItem([chemin.stem, date_longue(instant)])
+            item = QTreeWidgetItem([chemin.stem, str(chemin.parent), date_relative(instant)])
             item.setData(0, Qt.UserRole, str(chemin))
             item.setToolTip(0, str(chemin))
-            item.setTextAlignment(1, Qt.AlignRight | Qt.AlignVCenter)
+            item.setToolTip(2, time.strftime("%d/%m/%Y %H:%M", time.localtime(instant)))
+            item.setForeground(1, gris)
+            item.setForeground(2, gris)
+            item.setTextAlignment(2, Qt.AlignRight | Qt.AlignVCenter)
             self.liste_recents.addTopLevelItem(item)
         if not self.liste_recents.topLevelItemCount():
-            vide = QTreeWidgetItem(["Aucun projet récent", ""])
+            vide = QTreeWidgetItem(["Aucun projet récent", "", ""])
             vide.setFlags(Qt.NoItemFlags)
             self.liste_recents.addTopLevelItem(vide)
         self.liste_recents.itemActivated.connect(lambda item, _c: self._ouvrir_item(item))
-        lay.addWidget(self.liste_recents, 1)
-        return page
+        return self.liste_recents
 
     def _ouvrir_item(self, item):
         if item is None or not item.data(0, Qt.UserRole):
@@ -400,33 +302,20 @@ class Accueil(QDialog):
             self.resultat = ("ouvrir", chemin)
             self.accept()
 
-    # Prise en main : les fiches en cartes ; un clic ouvre la fenêtre de prise en main
-
-    def _page_aide(self) -> QWidget:
-        fond = Image(BANDEAU, assombrir=0.72)
-        lay_fond = QVBoxLayout(fond)
-        lay_fond.setContentsMargins(0, 0, 0, 0)
-        defil = QScrollArea()
-        defil.setWidgetResizable(True)
-        defil.setFrameShape(QScrollArea.NoFrame)
-        defil.setStyleSheet("QScrollArea, QScrollArea > QWidget > QWidget "
-                            "{ background: transparent; }")
-        cartes = QWidget()
-        grille = QGridLayout(cartes)
-        grille.setContentsMargins(24, 20, 24, 20)
-        grille.setSpacing(14)
-        self.cartes: list[Carte] = []
-        self._fiches = fiches()
-        for i, (titre, _chemin, image) in enumerate(self._fiches):
-            carte = Carte(titre, image)
-            carte.choisie.connect(lambda i=i: self.ouvrir_fiche(i))
-            grille.addWidget(carte, i // 3, i % 3, Qt.AlignCenter)
-            self.cartes.append(carte)
-        defil.setWidget(cartes)
-        lay_fond.addWidget(defil)
-
-        return fond
-
-    def ouvrir_fiche(self, i: int):
-        """La fiche dans la fenêtre de prise en main, qui reste ouverte à côté."""
-        FenetreAide.ouvrir(i)
+    def _fiches(self) -> QGridLayout:
+        """Une étiquette par fiche ; elle ouvre la fenêtre de prise en main, à part."""
+        grille = QGridLayout()
+        grille.setSpacing(6)
+        self.boutons_fiches: list[QPushButton] = []
+        for i, (titre, _chemin, _image) in enumerate(fiches()):
+            b = QPushButton(titre)
+            b.setProperty("variante", "fiche")
+            b.setCursor(Qt.PointingHandCursor)
+            b.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+            b.setToolTip(titre)
+            b.clicked.connect(lambda _=False, i=i: FenetreAide.ouvrir(i))
+            grille.addWidget(b, i // 2, i % 2)
+            self.boutons_fiches.append(b)
+        for colonne in range(2):
+            grille.setColumnStretch(colonne, 1)
+        return grille

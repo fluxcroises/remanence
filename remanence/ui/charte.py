@@ -349,22 +349,12 @@ QToolButton[variante="onglet"]:hover {{ color: {ink}; }}
 QToolButton[variante="onglet"]:checked {{ color: {ink}; font-weight: 500;
     border-bottom: 2px solid {accent}; }}
 QWidget[role="panneau"] {{ background: {surface}; }}
-QDialog[role="accueil"] {{ background: {bg_app}; border: 1px solid {line}; }}
-QWidget[role="accueil-page"] {{ background: {surface}; }}
-QLabel[role="titre-accueil"] {{ {police_title} }}
-QLabel[role="titre-section"] {{ font-weight: 600; }}
-QLabel[role="titre-carte"] {{ font-weight: 600; }}
-QToolButton[variante="accueil-onglet"], QToolButton[variante="accueil-format"] {{
-    border: 0; border-radius: {radius_sm}; color: {ink_muted}; padding: {space_1};
-    min-height: 0; max-height: 200px; }}
-QToolButton[variante="accueil-onglet"] {{ background: transparent; }}
-QToolButton[variante="accueil-format"] {{ background: {surface_raised}; }}
-QToolButton[variante="accueil-onglet"]:hover, QToolButton[variante="accueil-format"]:hover {{
-    color: {ink}; background: {surface_hover}; }}
-QToolButton[variante="accueil-onglet"]:checked, QToolButton[variante="accueil-format"]:checked {{
-    color: {on_accent}; background: {accent}; }}
-QWidget[role="carte-fiche"] {{ background: {surface}; border-radius: {radius_sm}; }}
-QWidget[role="carte-fiche"]:hover {{ background: {surface_hover}; }}
+QDialog[role="accueil"] {{ background: {surface}; border: 1px solid {line}; }}
+QWidget[role="accueil-identite"] {{ background: {bg_app}; }}
+QPushButton[variante="fiche"] {{ background: transparent; border: 1px solid {line};
+    color: {ink_muted}; text-align: left; padding: 0 {space_2}; }}
+QPushButton[variante="fiche"]:hover {{ color: {ink}; border-color: {control_border};
+    background: {surface_hover}; }}
 QTreeWidget[role="liste-plate"] {{ background: {surface}; border: 0; }}
 QTreeWidget[role="liste-plate"]::item {{ padding: 6px 4px; }}
 QTreeWidget[role="liste-plate"]::item:hover {{ background: {surface_hover}; }}

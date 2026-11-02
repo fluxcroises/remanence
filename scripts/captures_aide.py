@@ -121,48 +121,6 @@ def main():
 
     w.modifie = False
     w.close()
-    bandeau()
-
-
-def bandeau():
-    """Le bandeau de l'accueil : un dégradé qui bave dans une fractale, datamoshé par
-    Remanence (moteur codec, bavure aux coupes)."""
-    from fractions import Fraction
-
-    import numpy as np
-    from PySide6.QtGui import QImage
-
-    from remanence.effets import nouvel_effet
-    from remanence.moteurs.codec import prerendu
-    from tests.generer_medias import _mire
-
-    largeur, hauteur = 960, 400
-
-    def degrade(n):
-        """Du mauve de la charte vers un mauve presque noir, en biais, qui tourne doucement
-        (le filtre gradients de FFmpeg tire ses couleurs au hasard, même avec une graine)."""
-        from remanence.ui import charte
-        c = charte.actuelle()
-        clair = np.array(c.c("accent").getRgbF()[:3])
-        sombre = 0.25 * clair + 0.75 * np.array(c.c("bg-app").getRgbF()[:3])
-        y, x = np.mgrid[0:hauteur, 0:largeur]
-        images = []
-        for k in range(n):
-            angle = 0.5 + 0.02 * k
-            t = (x / largeur * np.cos(angle) + (1 - y / hauteur) * np.sin(angle))
-            t = np.clip(t / (np.cos(angle) + np.sin(angle)), 0, 1)[..., None]
-            rvb = sombre + (clair - sombre) * (1 - t)
-            images.append(np.ascontiguousarray((rvb * 255).astype(np.uint8)))
-        return images
-    fractale = [f.to_ndarray(format="rgb24")
-                for f in _mire(largeur, hauteur, Fraction(25), "yuv420p", 30, source="mandelbrot")]
-    images = degrade(12) + fractale
-    rendu = prerendu.apercu(images, [nouvel_effet("suppression_cles", "Bavure aux coupes")])
-    image = np.ascontiguousarray(rendu[26])
-    dossier = RACINE / "remanence" / "ressources" / "accueil"
-    dossier.mkdir(exist_ok=True)
-    QImage(image.data, largeur, hauteur, 3 * largeur, QImage.Format_RGB888).save(
-        str(dossier / "bandeau.png"))
 
 
 if __name__ == "__main__":

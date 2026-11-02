@@ -311,8 +311,7 @@ def test_ecran_d_accueil(fenetre, medias, tmp_path):
     w = fenetre
     d = accueil.Accueil(w)
     assert d.format_choisi() == "auto" and not d.resolution.isEnabled()
-    bouton = next(b for b in d._formats.buttons() if b.property("format") == "9:16")
-    bouton.click()
+    d.format.setCurrentIndex(d.format.findData("9:16"))
     assert d.resolution.isEnabled() and d.resolution.currentData() == (1080, 1920)
     d.cadence.setCurrentIndex(d.cadence.findData("25"))
     d._creer()
@@ -329,19 +328,20 @@ def test_ecran_d_accueil(fenetre, medias, tmp_path):
     w.chemin = projet
     assert w.enregistrer()
     assert accueil.recents()[0][0] == projet
-    d = accueil.Accueil(w, "ouvrir")
-    assert d.pages.currentIndex() == 1
+    d = accueil.Accueil(w)
     ligne = d.liste_recents.topLevelItem(0)
     assert ligne.text(0) == "essai" and ligne.data(0, 0x0100) == str(projet)
-    assert any(jour in ligne.text(1) for jour in accueil.JOURS), "date en toutes lettres"
+    assert ligne.text(1) == str(tmp_path) and ligne.text(2) == "à l'instant"
+    maintenant = 1_800_000_000
+    assert accueil.date_relative(maintenant - 300, maintenant) == "il y a 5 min"
+    assert accueil.date_relative(maintenant - 86400 * 30, maintenant).endswith("2026")
     d._ouvrir_item(ligne)
     assert d.resultat == ("ouvrir", str(projet))
-    d = accueil.Accueil(w, "aide")
-    titres = [c.accessibleName() for c in d.cartes]
+    titres = [b.text() for b in d.boutons_fiches]
     assert "Animer un effet" in titres and len(titres) >= 8
-    # Une carte ouvre la fenêtre de prise en main, à part.
+    # Une fiche s'ouvre dans la fenêtre de prise en main, à part.
     from remanence.ui.aide import FenetreAide
-    d.cartes[titres.index("Animer un effet")].choisie.emit()
+    d.boutons_fiches[titres.index("Animer un effet")].click()
     aide = FenetreAide._instance
     assert aide is not None and aide.isVisible() and aide.parent() is None
     assert aide.liste.currentItem().text() == "Animer un effet"
