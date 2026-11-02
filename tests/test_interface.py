@@ -685,9 +685,10 @@ def test_scripts_depuis_l_interface(fenetre, medias, tmp_path):
     assert _attendre(lambda: texte() == "Script modifié", 2)
 
 
-def test_espace_datamosh(fenetre, medias):
-    """Espace Datamosh : compression du clip choisi analysée en arrière-plan, vecteurs sur le
-    programme, double-clic sur une image clé de coupe : supprimée."""
+def test_espace_effets(fenetre, medias):
+    """Espace Effets : bibliothèque en avant ; panneau Compression ouvert à la demande (clip
+    choisi analysé en arrière-plan, vecteurs sur le programme, double-clic sur une image clé
+    de coupe : supprimée)."""
     w = fenetre
     w.importer_chemins([str(medias["prores_hq"])])
     assert _attendre(lambda: len(w.projet.medias) == 1)
@@ -695,8 +696,10 @@ def test_espace_datamosh(fenetre, medias):
     clip = w.projet.sequence.pistes_video[0].clips[0]
     media = w.projet.medias[clip.media_id]
     media.coupes = [12]  # un changement de plan, comme s'il avait été analysé
-    w.choisir_espace("datamosh")
-    assert w._docks["analyse"].isVisible() and not w._docks["source"].isVisible()
+    w.choisir_espace("effets")
+    assert not w._docks["analyse"].isVisible() and not w._docks["source"].isVisible()
+    assert w.onglets_gauche.currentIndex() == 1, "la bibliothèque d'effets"
+    w._docks["analyse"].show()
     assert w.panneau_datamosh.titre.text() == "Aucun clip vidéo sélectionné"
     w.timeline.vue._choisir({clip.id})
     assert _attendre(lambda: w.panneau_datamosh.bande.analyse is not None, 30)

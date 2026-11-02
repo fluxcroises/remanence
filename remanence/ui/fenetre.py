@@ -58,7 +58,8 @@ VERSION_DISPOSITION = 4
 PANNEAUX_ESPACE = {
     "media": {"medias", "source", "droite"},
     "montage": {"medias", "source", "visionneuse", "droite", "timeline"},
-    "datamosh": {"medias", "visionneuse", "droite", "timeline", "analyse"},
+    # Compression : facultatif, ouvert depuis le menu Fenêtre.
+    "effets": {"medias", "visionneuse", "droite", "timeline", "analyse"},
     "export": {"export", "visionneuse", "file_export", "timeline"},
 }
 
@@ -192,6 +193,7 @@ class FenetrePrincipale(QMainWindow):
         self.panneau_datamosh = PanneauDatamosh()
         d, _ = panneau("Compression", self.panneau_datamosh, "analyse", self)
         self._docks["analyse"] = d
+        d.visibilityChanged.connect(lambda _v: self._actualiser_datamosh())
         self.inspecteur.badge.connect(self._badge)
         self.onglets_droite.onglet_change.connect(lambda _i: self._badge())
         self.inspecteur.setMinimumWidth(320)
@@ -284,8 +286,9 @@ class FenetrePrincipale(QMainWindow):
             self.resizeDocks([d["export"], d["visionneuse"], d["file_export"]], [340, 900, 360],
                              Qt.Horizontal)
             self.resizeDocks([d["visionneuse"], d["timeline"]], [640, 260], Qt.Vertical)
-        elif espace == "datamosh":
-            # Bibliothèque d'effets, programme et sa compression, inspecteur ; timeline dessous.
+        elif espace == "effets":
+            # Bibliothèque d'effets, programme, inspecteur ; timeline dessous. La compression du
+            # clip (datamosh) se loge sous le programme quand on l'ouvre.
             self.addDockWidget(Qt.BottomDockWidgetArea, d["timeline"])
             if self._est_externe("medias"):
                 self.addDockWidget(Qt.LeftDockWidgetArea, d["visionneuse"])
@@ -294,10 +297,9 @@ class FenetrePrincipale(QMainWindow):
                 self.splitDockWidget(d["medias"], d["visionneuse"], Qt.Horizontal)
             self.splitDockWidget(d["visionneuse"], d["droite"], Qt.Horizontal)
             self.splitDockWidget(d["visionneuse"], d["analyse"], Qt.Vertical)
-            self.resizeDocks([d["medias"], d["visionneuse"], d["droite"]], [300, 960, 360],
+            self.resizeDocks([d["medias"], d["visionneuse"], d["droite"]], [420, 840, 360],
                              Qt.Horizontal)
             self.resizeDocks([d["visionneuse"], d["analyse"]], [400, 120], Qt.Vertical)
-            self.resizeDocks([d["visionneuse"], d["timeline"]], [520, 420], Qt.Vertical)
         elif espace == "media" and self._est_externe("medias"):
             self.addDockWidget(Qt.LeftDockWidgetArea, d["source"])
             self.splitDockWidget(d["source"], d["droite"], Qt.Horizontal)
@@ -328,7 +330,12 @@ class FenetrePrincipale(QMainWindow):
             self.resizeDocks([d["visionneuse"], d["timeline"]], [500, 440], Qt.Vertical)
         for nom, dock in d.items():
             if not self._est_externe(nom):
-                dock.setVisible(nom in visibles)
+                dock.setVisible(nom in visibles and nom != "analyse")
+        if espace == "effets":
+            # Après avoir caché la compression : sinon la timeline reste à sa petite hauteur.
+            colonne = d["medias"] if not self._est_externe("medias") else d["visionneuse"]
+            self.resizeDocks([colonne, d["visionneuse"], d["timeline"]], [520, 520, 420],
+                             Qt.Vertical)
 
     def _appliquer_espace(self, espace: str, par_defaut: bool = False):
         reglages = reglages_interface()
@@ -345,7 +352,7 @@ class FenetrePrincipale(QMainWindow):
             self._montrer_metadonnees()
         elif espace == "export":
             self.formulaire_export.actualiser(self.projet, self.chemin)
-        elif espace == "datamosh" and not self._est_externe("medias"):
+        elif espace == "effets" and not self._est_externe("medias"):
             self.onglets_gauche.choisir(1)
         self._espace = espace
         self._actualiser_datamosh()
@@ -511,7 +518,7 @@ class FenetrePrincipale(QMainWindow):
                          lambda _=False, cle=cle: self.visionneuse.choisir_qualite(cle))
         a.addSeparator()
         for i, (cle, nom) in enumerate((("media", "Média"), ("montage", "Montage"),
-                                        ("datamosh", "Datamosh"), ("export", "Export")), 1):
+                                        ("effets", "Effets"), ("export", "Export")), 1):
             self._action(a, f"Espace {nom}", lambda _=False, cle=cle: self.choisir_espace(cle),
                          f"Shift+{i}")
         a.addSeparator()
@@ -980,7 +987,7 @@ class FenetrePrincipale(QMainWindow):
         if not hasattr(self, "panneau_datamosh"):
             return
         seq = self.projet.sequence
-        clip = self._clip_datamosh() if self._espace == "datamosh" else None
+        clip = self._clip_datamosh()             if self._espace == "effets" and self._docks["analyse"].isVisible() else None
         if clip is None:
             self._analyse_courante = None
             self.panneau_datamosh.afficher(None, None)

@@ -34,6 +34,14 @@ from remanence.projet.modele import Clip, Effet, Projet, Sequence
 # Dossier des pré-rendus : à côté du projet enregistré, sinon dans le cache de l'utilisateur.
 _dossier_projet: Path | None = None
 _verrou = threading.Lock()
+# Un verrou par fichier de cache : l'analyse de l'espace Effets et le pré-rendu peuvent demander
+# la même source modifiée en même temps ; le second attend le premier puis lit son fichier.
+_verrous: dict[str, threading.Lock] = {}
+
+
+def _verrou_fichier(final: Path) -> threading.Lock:
+    with _verrou:
+        return _verrous.setdefault(str(final), threading.Lock())
 
 
 def definir_projet(chemin: Path | None):
@@ -158,6 +166,15 @@ def _images(projet: Projet, clip: Clip, debut: int, nombre: int):
 
 def calculer_source(projet: Projet, seq: Sequence, clip: Clip, progression=None,
                     annule: threading.Event | None = None) -> Path | None:
+    k = cle_source(projet, seq, clip)
+    if k is None:
+        return None
+    with _verrou_fichier(chemin_source(k)):
+        return _calculer_source(projet, seq, clip, progression, annule)
+
+
+def _calculer_source(projet: Projet, seq: Sequence, clip: Clip, progression=None,
+                     annule: threading.Event | None = None) -> Path | None:
     """Source modifiée : la fin du clip précédent (s'il y a une transition), puis le clip, en
     MPEG-4 ; l'image clé du raccord et celles des coupes choisies sont supprimées, une image clé
     forcée à la fin de la transition rend l'image nette."""
@@ -340,6 +357,15 @@ def _images_source(projet: Projet, seq: Sequence, clip: Clip):
 
 def calculer(projet: Projet, seq: Sequence, clip: Clip, progression=None,
              annule: threading.Event | None = None) -> Path | None:
+    k = cle(projet, seq, clip)
+    if k is None:
+        return None
+    with _verrou_fichier(chemin(k)):
+        return _calculer(projet, seq, clip, progression, annule)
+
+
+def _calculer(projet: Projet, seq: Sequence, clip: Clip, progression=None,
+              annule: threading.Event | None = None) -> Path | None:
     """Calcule (ou retrouve) le pré-rendu du clip et renvoie son fichier."""
     k = cle(projet, seq, clip)
     if k is None:
