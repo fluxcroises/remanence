@@ -253,6 +253,58 @@ def test_boutons_de_piste_et_zoom(fenetre, medias):
     assert w.projet.sequence.pistes_audio[0].id == piste.id
 
 
+def test_pistes_creees_et_rangees(fenetre, medias):
+    """Média lâché ou clip glissé au-dessus des pistes : nouvelle piste vidéo. Ajout au-dessus
+    ou en dessous d'une piste, glisser d'un en-tête, couleur."""
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+    from remanence.projet.modele import Projet
+    from remanence.ui.timeline import HAUTEUR_REGLE, NOUVELLE_PISTE
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    seq = lambda: w.projet.sequence
+    assert len(seq().pistes_video) == 1
+    w.poser_medias(list(w.projet.medias), 40, NOUVELLE_PISTE)
+    assert len(seq().pistes_video) == 2 and seq().pistes_video[0].clips[0].debut == 40
+    # Clip de V1 glissé dans la bande au-dessus des pistes.
+    vue = w.timeline.vue
+    vue.px_par_image = 8
+    _attendre(lambda: False, 0.2)
+    bas = seq().pistes_video[1]
+    clip = next(c for c in bas.clips)
+    ligne = next(l for l in vue.lignes() if l[0] is bas)
+    depart = QPoint(round(vue.x_de(clip.debut + 5)), ligne[1] + ligne[2] // 2)
+    arrivee = QPoint(depart.x() + 16, HAUTEUR_REGLE + 6)
+    QTest.mousePress(vue, Qt.LeftButton, Qt.NoModifier, depart)
+    QTest.mouseMove(vue, arrivee)
+    QTest.mouseRelease(vue, Qt.LeftButton, Qt.NoModifier, arrivee)
+    assert _attendre(lambda: len(seq().pistes_video) == 3, 2)
+    assert seq().pistes_video[0].clips and seq().pistes_video[0].clips[0].id == clip.id
+    # Ajout au-dessus et en dessous d'une piste audio.
+    a1 = seq().pistes_audio[0]
+    w.ajouter_piste("audio", a1.id)
+    assert seq().pistes_audio[1].id == a1.id
+    w.ajouter_piste("audio", a1.id, dessous=True)
+    assert seq().pistes_audio[1].id == a1.id and len(seq().pistes_audio) == 3
+    # Glisser l'en-tête de la piste du bas sur celle du haut.
+    haut, milieu, bas = seq().pistes_video
+    entete = next(e for e in w.timeline._entetes if e.piste.id == bas.id)
+    cible = next(l for l in vue.lignes() if l[0].id == haut.id)
+    point = vue.mapToGlobal(QPoint(10, cible[1] + 4))
+    QTest.mousePress(entete, Qt.LeftButton, Qt.NoModifier, QPoint(40, 6))
+    QTest.mouseMove(entete, entete.mapFromGlobal(point))
+    QTest.mouseRelease(entete, Qt.LeftButton, Qt.NoModifier, entete.mapFromGlobal(point))
+    assert _attendre(lambda: [p.id for p in seq().pistes_video] == [bas.id, haut.id,
+                                                                     milieu.id], 2)
+    w.regler_piste(haut.id, "couleur", "warning")
+    assert _attendre(lambda: next(p for p in seq().pistes if p.id == haut.id).couleur
+                     == "warning", 2)
+    relu = Projet.depuis_dict(w.projet.vers_dict())
+    assert next(p for p in relu.sequence.pistes if p.id == haut.id).couleur == "warning"
+
+
 def test_espaces_de_travail(fenetre, medias, tmp_path):
     """Changer d'espace garde la tête de lecture et la sélection ; l'export passe par la file."""
     w = fenetre

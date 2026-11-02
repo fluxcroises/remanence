@@ -478,14 +478,32 @@ def retirer_point(seq: Sequence, clip_id: str, rang: int):
         del c.enveloppe[rang]
 
 
-def ajouter_piste(seq: Sequence, type_: str) -> Piste:
+def ajouter_piste(seq: Sequence, type_: str, voisine_id: str | None = None,
+                  dessous: bool = False) -> Piste:
+    """Nouvelle piste : au-dessus (ou en dessous) de la piste voisine du même type ; sans
+    voisine, tout en haut des pistes vidéo ou tout en bas des pistes audio."""
     n = len([p for p in seq.pistes if p.type == type_]) + 1
     p = Piste(nouvel_id(), type_, f"{'Vidéo' if type_ == 'video' else 'Audio'} {n}")
-    if type_ == "video":
+    voisine = next((q for q in seq.pistes if q.id == voisine_id and q.type == type_), None)
+    if voisine is not None:
+        seq.pistes.insert(seq.pistes.index(voisine) + (1 if dessous else 0), p)
+    elif type_ == "video":
         seq.pistes.insert(0, p)
     else:
         seq.pistes.append(p)
     return p
+
+
+def placer_piste(seq: Sequence, piste_id: str, cible_id: str):
+    """Glisser une piste sur une autre du même type : elle prend sa place, les pistes entre
+    les deux se décalent."""
+    p = next((q for q in seq.pistes if q.id == piste_id), None)
+    c = next((q for q in seq.pistes if q.id == cible_id), None)
+    if p is None or c is None or p is c or p.type != c.type:
+        return
+    vers_le_haut = seq.pistes.index(p) > seq.pistes.index(c)
+    seq.pistes.remove(p)
+    seq.pistes.insert(seq.pistes.index(c) + (0 if vers_le_haut else 1), p)
 
 
 def supprimer_piste(seq: Sequence, piste_id: str):

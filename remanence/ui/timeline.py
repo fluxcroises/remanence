@@ -17,7 +17,7 @@ import math
 from dataclasses import dataclass
 
 from PySide6.QtCore import QPointF, QRect, QRectF, Qt, Signal
-from PySide6.QtGui import QBrush, QImage, QPainter, QPainterPath, QPen, QPolygonF
+from PySide6.QtGui import QBrush, QColor, QImage, QPainter, QPainterPath, QPen, QPolygonF
 from PySide6.QtWidgets import (QHBoxLayout, QInputDialog, QMenu, QScrollBar, QSlider, QToolButton,
                                QVBoxLayout, QWidget)
 
@@ -50,6 +50,8 @@ HAUTEUR_MIN, HAUTEUR_MAX = 30, 160
 POIGNEE_HAUTEUR = 7
 COULEURS_MARQUEURS = [("accent-2", "Turquoise"), ("accent", "Mauve"), ("warning", "Jaune"),
                       ("success", "Bleu"), ("danger", "Rouge")]
+# Piste de dépôt d'un média lâché au-dessus des pistes : une piste vidéo est créée.
+NOUVELLE_PISTE = "+video"
 
 
 def hauteur_piste(p: Piste) -> int:
@@ -67,6 +69,7 @@ class Geste:
     etat: list
     rang: int = -1
     marqueurs: list | None = None
+    nouvelle_piste: bool = False
 
 
 class VueTimeline(QWidget):
@@ -103,6 +106,8 @@ class VueTimeline(QWidget):
         self.en_calcul: set[str] = set()
         self.survol_coupe: float | None = None
         self._ondes: dict[str, object] = {}
+        # Glisser d'un en-tête de piste : hauteur où la piste viendra se placer.
+        self.insertion: int | None = None
         self.setMouseTracking(True)
         self.setAcceptDrops(True)
         self.setFocusPolicy(Qt.StrongFocus)
@@ -130,6 +135,12 @@ class VueTimeline(QWidget):
 
     def f_de(self, x: float) -> float:
         return (x + self.decalage_x) / self.px_par_image
+
+    def au_dessus_des_pistes(self, y: float) -> bool:
+        """Dans la bande des marqueurs et des coupes, au-dessus de la piste vidéo du haut : un
+        clip ou un média lâché là va sur une nouvelle piste."""
+        return HAUTEUR_REGLE <= y < HAUT_PISTES and bool(self.projet) \
+            and bool(self.projet.sequence.pistes_video)
 
     def piste_a(self, y: float) -> tuple[Piste, int, int] | None:
         for ligne in self.lignes():
@@ -172,6 +183,13 @@ class VueTimeline(QWidget):
             self._ligne_pointillee(p, self._cible_fx[2], "accent-2", HAUT_PISTES)
         if self._depot is not None:
             self._ligne_pointillee(p, self._depot[0], "accent-2", HAUT_PISTES)
+        if (self._depot is not None and self._depot[1] == NOUVELLE_PISTE) or \
+                (self._geste is not None and self._geste.nouvelle_piste):
+            p.setPen(QPen(c.c("accent-2"), 2, Qt.DashLine))
+            p.drawLine(0, HAUT_PISTES + 1, self.width(), HAUT_PISTES + 1)
+        if self.insertion is not None:
+            p.setPen(QPen(c.c("accent-2"), 2))
+            p.drawLine(0, self.insertion, self.width(), self.insertion)
         if self.survol_coupe is not None:
             self._ligne_pointillee(p, self.survol_coupe, "ink", HAUT_PISTES)
         p.restore()
@@ -322,6 +340,11 @@ class VueTimeline(QWidget):
         media = self.projet.medias.get(clip.media_id)
         video = piste.type == "video"
         fond = c.c("clip-effect" if clip.est_effet else "clip-video" if video else "clip-audio")
+        if piste.couleur in c.couleurs and not clip.est_effet:
+            # Couleur de la piste : mêlée à celle du clip, le texte reste lisible.
+            teinte = c.c(piste.couleur)
+            fond = QColor.fromRgbF(*(0.55 * a + 0.45 * b for a, b in zip(
+                fond.getRgbF()[:3], teinte.getRgbF()[:3])))
         rayon = c.px("radius-xs")
         forme = QPainterPath()
         forme.addRoundedRect(r, rayon, rayon)
@@ -670,7 +693,16 @@ class VueTimeline(QWidget):
             ligne = self.piste_a(pos.y())
             ligne0 = self.piste_a(g.y0)
             delta_piste = 0
-            if ligne and ligne0 and ligne[0].type == ligne0[0].type:
+            g.nouvelle_piste = False
+            if ligne is None and ligne0 and ligne0[0].type == "video" \
+                    and self.au_dessus_des_pistes(pos.y()):
+                # Glissé au-dessus des pistes : une nouvelle piste vidéo, tout en haut (l'état
+                # est rétabli à chaque mouvement, elle n'existe qu'une fois lâchée là).
+                edition.ajouter_piste(seq, "video")
+                meme = [q for q in seq.pistes if q.type == "video"]
+                delta_piste = -meme.index(ligne0[0])
+                g.nouvelle_piste = True
+            elif ligne and ligne0 and ligne[0].type == ligne0[0].type:
                 meme = [q for q in seq.pistes if q.type == ligne0[0].type]
                 delta_piste = meme.index(ligne[0]) - meme.index(ligne0[0])
             edition.deplacer(seq, self.selection | {g.clip_id}, delta, delta_piste,
@@ -901,6 +933,9 @@ class VueTimeline(QWidget):
                 menu.addAction("Dissocier son et image (U)", fenetre.dissocier)
             elif len(self.selection) > 1:
                 menu.addAction("Lier la sélection (G)", fenetre.lier)
+        elif zone == "vide":
+            menu.addAction("Ajouter une piste vidéo", lambda: fenetre.ajouter_piste("video"))
+            menu.addAction("Ajouter une piste audio", lambda: fenetre.ajouter_piste("audio"))
         if menu.actions():
             menu.exec(e.globalPosition().toPoint())
 
@@ -970,7 +1005,10 @@ class VueTimeline(QWidget):
             return
         f = self._f_aimantee(e.position().x(), set())
         ligne = self.piste_a(e.position().y())
-        self._depot = (f, ligne[0].id if ligne else "")
+        if ligne is None and self.au_dessus_des_pistes(e.position().y()):
+            self._depot = (f, NOUVELLE_PISTE)
+        else:
+            self._depot = (f, ligne[0].id if ligne else "")
         e.acceptProposedAction()
         self.update()
 
@@ -1043,6 +1081,9 @@ class EntetePiste(QWidget):
         filet.setFixedWidth(3)
         filet.setProperty("role", "filet-video" if video else "filet-audio")
         filet.setAttribute(Qt.WA_StyledBackground, True)
+        if piste.couleur in charte.actuelle().couleurs:
+            filet.setFixedWidth(5)
+            filet.setStyleSheet(f"background: {charte.actuelle().couleurs[piste.couleur]};")
         lay.addWidget(filet)
         badge = etiquette(court, "badge")
         badge.setFixedWidth(30)
@@ -1089,6 +1130,9 @@ class EntetePiste(QWidget):
         self.customContextMenuRequested.connect(self._menu)
         self.setAcceptDrops(video)
         self._tirer = None
+        self._prise: float | None = None
+        self._glisse = False
+        self._cible = None
 
     def dragEnterEvent(self, e):
         if e.mimeData().hasFormat(MIME_PREREGLAGE) and not self.piste.verrouillee:
@@ -1136,7 +1180,18 @@ class EntetePiste(QWidget):
             solo.setChecked(self.piste.solo)
         menu.addAction("Hauteur par défaut", lambda: f.regler_piste(self.piste.id, "hauteur",
                                                                     None))
+        couleurs = menu.addMenu("Couleur")
+        for token, nom in [(None, "Par défaut")] + COULEURS_MARQUEURS:
+            a = couleurs.addAction(nom, lambda token=token: f.regler_piste(
+                self.piste.id, "couleur", token))
+            a.setCheckable(True)
+            a.setChecked(self.piste.couleur == token)
         menu.addSeparator()
+        genre = "vidéo" if self.piste.type == "video" else "audio"
+        menu.addAction(f"Ajouter une piste {genre} au-dessus",
+                       lambda: f.ajouter_piste(self.piste.type, self.piste.id))
+        menu.addAction(f"Ajouter une piste {genre} en dessous",
+                       lambda: f.ajouter_piste(self.piste.type, self.piste.id, dessous=True))
         menu.addAction("Monter la piste", lambda: f.deplacer_piste(self.piste.id, -1))
         menu.addAction("Descendre la piste", lambda: f.deplacer_piste(self.piste.id, 1))
         menu.addSeparator()
@@ -1167,14 +1222,38 @@ class EntetePiste(QWidget):
             self.timeline.bornes()
             self.timeline.vue.update()
             return
+        if self._prise is not None and e.buttons() & Qt.LeftButton:
+            # Glisser l'en-tête : la piste ira à la place de celle du même type sous la souris.
+            if abs(e.globalPosition().y() - self._prise) > 6:
+                self._glisse = True
+                self.setCursor(Qt.ClosedHandCursor)
+            if self._glisse:
+                self._cible = self._piste_sous(e.globalPosition().toPoint())
+                vue = self.timeline.vue
+                vue.insertion = None
+                if self._cible is not None:
+                    ligne = next(l for l in vue.lignes() if l[0] is self._cible[0])
+                    plus_bas = vue.lignes().index(ligne) > [l[0] for l in vue.lignes()].index(
+                        self.piste)
+                    vue.insertion = ligne[1] + (ligne[2] - 1 if plus_bas else 0)
+                vue.update()
+            return
         pres_du_bas = e.position().y() >= self.height() - POIGNEE_HAUTEUR
         self.setCursor(Qt.SizeVerCursor if pres_du_bas else Qt.ArrowCursor)
+
+    def _piste_sous(self, global_pos):
+        vue = self.timeline.vue
+        ligne = vue.piste_a(vue.mapFromGlobal(global_pos).y())
+        if ligne is None or ligne[0].type != self.piste.type or ligne[0] is self.piste:
+            return None
+        return ligne
 
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton and e.position().y() >= self.height() - POIGNEE_HAUTEUR:
             self._tirer = (e.position().y(), self.height())
             return
         if e.button() == Qt.LeftButton:
+            self._prise, self._glisse, self._cible = e.globalPosition().y(), False, None
             # Un clic sur l'en-tête montre la piste et ses effets dans l'inspecteur.
             self.fenetre.choisir_piste(self.piste.id)
         super().mousePressEvent(e)
@@ -1183,6 +1262,13 @@ class EntetePiste(QWidget):
         if self._tirer is not None:
             self._tirer = None
             self.fenetre.valider("Hauteur de piste")
+            return
+        glisse, cible = self._glisse, self._cible
+        self._prise, self._glisse, self._cible = None, False, None
+        self.timeline.vue.insertion = None
+        self.timeline.vue.update()
+        if glisse and cible is not None:
+            self.fenetre.placer_piste(self.piste.id, cible[0].id)
             return
         super().mouseReleaseEvent(e)
 

@@ -203,6 +203,8 @@ class Piste:
     niveau: float = 1.0
     # Hauteur choisie à la souris ; None : la hauteur par défaut de la charte.
     hauteur: int | None = None
+    # Couleur des clips et de l'en-tête : nom d'un token de la charte ; None : celle du type.
+    couleur: str | None = None
     clips: list[Clip] = field(default_factory=list)
     effets: list[Effet] = field(default_factory=list)
 

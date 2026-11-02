@@ -43,6 +43,7 @@ from remanence.ui.panneau_export import FileExport, FormulaireExport
 from remanence.ui.taches import GestionnaireTaches, Tache
 from remanence.ui.timeline import Timeline
 from remanence.ui.panneau_datamosh import CalqueVecteurs, PanneauDatamosh
+from remanence.ui.timeline import NOUVELLE_PISTE
 from remanence.ui.visionneuse import (LIBELLES_QUALITE, CalqueMasques, Moniteur, ZoneImage,
                                       glisser_source, peindre_cadre_actif)
 
@@ -1584,9 +1585,13 @@ class FenetrePrincipale(QMainWindow):
         if len(sel) > 1:
             self._tenter("Liaison", lambda: edition.lier(self.projet.sequence, sel))
 
-    def ajouter_piste(self, type_: str):
-        edition.ajouter_piste(self.projet.sequence, type_)
+    def ajouter_piste(self, type_: str, voisine_id: str | None = None, dessous: bool = False):
+        edition.ajouter_piste(self.projet.sequence, type_, voisine_id, dessous)
         self.valider("Nouvelle piste")
+
+    def placer_piste(self, piste_id: str, cible_id: str):
+        edition.placer_piste(self.projet.sequence, piste_id, cible_id)
+        self.valider("Ordre des pistes")
 
     def supprimer_piste(self, piste_id: str):
         piste = next((p for p in self.projet.sequence.pistes if p.id == piste_id), None)
@@ -1611,7 +1616,8 @@ class FenetrePrincipale(QMainWindow):
         QTimer.singleShot(0, lambda: self.valider({
             "masquee": "Piste masquée", "muette": "Piste muette", "solo": "Solo de piste",
             "verrouillee": "Verrou de piste", "niveau": "Niveau de piste",
-            "nom": "Piste renommée", "hauteur": "Hauteur de piste"}[champ]))
+            "nom": "Piste renommée", "hauteur": "Hauteur de piste",
+            "couleur": "Couleur de piste"}[champ]))
 
     def piste_exclusive(self, piste_id: str, champ: str):
         """Ctrl+clic sur M ou S : la piste garde l'état, les autres pistes audio le perdent.
@@ -1659,6 +1665,9 @@ class FenetrePrincipale(QMainWindow):
     def poser_medias(self, ids: list[str], f: int, piste_id: str):
         seq = self.projet.sequence
         vierge = not seq.reglee
+        if piste_id == NOUVELLE_PISTE:
+            # Déposé au-dessus des pistes : une nouvelle piste vidéo, tout en haut.
+            piste_id = edition.ajouter_piste(seq, "video").id
         piste = next((p for p in seq.pistes if p.id == piste_id), None)
         position = f
         try:
