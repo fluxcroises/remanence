@@ -305,6 +305,47 @@ def test_pistes_creees_et_rangees(fenetre, medias):
     assert next(p for p in relu.sequence.pistes if p.id == haut.id).couleur == "warning"
 
 
+def test_ecran_d_accueil(fenetre, medias, tmp_path):
+    """Nouveau projet au format choisi, projets récents, fiches de prise en main."""
+    from remanence.ui import accueil
+    w = fenetre
+    d = accueil.Accueil(w)
+    assert d.format_choisi() == "auto" and not d.resolution.isEnabled()
+    bouton = next(b for b in d._formats.buttons() if b.property("format") == "9:16")
+    bouton.click()
+    assert d.resolution.isEnabled() and d.resolution.currentData() == (1080, 1920)
+    d.cadence.setCurrentIndex(d.cadence.findData("25"))
+    d._creer()
+    assert d.resultat == ("nouveau", 1080, 1920, "25", True)
+    w.nouveau_projet(*d.resultat[1:])
+    seq = w.projet.sequence
+    assert (seq.largeur, seq.hauteur, seq.cadence, seq.reglee) == (1080, 1920, "25", True)
+    assert seq.tc_debut == 25 * 3600, "01:00:00:00"
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    assert (w.projet.sequence.largeur, w.projet.sequence.cadence) == (1080, "25"),         "le premier média ne change plus la séquence"
+    projet = tmp_path / "essai.remanence"
+    w.chemin = projet
+    assert w.enregistrer()
+    assert accueil.recents()[0] == projet
+    d = accueil.Accueil(w, "ouvrir")
+    assert d.pages.currentIndex() == 1
+    assert d.liste_recents.item(0).data(0x0100) == str(projet)
+    d._ouvrir_item(d.liste_recents.item(0))
+    assert d.resultat == ("ouvrir", str(projet))
+    d = accueil.Accueil(w, "aide")
+    titres = [d.liste_fiches.item(i).text() for i in range(d.liste_fiches.count())]
+    assert "Animer un effet" in titres and len(titres) >= 8
+    d.liste_fiches.setCurrentRow(titres.index("Animer un effet"))
+    assert "première et sa dernière image clé" in d.lecteur.toPlainText()
+    assert all((accueil.AIDE / img).exists() for img in
+               ("montage.png", "transition.png", "inspecteur.png", "compression.png"))
+    d.au_demarrage.setChecked(False)
+    assert not accueil.au_demarrage()
+    d.au_demarrage.setChecked(True)
+
+
 def test_espaces_de_travail(fenetre, medias, tmp_path):
     """Changer d'espace garde la tête de lecture et la sélection ; l'export passe par la file."""
     w = fenetre

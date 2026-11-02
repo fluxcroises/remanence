@@ -42,6 +42,7 @@ from remanence.ui.menu_effets import remplir_menu_effets
 from remanence.ui.panneau_export import FileExport, FormulaireExport
 from remanence.ui.taches import GestionnaireTaches, Tache
 from remanence.ui.timeline import Timeline
+from remanence.ui import accueil
 from remanence.ui.panneau_datamosh import CalqueVecteurs, PanneauDatamosh
 from remanence.ui.timeline import NOUVELLE_PISTE
 from remanence.ui.visionneuse import (LIBELLES_QUALITE, CalqueMasques, Moniteur, ZoneImage,
@@ -578,6 +579,9 @@ class FenetrePrincipale(QMainWindow):
         self._action(fe, "Revenir à la disposition par défaut", self.retablir_disposition)
 
         ai = m.addMenu("&Aide")
+        self._action(ai, "Accueil…", self.montrer_accueil)
+        self._action(ai, "Prise en main…", lambda: self.montrer_accueil("aide"), "F1")
+        ai.addSeparator()
         self._action(ai, "À propos de Remanence", lambda: APropos(self).exec())
 
     def basculer_un_seul_moniteur(self):
@@ -1904,9 +1908,9 @@ class FenetrePrincipale(QMainWindow):
             return self.enregistrer()
         return r == QMessageBox.Discard
 
-    def nouveau(self):
+    def nouveau(self) -> bool:
         if not self._confirmer_abandon():
-            return
+            return False
         self.projet = Projet.nouveau()
         self.historique = Historique(self.projet)
         self.chemin = None
@@ -1915,6 +1919,31 @@ class FenetrePrincipale(QMainWindow):
         self._derniere_sauvegarde = None
         self.timeline.vue.selection = set()
         self.lecture.aller_a(0)
+        self._afficher_tout()
+        return True
+
+    def montrer_accueil(self, onglet: str = "nouveau"):
+        """Écran d'accueil : nouveau projet (format choisi ou d'après le premier média),
+        projet récent, prise en main."""
+        d = accueil.Accueil(self, onglet)
+        if d.exec() != QDialog.Accepted or d.resultat is None:
+            return
+        genre = d.resultat[0]
+        if genre == "ouvrir":
+            self.ouvrir(d.resultat[1])
+        elif genre in ("auto", "nouveau"):
+            if self.nouveau() and genre == "nouveau":
+                self.nouveau_projet(*d.resultat[1:])
+
+    def nouveau_projet(self, largeur: int, hauteur: int, cadence: str, une_heure: bool):
+        """Séquence réglée d'avance : le premier média posé ne la change plus."""
+        seq = self.projet.sequence
+        seq.largeur, seq.hauteur, seq.cadence = largeur, hauteur, cadence
+        seq.tc_drop = False
+        seq.tc_debut = timecode_une_heure(seq) if une_heure else 0
+        seq.reglee = True
+        self.historique = Historique(self.projet)
+        self.modifie = False
         self._afficher_tout()
 
     def ouvrir(self, chemin: str | None = None):
@@ -1944,6 +1973,7 @@ class FenetrePrincipale(QMainWindow):
         self.historique = Historique(projet)
         self.chemin = chemin
         prerendu.definir_projet(self.chemin)
+        accueil.retenir(chemin)
         self.modifie = source != chemin
         self._derniere_sauvegarde = chemin.stat().st_mtime if chemin.exists() else None
         self.timeline.vue.selection = set()
@@ -1969,6 +1999,7 @@ class FenetrePrincipale(QMainWindow):
             return False
         self.modifie = False
         self._derniere_sauvegarde = time.time()
+        accueil.retenir(self.chemin)
         self._titre()
         self.message(f"Projet enregistré (version {version.stem.rsplit('_v', 1)[1]})", 4000)
         return True

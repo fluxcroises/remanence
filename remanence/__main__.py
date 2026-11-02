@@ -64,6 +64,10 @@ def principal() -> int:
         # Après l'écran de démarrage : une question (sauvegarde automatique plus récente) ne
         # doit pas rester cachée derrière lui.
         QTimer.singleShot(0, lambda: fenetre.ouvrir(sys.argv[1]))
+    else:
+        from remanence.ui import accueil
+        if accueil.au_demarrage():
+            QTimer.singleShot(0, fenetre.montrer_accueil)
     return app.exec()
 
 
