@@ -1,5 +1,7 @@
 # Effets codec et scripts FFglitch
 
+![Script FFglitch dans l'inspecteur](codec.png)
+
 Les effets marqués « moteur codec » abîment la vidéo compressée elle-même : bavure, fonte des pixels, vecteurs de mouvement déformés. Ils se calculent en arrière-plan ; le badge « Calcul… » reste sur le clip le temps du calcul.
 
 - **Vecteurs de mouvement** : amplifier, inverser (valeur négative), figer un axe (0 %), décaler, lisser, bruiter le mouvement.

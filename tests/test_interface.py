@@ -328,16 +328,19 @@ def test_ecran_d_accueil(fenetre, medias, tmp_path):
     projet = tmp_path / "essai.remanence"
     w.chemin = projet
     assert w.enregistrer()
-    assert accueil.recents()[0] == projet
+    assert accueil.recents()[0][0] == projet
     d = accueil.Accueil(w, "ouvrir")
     assert d.pages.currentIndex() == 1
-    assert d.liste_recents.item(0).data(0x0100) == str(projet)
-    d._ouvrir_item(d.liste_recents.item(0))
+    ligne = d.liste_recents.topLevelItem(0)
+    assert ligne.text(0) == "essai" and ligne.data(0, 0x0100) == str(projet)
+    assert any(jour in ligne.text(1) for jour in accueil.JOURS), "date en toutes lettres"
+    d._ouvrir_item(ligne)
     assert d.resultat == ("ouvrir", str(projet))
     d = accueil.Accueil(w, "aide")
-    titres = [d.liste_fiches.item(i).text() for i in range(d.liste_fiches.count())]
+    titres = [c.accessibleName() for c in d.cartes]
     assert "Animer un effet" in titres and len(titres) >= 8
-    d.liste_fiches.setCurrentRow(titres.index("Animer un effet"))
+    d.cartes[titres.index("Animer un effet")].choisie.emit()
+    assert d.aide.currentIndex() == 1
     assert "première et sa dernière image clé" in d.lecteur.toPlainText()
     assert all((accueil.AIDE / img).exists() for img in
                ("montage.png", "transition.png", "inspecteur.png", "compression.png"))
