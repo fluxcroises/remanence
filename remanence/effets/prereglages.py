@@ -36,7 +36,8 @@ class Prereglage:
     def description(self) -> str:
         """« Effet · temps réel » ou « Effet · moteur codec », ou la liste d'une pile."""
         connus = [EFFETS[e["type"]] for e in self.effets if e["type"] in EFFETS]
-        moteur = "moteur codec" if any(d.codec for d in connus) else "temps réel"
+        moteurs = {d.moteur for d in connus}
+        moteur = "moteur codec" if "codec" in moteurs else             "flux optique" if "flux" in moteurs else "temps réel"
         return " + ".join(d.nom for d in connus) + " · " + moteur
 
     def nouveaux_effets(self) -> list[Effet]:

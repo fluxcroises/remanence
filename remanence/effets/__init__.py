@@ -53,10 +53,15 @@ class DescriptionEffet:
     # et texte de chaque préréglage fourni.
     parametres_de: object = None
     textes: dict[str, str] = field(default_factory=dict)
+    # Moteur flux optique : flux(images RVB float, valeurs de chaque image) rend les images
+    # traitées. Pré-rendu comme le moteur codec, mais en 16 bits.
+    flux: object = None
 
     @property
     def codec(self) -> bool:
-        return self.moteur == "codec"
+        """Calculé à part et gardé en cache (moteur codec ou flux optique), sur un clip de
+        média seulement."""
+        return self.moteur in ("codec", "flux")
 
     @property
     def ffglitch(self) -> bool:
@@ -67,7 +72,7 @@ class DescriptionEffet:
         """Images clés possibles : en temps réel, et pour les effets FFglitch générés (le
         script reçoit la valeur de chaque image). Un script de la bibliothèque ne lit ses
         réglages qu'une fois."""
-        return not self.codec or (self.ffglitch and self.parametres_de is None)
+        return not self.codec or self.moteur == "flux" or             (self.ffglitch and self.parametres_de is None)
 
     def parametres_pour(self, effet: Effet | None) -> list[Parametre]:
         return self.parametres_de(effet) if self.parametres_de else self.parametres

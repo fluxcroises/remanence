@@ -531,3 +531,40 @@ def test_scripts_de_la_bibliotheque(medias, tmp_path):
     a.unlink()
     prerendu.calculer(projet, seq, clip)
     assert np.array_equal(_image(projet, 20), image), "même graine, même résultat"
+
+
+def test_moteur_flux_optique(medias):
+    """Flux optique : cache en 16 bits ; sans persistance, l'image est la source (aucune perte
+    par le moteur) ; les réglages s'animent ; la bavure suit le mouvement."""
+    import av
+    from remanence.effets import poser_cle
+    from remanence.moteurs import flux
+    from remanence.moteurs.codec import prerendu
+    projet, clip = _projet(medias)
+    seq = projet.sequence
+    source = {f: _image(projet, f) for f in (5, 25)}
+    effet = nouvel_effet("persistance")
+    effet.params["persistance"] = 0
+    clip.effets = [effet]
+    fichier = prerendu.calculer(projet, seq, clip)
+    with av.open(str(fichier)) as c:
+        assert c.streams.video[0].codec_context.pix_fmt == prerendu.FORMAT_FLUX
+    assert np.abs(_image(projet, 25) - source[25]).max() < 2e-4, "16 bits, sans perte"
+    assert EFFETS["persistance"].animable and EFFETS["bavure_flux"].codec
+    effet = nouvel_effet("bavure_flux")
+    poser_cle(effet, "force", 0, 100)
+    poser_cle(effet, "force", clip.duree - 1, 300)
+    clip.effets = [effet]
+    prerendu.calculer(projet, seq, clip)
+    assert np.abs(_image(projet, 25) - source[25]).max() > 0.05, "la bavure se voit"
+    # Mouvement connu : une image décalée de 3 pixels.
+    rng = np.random.default_rng(1)
+    a = rng.random((120, 160, 3)).astype(np.float32)
+    a = np.repeat(np.repeat(a[::8, ::8], 8, 0), 8, 1)[:120, :160]
+    b = np.roll(a, 3, axis=1)
+    m = flux.Mesure()
+    m.suivante(a)
+    mouvement = m.suivante(b)
+    assert abs(float(np.median(mouvement[..., 0])) + 3) < 0.6, "d'où vient chaque pixel"
+    assert np.abs(flux.deplacer(a, mouvement, 1.0)[20:100, 20:140]
+                  - b[20:100, 20:140]).mean() < 0.05

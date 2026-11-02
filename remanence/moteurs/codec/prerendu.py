@@ -25,6 +25,7 @@ import numpy as np
 from remanence.config import dossier_cache
 from remanence.effets import EFFETS
 from remanence.media.lecteur import LecteurVideo
+from remanence.rendu.couleur import depuis_rvba, vers_rvba
 from remanence.media.sonde import analyser
 from remanence.effets import valeur_a
 from remanence.moteurs.codec import bavure, ffglitch
@@ -216,20 +217,21 @@ def _calculer_source(projet: Projet, seq: Sequence, clip: Clip, progression=None
 
 
 def _ecrire(final: Path, images, n: int, largeur: int, hauteur: int, cadence: Fraction,
-            couleur, progression, annule, depart: float):
-    """Écrit n images en FFV1 sans perte, d'abord dans un fichier partiel."""
+            couleur, progression, annule, depart: float, format_: str = "yuv420p"):
+    """Écrit n images en FFV1 sans perte, d'abord dans un fichier partiel. format_ :
+    yuv420p après le codec (MPEG-4 est en 8 bits 4:2:0), FORMAT_FLUX après le flux optique."""
     partiel = final.with_name(final.stem + ".partiel.mkv")
     try:
         with av.open(str(partiel), "w") as sortie:
             flux = sortie.add_stream("ffv1", rate=cadence)
-            flux.width, flux.height, flux.pix_fmt = largeur, hauteur, "yuv420p"
+            flux.width, flux.height, flux.pix_fmt = largeur, hauteur, format_
             cc = flux.codec_context
             cc.color_primaries, cc.color_trc = couleur.primaires, couleur.transfert
             cc.colorspace, cc.color_range = couleur.matrice, couleur.plage or 1
             for i, image in enumerate(images):
                 if annule is not None and annule.is_set():
                     raise InterruptedError
-                image = image.reformat(width=largeur, height=hauteur, format="yuv420p")
+                image = image.reformat(width=largeur, height=hauteur, format=format_)
                 image.pts = i
                 image.time_base = 1 / cadence
                 for p in flux.encode(image):
@@ -378,11 +380,14 @@ def _calculer(projet: Projet, seq: Sequence, clip: Clip, progression=None,
     # MPEG-4 veut des dimensions paires : une ligne ou une colonne de moins si besoin.
     largeur, hauteur = v.largeur - v.largeur % 2, v.hauteur - v.hauteur % 2
     cadence = Fraction(seq.cadence)
-    effets = [e for e in effets_codec(clip)
-              if ffglitch.disponible() or not EFFETS[e.type].ffglitch]
+    tous = [e for e in effets_codec(clip)
+            if ffglitch.disponible() or not EFFETS[e.type].ffglitch]
+    # Le codec d'abord (il abîme la source), le flux optique ensuite, sur les images rendues.
+    effets = [e for e in tous if EFFETS[e.type].flux is None]
+    effets_flux = [e for e in tous if EFFETS[e.type].flux is not None]
     n = clip.duree
     images = _images_source(projet, seq, clip)
-    cles = set(coupes_du_clip(projet, clip))
+    cles = set(coupes_du_clip(projet, clip)) if effets else set()
     for etape, effet in enumerate(effets):
         d = EFFETS[effet.type]
         valeurs = {**d.valeurs(), **effet.params}
@@ -395,8 +400,31 @@ def _calculer(projet: Projet, seq: Sequence, clip: Clip, progression=None,
         if d.traiter is not None:
             paquets = d.traiter(paquets, valeurs, effet.graine)
         images = bavure.decoder(paquets, n)
-    _ecrire(final, images, n, largeur, hauteur, cadence, v.couleur, progression, annule, 0.5)
+    format_ = "yuv420p"
+    if effets_flux:
+        images = _flux(images, effets_flux, n, v.couleur)
+        format_ = FORMAT_FLUX
+    _ecrire(final, images, n, largeur, hauteur, cadence, v.couleur, progression, annule,
+            0.5 if effets else 0.0, format_)
     return final
+
+
+# Cache du flux optique : YUV 4:4:4 16 bits avec la matrice et la plage du média. Il garde les
+# valeurs au-delà du blanc et sous le noir (un RVB 16 bits les écrêterait) et la composition
+# le relit exactement comme la source.
+FORMAT_FLUX = "yuv444p16le"
+
+
+def _flux(images, effets: list[Effet], n: int, couleur):
+    """Effets du moteur flux optique, enchaînés image par image, en flottants."""
+    rvb = (vers_rvba(image, couleur)[..., :3] for image in images)
+    for effet in effets:
+        d = EFFETS[effet.type]
+        valeurs = [{p.cle: valeur_a(effet, p.cle, t) for p in d.parametres} for t in range(n)]
+        rvb = d.flux(rvb, valeurs)
+    for image in rvb:
+        rvba = np.dstack([image, np.ones(image.shape[:2], np.float32)])
+        yield depuis_rvba(rvba, FORMAT_FLUX, couleur)
 
 
 def apercu(images: list[np.ndarray], effets: list[Effet], cadence: Fraction = Fraction(24)
@@ -409,6 +437,15 @@ def apercu(images: list[np.ndarray], effets: list[Effet], cadence: Fraction = Fr
     for effet in effets:
         d = EFFETS.get(effet.type)
         if d is None or not d.codec or (d.ffglitch and not ffglitch.disponible()):
+            continue
+        if d.flux is not None:
+            n = len(trames)
+            valeurs = [{p.cle: valeur_a(effet, p.cle, t) for p in d.parametres}
+                       for t in range(n)]
+            rvb = d.flux((t.to_ndarray(format="rgb24").astype(np.float32) / 255
+                          for t in trames), valeurs)
+            trames = [av.VideoFrame.from_ndarray(
+                np.clip(i * 255 + 0.5, 0, 255).astype(np.uint8), format="rgb24") for i in rvb]
             continue
         valeurs = {**d.valeurs(), **effet.params}
         # Transfert : le mouvement de l'animation passée à l'envers.

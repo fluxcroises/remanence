@@ -19,6 +19,9 @@ Remanence est distribué en code source, sans but commercial. Ce fichier liste c
 | IBM Plex Sans et IBM Plex Mono | 1.1.0 et 2.5.0 | Polices de l'interface, embarquées dans `remanence/ressources/polices` | SIL Open Font License 1.1 (texte joint : `OFL-IBM-Plex.txt`) |
 | Lucide (lucide-static) | 1.66.0 | Icônes de l'interface, dans `remanence/ressources/icones` | ISC (texte joint : `LICENCE-Lucide.txt`) |
 | FFglitch (ffgac, ffedit), avec Xvid, QuickJS, zlib-ng, SDL2, RtMidi, ZeroMQ | 0.10.2 | Moteur codec : encodage MPEG-4 sans macroblocs intra, réécriture des vecteurs de mouvement. Programme externe, téléchargé par `Installer.bat` dans `outils/` (empreinte SHA-256 vérifiée), non modifié | GPL 2 ou ultérieure |
+| OpenCV (opencv-contrib-python-headless) | 5.0.0.93 | Flux optique DIS du moteur flux optique, suivi des masques (étape 4). Version sans interface : la version complète embarque son propre Qt | Apache 2.0 |
+| mido | 1.3.3 | Messages MIDI des contrôleurs (modulateurs, étape 4) | MIT |
+| python-rtmidi (et RtMidi) | 1.5.8 | Accès aux ports MIDI de Windows pour mido | MIT |
 | pytest | 9.2.0 | Tests automatiques (développement seulement) | MIT |
 | uv | 0.13.6 | Installation de l'environnement (outil, non embarqué) | MIT ou Apache 2.0 |
 
