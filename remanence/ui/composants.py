@@ -515,3 +515,11 @@ def panneau_onglets(onglets: list[tuple[str, QWidget]], nom: str,
     d.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable |
                   QDockWidget.DockWidgetClosable)
     return d, PanneauOnglets(d, onglets)
+
+
+def elargir_boutons(boite):
+    """Les boutons d'une boîte de message à la largeur de leur texte : Qt la calcule avant
+    d'appliquer la police de la charte, et coupait « Ne pas enregistrer »."""
+    for bouton in boite.buttons():
+        bouton.ensurePolished()
+        bouton.setMinimumWidth(bouton.fontMetrics().horizontalAdvance(bouton.text()) + 36)

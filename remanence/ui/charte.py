@@ -356,12 +356,21 @@ QMainWindow > QTabBar::tab:hover {{ color: {ink}; }}
 QMainWindow > QTabBar::tab:selected {{ color: {ink}; background: {surface};
     border-top: 2px solid {accent}; }}
 QDialog[role="accueil"] {{ background: {surface}; border: 1px solid {line}; }}
-QWidget[role="accueil-identite"] {{ background: {bg_app}; }}
-QPushButton[variante="fiche"] {{ background: transparent; border: 1px solid {line};
-    color: {ink_muted}; text-align: left; padding: 0 {space_2}; }}
-QPushButton[variante="fiche"]:hover {{ color: {ink}; border-color: {control_border};
+QToolButton[variante="volet"] {{ {police_title} background: transparent; border: 0;
+    border-radius: 0; color: {ink}; padding: 0; text-align: left; }}
+QToolButton[variante="volet"]:hover {{ background: transparent; color: {accent}; }}
+QWidget[role="volet"] {{ border-top: 1px solid {line}; }}
+QToolButton[variante="fiche"] {{ background: {surface}; border: 1px solid {line};
+    border-radius: {radius_sm}; color: {ink_muted}; padding: {space_2}; min-height: 0;
+    max-height: 400px; }}
+QScrollArea[fond="transparent"], QScrollArea[fond="transparent"] > QWidget > QWidget {{
+    background: transparent; border: 0; }}
+QToolButton[variante="fiche"]:hover {{ color: {ink}; border-color: {accent};
     background: {surface_hover}; }}
+QToolButton[variante="fiche"]:focus {{ border-color: {focus}; }}
 QTreeWidget[role="liste-plate"] {{ background: {surface}; border: 0; }}
+QTreeWidget[fond="transparent"] {{ background: transparent; }}
+QTreeWidget[fond="transparent"] > QWidget {{ background: transparent; }}
 QTreeWidget[role="liste-plate"]::item {{ padding: 6px 4px; }}
 QTreeWidget[role="liste-plate"]::item:hover {{ background: {surface_hover}; }}
 QTreeWidget[role="liste-plate"]::item:selected {{ background: {surface_raised}; color: {ink}; }}

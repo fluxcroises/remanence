@@ -1,29 +1,29 @@
 """Écran d'accueil, ouvert au lancement : une seule page qui prolonge l'écran de démarrage.
 
-À gauche, l'identité de Remanence (symbole, nom, éclats de l'écran de démarrage) et les deux
-actions ; à droite, le format du nouveau projet sur une ligne, les projets récents en grand,
-et les fiches de prise en main, qui s'ouvrent dans leur propre fenêtre (`ui/aide.py`).
+Sur un fond de points ondulants : à gauche, l'identité de Remanence et les deux actions ; à
+droite, trois volets dépliables (nouveau projet, récents, prise en main). Les fiches de prise
+en main s'ouvrent dans leur propre fenêtre (`ui/aide.py`).
 """
 
 from __future__ import annotations
 
 import json
+import math
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QPainter
+from PySide6.QtCore import QPointF, QSize, Qt, QTimer
+from PySide6.QtGui import QIcon, QPainter, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog, QGridLayout,
-                               QHBoxLayout, QHeaderView, QLabel, QPushButton, QSizePolicy,
-                               QTreeWidget,
-                               QTreeWidgetItem, QVBoxLayout, QWidget)
+                               QHBoxLayout, QHeaderView, QLabel, QPushButton, QScrollArea,
+                               QSizePolicy, QToolButton, QTreeWidget, QTreeWidgetItem,
+                               QVBoxLayout, QWidget)
 
-from remanence import ANNEE, EDITEUR, __version__
+from remanence import EDITEUR, __version__
 from remanence.config import reglages_interface
 from remanence.ui import charte
 from remanence.ui.aide import FenetreAide, fiches
-from remanence.ui.composants import bouton_icone, etiquette
-from remanence.ui.demarrage import eclats
+from remanence.ui.composants import bouton_icone, etiquette, poser_icone
 
 # Format -> (nom affiché, résolutions proposées : la première par défaut).
 FORMATS = {
@@ -89,30 +89,98 @@ def au_demarrage() -> bool:
     return str(reglages_interface().value(CLE_AU_DEMARRAGE, "true")).lower() == "true"
 
 
-class Identite(QWidget):
-    """Colonne de gauche : les éclats de l'écran de démarrage jaillissent de son bord droit,
-    sous le nom et les deux actions. Elle déplace la fenêtre, qui n'a pas de cadre."""
+class Volet(QWidget):
+    """Section dépliable de l'accueil : un titre bien visible, son état retenu."""
 
-    def __init__(self):
+    def __init__(self, titre: str, cle: str, contenu: QWidget, etire: int = 0):
         super().__init__()
-        self.setFixedWidth(300)
-        self.setProperty("role", "accueil-identite")
+        self.cle = cle
+        self.etire = etire
+        self.setProperty("role", "volet")
         self.setAttribute(Qt.WA_StyledBackground, True)
-        # La gerbe de gauche de l'écran de démarrage, recalée sur ce bord.
-        self._eclats = [e for e in eclats() if e[0] < 220]
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 10, 0, 10)
+        lay.setSpacing(10)
+        self.titre = QToolButton()
+        self.titre.setProperty("variante", "volet")
+        self.titre.setText(titre)
+        self.titre.setCheckable(True)
+        self.titre.setCursor(Qt.PointingHandCursor)
+        self.titre.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.titre.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.titre.setAccessibleName(titre)
+        lay.addWidget(self.titre)
+        self.corps = contenu
+        lay.addWidget(contenu, 1)
+        ouvert = not reglages_interface().value(f"accueil/replie/{cle}", False, type=bool)
+        self.titre.setChecked(ouvert)
+        self._montrer(ouvert)
+        self.titre.toggled.connect(self._basculer)
 
-    def paintEvent(self, e):
-        super().paintEvent(e)
+    def ouvert(self) -> bool:
+        return self.titre.isChecked()
+
+    def _montrer(self, ouvert: bool):
+        self.corps.setVisible(ouvert)
+        poser_icone(self.titre, "chevron-down" if ouvert else "chevron-right", 16)
+        # Replié, le volet ne prend que la hauteur de son titre.
+        parent = self.parentWidget()
+        if parent is not None and parent.layout() is not None:
+            parent.layout().setStretchFactor(self, self.etire if ouvert else 0)
+
+    def _basculer(self, ouvert: bool):
+        self._montrer(ouvert)
+        reglages_interface().setValue(f"accueil/replie/{self.cle}", not ouvert)
+
+
+class FondOndes(QWidget):
+    """Fond de l'accueil : une nappe de points vue en perspective, qui ondule lentement."""
+
+    COLONNES, RANGEES = 72, 26
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self._t = 0.0
+        self._horloge = QTimer(self)
+        self._horloge.setInterval(40)
+        self._horloge.timeout.connect(self._avancer)
+
+    def showEvent(self, e):
+        self._horloge.start()
+        super().showEvent(e)
+
+    def hideEvent(self, e):
+        self._horloge.stop()
+        super().hideEvent(e)
+
+    def _avancer(self):
+        self._t += 0.04
+        self.update()
+
+    def paintEvent(self, _e):
         c = charte.actuelle()
         p = QPainter(self)
-        haut = self.height() - 380
-        for x, y, l, h, ton, opacite in self._eclats:
-            p.fillRect(QRectF(x + self.width() - 220, haut + (y - 120), l, h), c.c(ton, opacite))
+        p.fillRect(self.rect(), c.c("bg-app"))
+        p.setRenderHint(QPainter.Antialiasing)
+        l, h = self.width(), self.height()
+        horizon = h * 0.45
+        t = self._t
+        # Du fond vers l'avant : les points proches, plus gros, passent devant.
+        for r in range(self.RANGEES - 1, -1, -1):
+            z = r / (self.RANGEES - 1)
+            echelle = 1 / (0.6 + 1.6 * z)
+            points = QPolygonF()
+            for k in range(self.COLONNES):
+                x = k / (self.COLONNES - 1) * 2 - 1
+                y = (math.sin(x * 3.1 + t) * math.cos(z * 4.2 - t * 0.6) * 0.16
+                     + math.sin((x + z) * 6.0 - t * 1.3) * 0.04)
+                points.append(QPointF(l / 2 + x * l * 0.9 * echelle,
+                                      horizon + (0.5 - y) * h * echelle * 0.6))
+            p.setPen(QPen(c.c("accent", 0.14 + 0.5 * (1 - z)), 1.0 + 2.4 * (1 - z),
+                          Qt.SolidLine, Qt.RoundCap))
+            p.drawPoints(points)
         p.end()
-
-    def mousePressEvent(self, e):
-        if e.button() == Qt.LeftButton and self.window().windowHandle() is not None:
-            self.window().windowHandle().startSystemMove()
 
 
 class Accueil(QDialog):
@@ -125,8 +193,9 @@ class Accueil(QDialog):
         self.setWindowModality(Qt.WindowModal)
         self.setWindowTitle("Remanence")
         self.setProperty("role", "accueil")
-        self.resize(980, 640)
+        self.resize(1040, 680)
         self.resultat = None
+        self.fond = FondOndes(self)
         racine = QHBoxLayout(self)
         racine.setContentsMargins(1, 1, 1, 1)
         racine.setSpacing(0)
@@ -134,12 +203,31 @@ class Accueil(QDialog):
         racine.addWidget(self._contenu(), 1)
         self._creer_bouton.setFocus()
 
+    def resizeEvent(self, e):
+        self.fond.setGeometry(self.rect().adjusted(1, 1, -1, -1))
+        self.fond.lower()
+        super().resizeEvent(e)
+
+    def showEvent(self, e):
+        # Centré sur l'écran de la fenêtre principale : au lancement, elle n'a pas encore sa
+        # taille finale, et Qt plaçait l'accueil trop haut.
+        parent = self.parentWidget()
+        ecran = (parent.screen() if parent is not None else self.screen()).availableGeometry()
+        self.move(ecran.center() - self.rect().center())
+        super().showEvent(e)
+
+    def mousePressEvent(self, e):
+        # Sans cadre : la fenêtre se déplace en la tirant par le fond.
+        if e.button() == Qt.LeftButton and self.windowHandle() is not None:
+            self.windowHandle().startSystemMove()
+
     # À gauche : identité et actions
 
     def _colonne_identite(self) -> QWidget:
-        colonne = Identite()
+        colonne = QWidget()
+        colonne.setFixedWidth(300)
         lay = QVBoxLayout(colonne)
-        lay.setContentsMargins(28, 32, 28, 20)
+        lay.setContentsMargins(32, 36, 28, 24)
         lay.setSpacing(0)
         nom = QHBoxLayout()
         nom.setSpacing(12)
@@ -155,7 +243,7 @@ class Accueil(QDialog):
         nom.addStretch(1)
         lay.addLayout(nom)
         lay.addSpacing(6)
-        lay.addWidget(etiquette(f"Version {__version__} · © {ANNEE} {EDITEUR}", "secondaire"))
+        lay.addWidget(etiquette(f"Version {__version__}", "secondaire"))
         lay.addSpacing(32)
         self._creer_bouton = QPushButton("Nouveau projet")
         self._creer_bouton.setProperty("variante", "principal")
@@ -168,6 +256,14 @@ class Accueil(QDialog):
             lay.addWidget(b)
             lay.addSpacing(8)
         lay.addStretch(1)
+        logo = charte.actuelle().logo_famille(28)
+        if logo is not None:
+            famille = QLabel()
+            famille.setPixmap(logo)
+            famille.setAccessibleName("Creative Orbit")
+            famille.setToolTip(f"Creative Orbit · {EDITEUR}")
+            lay.addWidget(famille)
+            lay.addSpacing(20)
         self.au_demarrage = QCheckBox("Afficher au démarrage")
         self.au_demarrage.setChecked(au_demarrage())
         self.au_demarrage.toggled.connect(
@@ -179,10 +275,8 @@ class Accueil(QDialog):
 
     def _contenu(self) -> QWidget:
         page = QWidget()
-        page.setProperty("role", "panneau")
-        page.setAttribute(Qt.WA_StyledBackground, True)
         lay = QVBoxLayout(page)
-        lay.setContentsMargins(28, 12, 12, 24)
+        lay.setContentsMargins(28, 12, 12, 20)
         lay.setSpacing(0)
         haut = QHBoxLayout()
         haut.addStretch(1)
@@ -191,22 +285,24 @@ class Accueil(QDialog):
         haut.addWidget(fermer)
         lay.addLayout(haut)
 
-        marge = QVBoxLayout()
-        marge.setContentsMargins(0, 0, 16, 0)
-        marge.setSpacing(10)
-        marge.addWidget(etiquette("Nouveau projet", "section"))
-        marge.addLayout(self._ligne_format())
-        marge.addSpacing(18)
-        marge.addWidget(etiquette("Récents", "section"))
-        marge.addWidget(self._liste_recents(), 1)
-        marge.addSpacing(18)
-        marge.addWidget(etiquette("Prise en main", "section"))
-        marge.addLayout(self._fiches())
-        lay.addLayout(marge, 1)
+        colonne = QWidget()
+        volets = QVBoxLayout(colonne)
+        volets.setContentsMargins(0, 0, 16, 0)
+        volets.setSpacing(0)
+        format_ = QWidget()
+        format_.setLayout(self._ligne_format())
+        self.volets = [Volet("Nouveau projet", "nouveau", format_),
+                       Volet("Récents", "recents", self._liste_recents(), 1),
+                       Volet("Prise en main", "prise_en_main", self._fiches())]
+        for v in self.volets:
+            volets.addWidget(v, v.etire if v.ouvert() else 0)
+        volets.addStretch(0)
+        lay.addWidget(colonne, 1)
         return page
 
     def _ligne_format(self) -> QGridLayout:
         grille = QGridLayout()
+        grille.setContentsMargins(0, 0, 0, 0)
         grille.setHorizontalSpacing(8)
         grille.setVerticalSpacing(4)
         self.format = QComboBox()
@@ -220,7 +316,7 @@ class Accueil(QDialog):
         self.cadence = QComboBox()
         self.cadence.setAccessibleName("Cadence")
         for cle, nom in CADENCES:
-            self.cadence.addItem(f"{nom} i/s", cle)
+            self.cadence.addItem(f"{nom} i/s", cle)
         self.cadence.setCurrentIndex(2)
         self.timecode = QComboBox()
         self.timecode.setAccessibleName("Timecode de début")
@@ -247,7 +343,7 @@ class Accueil(QDialog):
         if auto:
             self.resolution.addItem("Celle du premier média", None)
         for nom, l, h in ([] if auto else FORMATS[cle][1]):
-            self.resolution.addItem(f"{nom} ({l} × {h})", (l, h))
+            self.resolution.addItem(f"{nom} ({l} × {h})", (l, h))
 
     def _creer(self):
         cle = self.format_choisi()
@@ -267,6 +363,8 @@ class Accueil(QDialog):
         self.liste_recents.setRootIsDecorated(False)
         self.liste_recents.setIndentation(0)
         self.liste_recents.setProperty("role", "liste-plate")
+        self.liste_recents.setProperty("fond", "transparent")
+        self.liste_recents.setMinimumHeight(120)
         entete = self.liste_recents.header()
         entete.setStretchLastSection(False)
         entete.setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -302,20 +400,40 @@ class Accueil(QDialog):
             self.resultat = ("ouvrir", chemin)
             self.accept()
 
-    def _fiches(self) -> QGridLayout:
-        """Une étiquette par fiche ; elle ouvre la fenêtre de prise en main, à part."""
-        grille = QGridLayout()
-        grille.setSpacing(6)
-        self.boutons_fiches: list[QPushButton] = []
-        for i, (titre, _chemin, _image) in enumerate(fiches()):
-            b = QPushButton(titre)
+    def _fiches(self) -> QWidget:
+        """Une carte par fiche, sa première capture en vignette, sur une rangée qui défile.
+        Elle ouvre la fenêtre de prise en main, à part."""
+        rangee = QWidget()
+        lay = QHBoxLayout(rangee)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(10)
+        self.boutons_fiches: list[QToolButton] = []
+        vignette = QSize(176, 99)
+        for i, (titre, _chemin, image) in enumerate(fiches()):
+            b = QToolButton()
             b.setProperty("variante", "fiche")
-            b.setCursor(Qt.PointingHandCursor)
-            b.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+            b.setText(titre)
             b.setToolTip(titre)
+            b.setCursor(Qt.PointingHandCursor)
+            b.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+            b.setFixedSize(vignette.width() + 18, vignette.height() + 48)
+            if image is not None and image.exists():
+                pm = QPixmap(str(image)).scaled(vignette * 2, Qt.KeepAspectRatioByExpanding,
+                                                Qt.SmoothTransformation)
+                pm = pm.copy((pm.width() - vignette.width() * 2) // 2, 0,
+                             vignette.width() * 2, vignette.height() * 2)
+                pm.setDevicePixelRatio(2.0)
+                b.setIcon(QIcon(pm))
+                b.setIconSize(vignette)
             b.clicked.connect(lambda _=False, i=i: FenetreAide.ouvrir(i))
-            grille.addWidget(b, i // 2, i % 2)
+            lay.addWidget(b)
             self.boutons_fiches.append(b)
-        for colonne in range(2):
-            grille.setColumnStretch(colonne, 1)
-        return grille
+        lay.addStretch(1)
+        defile = QScrollArea()
+        defile.setWidget(rangee)
+        defile.setWidgetResizable(True)
+        defile.setFrameShape(QScrollArea.NoFrame)
+        defile.setProperty("fond", "transparent")
+        defile.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        defile.setFixedHeight(vignette.height() + 48 + 14)
+        return defile

@@ -211,9 +211,6 @@ class VueTimeline(QWidget):
             p.setFont(c.police("body"))
             p.drawText(QRect(0, HAUT_PISTES, self.width(), self.height() - HAUT_PISTES),
                        Qt.AlignCenter, "Timeline vide")
-        if self.hasFocus():
-            p.setPen(QPen(c.c("focus"), 2))
-            p.drawRect(QRectF(1, 1, self.width() - 2, self.height() - 2))
         p.end()
 
     def _ligne_pointillee(self, p: QPainter, f: float, couleur: str, y0: int):

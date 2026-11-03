@@ -33,7 +33,7 @@ from remanence.rendu.export import exporter
 from remanence.ui import charte
 from remanence.ui.apropos import APropos
 from remanence.ui.barres import BarreEspaces, BarreTitre
-from remanence.ui.composants import Porte, etiquette, panneau, panneau_onglets
+from remanence.ui.composants import Porte, elargir_boutons, etiquette, panneau, panneau_onglets
 from remanence.ui.dialogue_timecode import DialogueTimecode, preference, timecode_une_heure
 from remanence.ui.erreurs import afficher_erreur
 from remanence.ui.inspecteur import Historique as ListeHistorique
@@ -61,7 +61,9 @@ EXTENSIONS_MEDIAS = ("*.mov *.mp4 *.mxf *.mkv *.avi *.webm *.mts *.m2ts *.m4v *.
 HAUTEUR_VIGNETTE = 48
 BORD = 5
 # À augmenter quand les panneaux changent : les dispositions mémorisées avant sont ignorées.
-VERSION_DISPOSITION = 5
+VERSION_DISPOSITION = 6
+# En-tête du moniteur, barre de défilement, transport et marges autour de l'image.
+HAUTEUR_HABILLAGE_MONITEUR = 118
 # Panneaux visibles dans chaque espace de travail.
 PANNEAUX_ESPACE = {
     "media": {"medias", "source", "droite"},
@@ -353,11 +355,21 @@ class FenetrePrincipale(QMainWindow):
         for nom, dock in d.items():
             if not self._est_externe(nom):
                 dock.setVisible(nom in visibles and nom not in ("analyse", "courbes"))
-        if espace == "effets":
-            # Après avoir caché la compression : sinon la timeline reste à sa petite hauteur.
-            colonne = d["medias"] if not self._est_externe("medias") else d["visionneuse"]
-            self.resizeDocks([colonne, d["visionneuse"], d["timeline"]], [520, 520, 420],
-                             Qt.Vertical)
+        if espace in ("montage", "effets") and not self._est_externe("medias"):
+            # Moniteurs à la hauteur d'une image 16:9 de leur largeur (en-tête et transport
+            # compris), la timeline prend le reste. Après avoir caché la compression : sinon
+            # la timeline reste à sa petite hauteur.
+            ecran = self.screen().availableGeometry()
+            largeur = self.width() if self.isVisible() and self.width() > 800 else ecran.width()
+            hauteur = self.height() if self.isVisible() and self.height() > 500                 else ecran.height()
+            if espace == "montage":
+                moniteur = (largeur - 300 - 340) // 2
+            else:
+                moniteur = largeur - 420 - 360
+            haut = min(round(moniteur * 9 / 16) + HAUTEUR_HABILLAGE_MONITEUR,
+                       hauteur - 72 - 260)
+            self.resizeDocks([d["medias"], d["visionneuse"], d["timeline"]],
+                             [haut, haut, max(260, hauteur - 72 - haut)], Qt.Vertical)
 
     def _appliquer_espace(self, espace: str, par_defaut: bool = False):
         reglages = reglages_interface()
@@ -374,8 +386,13 @@ class FenetrePrincipale(QMainWindow):
             self._montrer_metadonnees()
         elif espace == "export":
             self.formulaire_export.actualiser(self.projet, self.chemin)
-        elif espace == "effets" and not self._est_externe("medias"):
-            self.onglets_gauche.choisir(1)
+        # Montage : les médias ; Effets : la bibliothèque d'effets ; pas les deux à la fois
+        # (le bon onglet se montre avant que l'autre se cache). Sur le second écran : les deux.
+        effets = espace == "effets" and not self._est_externe("medias")
+        garde, cache = (1, 0) if effets else (0, 1)
+        self.onglets_gauche.masquer_onglet(garde, False)
+        self.onglets_gauche.choisir(garde)
+        self.onglets_gauche.masquer_onglet(cache, not self._est_externe("medias"))
         self._espace = espace
         self._actualiser_datamosh()
         self.barre_espaces.activer(espace)
@@ -2120,13 +2137,17 @@ class FenetrePrincipale(QMainWindow):
     def _confirmer_abandon(self) -> bool:
         if not self.modifie:
             return True
-        r = QMessageBox.question(
-            self, "Modifications non enregistrées",
-            "Enregistrer les modifications ?",
-            QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel, QMessageBox.Save)
-        if r == QMessageBox.Save:
+        boite = QMessageBox(QMessageBox.Question, "Modifications non enregistrées",
+                            "Enregistrer les modifications ?", parent=self)
+        enregistrer = boite.addButton("Enregistrer", QMessageBox.AcceptRole)
+        jeter = boite.addButton("Ne pas enregistrer", QMessageBox.DestructiveRole)
+        boite.addButton("Annuler", QMessageBox.RejectRole)
+        boite.setDefaultButton(enregistrer)
+        elargir_boutons(boite)
+        boite.exec()
+        if boite.clickedButton() is enregistrer:
             return self.enregistrer()
-        return r == QMessageBox.Discard
+        return boite.clickedButton() is jeter
 
     def nouveau(self) -> bool:
         if not self._confirmer_abandon():
