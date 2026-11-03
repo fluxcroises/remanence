@@ -41,6 +41,9 @@ class DescriptionEffet:
     # pour les traitements qui lisent toute une ligne, comme le tri de pixels).
     fragment: str = ""
     calcul: str = ""
+    # Calcul : groupes(largeur, hauteur, valeurs des réglages) -> (x, y), le nombre de groupes
+    # lancés ; sans lui, un groupe par ligne (ou par colonne si le réglage vertical est mis).
+    groupes: object = None
     prereglages: dict[str, dict] = field(default_factory=dict)
     # Moteur codec : pas de programme pour la carte graphique, mais traiter(paquets, valeurs,
     # graine) qui abîme le flux MPEG-4 du clip ; calculé en arrière-plan, gardé en cache.

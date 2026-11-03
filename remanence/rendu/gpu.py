@@ -407,9 +407,14 @@ class RenduGPU:
         if vao is None:
             cible.bind_to_image(0, read=False, write=True)
             l, h = self._taille
-            vertical = (any(p.cle == "vertical" for p in d.parametres)
-                        and float(valeur(effet, "vertical")) > 0.5)
-            prog.run(group_x=l if vertical else h)
+            if d.groupes is not None:
+                gx, gy = d.groupes(l, h, {p.cle: float(valeur(effet, p.cle))
+                                          for p in d.parametres})
+                prog.run(group_x=gx, group_y=gy)
+            else:
+                vertical = (any(p.cle == "vertical" for p in d.parametres)
+                            and float(valeur(effet, "vertical")) > 0.5)
+                prog.run(group_x=l if vertical else h)
             self.ctx.memory_barrier()
         else:
             fbo.use()

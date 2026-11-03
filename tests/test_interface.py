@@ -630,7 +630,7 @@ def test_bibliotheque_d_effets(fenetre, medias, monkeypatch):
     b = w.bibliotheque
     assert b.vue.count() == len(pr.fournis())
     b._filtrer("Signal")
-    assert b.vue.count() == 6
+    assert b.vue.count() == 15, "cinq effets Signal, trois préréglages chacun"
     b._filtrer("")
     b.recherche.setText("cassette")
     assert b.vue.count() == 3, "les trois préréglages de Cassette VHS"
