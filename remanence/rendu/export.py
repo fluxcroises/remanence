@@ -199,6 +199,7 @@ def _plan_audio(projet: Projet, seq: Sequence, debut: int, fin: int):
         c = clips[0][1]
         m = projet.medias.get(c.media_id)
         if m and m.infos.video and c.debut <= debut and c.fin >= fin \
+                and c.vitesse == 1.0 and not c.inverse \
                 and c.entree + (debut - c.debut) == 0 and fin - debut == m.infos.video.nb_images \
                 and all(abs(c.facteur(f) - 1.0) < 1e-9 for f in range(debut, fin)):
             return "copie", m

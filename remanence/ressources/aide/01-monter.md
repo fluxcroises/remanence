@@ -13,4 +13,9 @@
 
 8. **Scripts** (Montage > Scripts, ou clic droit sur un clip) : Scramble découpe les clips choisis en morceaux et mélange leur ordre ; Layer les recopie sur de nouvelles pistes, décalés et de plus en plus transparents, pour un écho. Une même graine redonne le même résultat ; Autre tirage en propose un nouveau.
 
+9. **Vitesse** : dans l'inspecteur, Vitesse (50 % : ralenti, 200 % : accéléré) et À rebours. Le clip garde le même passage de sa source ; ce qui le suit sur la piste se décale.
+10. **Titre** : Montage > Ajouter un titre (T), à la tête de lecture. Texte, police IBM Plex, taille, position et couleur dans l'inspecteur ; les effets s'y posent comme sur un clip.
+11. **Imbriquer** : Montage > Imbriquer la sélection range les clips choisis dans une nouvelle séquence, qui devient un seul clip. Clic droit, Ouvrir la séquence, pour la retoucher ; la liste des séquences, dans la barre de la timeline, ramène à la principale.
+12. **Rendu sur place** (Ctrl+Maj+R) : le clip choisi est calculé avec ses effets dans un fichier ProRes 4444, qui le remplace. Utile pour alléger la lecture ou figer un datamosh.
+
 Ctrl+Z annule, sans limite.

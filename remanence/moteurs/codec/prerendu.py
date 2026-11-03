@@ -67,11 +67,14 @@ def effets_codec(clip: Clip) -> list[Effet]:
 def _signature(projet: Projet, clip: Clip) -> list:
     media = projet.medias[clip.media_id]
     source = Path(media.chemin)
+    # La vitesse ne s'écrit que si elle a changé : les caches d'avant restent bons.
+    vitesse = [clip.vitesse, clip.inverse] if clip.vitesse != 1.0 or clip.inverse else []
     try:
         st = source.stat()
-        return [str(source.resolve()), st.st_size, round(st.st_mtime, 3), clip.entree, clip.duree]
+        return [str(source.resolve()), st.st_size, round(st.st_mtime, 3), clip.entree,
+                clip.duree] + vitesse
     except OSError:
-        return [media.chemin, clip.entree, clip.duree]
+        return [media.chemin, clip.entree, clip.duree] + vitesse
 
 
 def _empreinte(donnees: dict) -> str:
@@ -148,7 +151,8 @@ def plages_modifiees(projet: Projet, seq: Sequence, clip: Clip) -> list[tuple[in
         plages.append((0, min(clip.transition.duree, clip.duree)))
     if clip.cles_supprimees:
         media = projet.medias.get(clip.media_id)
-        coupes = sorted(c - clip.entree for c in (media.coupes or []) if media) if media else []
+        coupes = _coupes_dans_le_clip(clip, media.coupes or [], media.infos.video.nb_images) \
+            if media else []
         for t in clip.cles_supprimees:
             suivante = next((c for c in coupes if c > t and c not in clip.cles_supprimees),
                             clip.duree)
@@ -170,7 +174,7 @@ def _images(projet: Projet, clip: Clip, debut: int, nombre: int):
     lecteur = LecteurVideo(media.chemin, index, infos.sequence_images, v.cadence)
     try:
         for k in range(nombre):
-            yield lecteur.image(min(clip.entree + debut + k, v.nb_images - 1))
+            yield lecteur.image(clip.source(debut + k, v.nb_images))
     finally:
         lecteur.fermer()
 
@@ -266,7 +270,17 @@ def coupes_du_clip(projet: Projet, clip: Clip) -> list[int]:
         v = media.infos.video
         coupes = bavure.coupes_du_media(media.chemin, media.infos.sequence_images,
                                         v.cadence if media.infos.sequence_images else None)
-    return [m - clip.entree for m in coupes if 0 < m - clip.entree < clip.duree]
+    return _coupes_dans_le_clip(clip, coupes, media.infos.video.nb_images)
+
+
+def _coupes_dans_le_clip(clip: Clip, coupes: list[int], longueur: int) -> list[int]:
+    """Les coupes du média (premières images des plans) vues dans le clip : images du clip où
+    un autre plan commence, vitesse et sens compris."""
+    if clip.vitesse == 1.0 and not clip.inverse:
+        return [m - clip.entree for m in coupes if 0 < m - clip.entree < clip.duree]
+    images = [clip.source(t, longueur) for t in range(clip.duree)]
+    plan = [sum(1 for m in coupes if m <= k) for k in images]
+    return [t for t in range(1, clip.duree) if plan[t] != plan[t - 1]]
 
 
 def _etape(progression, debut: float, part: float):
@@ -323,7 +337,7 @@ def _images_dessus(projet: Projet, seq: Sequence, clip: Clip):
         try:
             for t in range(clip.duree):
                 k = max(0, min(clip.debut + t - dessus.debut, dessus.duree - 1))
-                yield lecteur.image(min(dessus.entree + k, v.nb_images - 1))
+                yield lecteur.image(dessus.source(k, v.nb_images))
         finally:
             lecteur.fermer()
     return images()
@@ -361,7 +375,7 @@ def _images_source(projet: Projet, seq: Sequence, clip: Clip):
             if any(a <= t < b for a, b in plages):
                 yield mod.image(t)
             else:
-                yield source.image(min(clip.entree + t, v.nb_images - 1))
+                yield source.image(clip.source(t, v.nb_images))
     finally:
         source.fermer()
         mod.fermer()

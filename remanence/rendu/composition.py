@@ -19,6 +19,7 @@ from remanence.media.sonde import analyser
 from remanence.effets import EFFETS, agit_a, instantane, modulateurs, transitions
 from remanence.projet.modele import Clip, Effet, Media, Projet, Sequence
 from remanence.moteurs.codec import prerendu
+from remanence.rendu import titres
 from remanence.rendu.couleur import vers_rvb16_apercu, vers_rvba
 from remanence.rendu.gpu import RenduGPU, gpu_demande
 
@@ -35,6 +36,8 @@ class Couche:
     fusion: str = "normal"
     # Image prise dans la source modifiée du clip (transition datamosh, images clés supprimées).
     modifiee: bool = False
+    # Couche calculée et non décodée : titre, ou image d'une séquence imbriquée.
+    calcul: bool = False
 
 
 def actifs(effets: list[Effet], t: float = 0, decalages: dict | None = None) -> list[Effet]:
@@ -59,9 +62,20 @@ def couches(projet: Projet, seq: Sequence, f: int) -> list[Couche]:
                 if effets and opacite > 0.0:
                     resultat.append(Couche(c, None, 0, min(opacite, 1.0), effets, c.fusion))
                 continue
-            media = projet.medias.get(c.media_id)
-            if media is None or media.hors_ligne or media.infos.video is None:
-                continue
+            calcul = c.titre is not None or c.sequence_id is not None
+            media = None
+            if c.sequence_id is not None:
+                imbriquee = sequence_par_id(projet, c.sequence_id)
+                if imbriquee is None or imbriquee is seq:
+                    continue
+                n = c.source(f - c.debut, max(1, imbriquee.duree()))
+            elif c.titre is not None:
+                n = 0
+            else:
+                media = projet.medias.get(c.media_id)
+                if media is None or media.hors_ligne or media.infos.video is None:
+                    continue
+                n = c.source(f - c.debut, media.infos.video.nb_images)
             # Fondu enchaîné : le clip recouvert garde toute son opacité sous le suivant.
             dessous = i < len(presents) - 1
             opacite = c.facteur(f, sans_fondu_sortie=dessous) * piste.niveau
@@ -77,12 +91,16 @@ def couches(projet: Projet, seq: Sequence, f: int) -> list[Couche]:
                     precedente.effets = precedente.effets + sortie_fondu
             if opacite <= 0.0:
                 continue
-            n = min(c.entree + (f - c.debut), media.infos.video.nb_images - 1)
             resultat.append(Couche(c, media, n, min(opacite, 1.0),
                                    actifs(c.effets, f - c.debut, mod)
                                    + actifs(piste.effets, f, mod) + entree_fondu,
-                                   c.fusion, prerendu.dans_plages(projet, seq, c, f - c.debut)))
+                                   c.fusion, not calcul and prerendu.dans_plages(
+                                       projet, seq, c, f - c.debut), calcul))
     return resultat
+
+
+def sequence_par_id(projet: Projet, sequence_id: str) -> Sequence | None:
+    return next((s for s in projet.sequences if s.id == sequence_id), None)
 
 
 def identite(pile: list[Couche], seq: Sequence | None = None, f: int = 0) -> Couche | None:
@@ -155,10 +173,18 @@ class Compositeur:
         hauteur = max(2, round(seq.hauteur * echelle))
         sortie = np.zeros((hauteur, largeur, 4), np.float32)
         pile = couches(self.projet, seq, f)
+        # Les couches calculées d'abord : une séquence imbriquée se compose elle-même sur la
+        # carte graphique, avant que la composition de cette image ne commence.
+        calculees = {id(c): self._image_calculee(c, largeur, hauteur, proxy)
+                     for c in pile if c.calcul}
         g = self.gpu()
         if g is not None:
             g.commencer(largeur, hauteur)
             for couche in pile:
+                if couche.calcul:
+                    g.ajouter_rvba(calculees[id(couche)], couche.opacite, couche.effets, f,
+                                   couche.fusion)
+                    continue
                 if couche.media is None:
                     g.effet_dessous(couche.effets, couche.opacite, f, couche.fusion)
                     continue
@@ -175,8 +201,14 @@ class Compositeur:
                 g.effets_sequence(effets, f)
             return g.lire()
         # Sans carte graphique, les effets ne sont pas calculés : seules les images sont fusionnées.
-        pile = [c for c in pile if c.media is not None]
+        pile = [c for c in pile if c.media is not None or c.calcul]
         for i, couche in enumerate(pile):
+            if couche.calcul:
+                rvba = calculees[id(couche)]
+                if couche.opacite < 1.0:
+                    rvba = rvba * couche.opacite
+                sortie = rvba + sortie * (1.0 - rvba[..., 3:4])
+                continue
             rvba = self._image_couche(couche, largeur, hauteur, proxy)
             if i == 0 and couche.opacite >= 1.0 and rvba.shape == sortie.shape and \
                     not couche.media.infos.video.alpha:
@@ -202,6 +234,42 @@ class Compositeur:
                     return rapide
         rvba = self.image(seq, f, echelle, proxy)
         return np.ascontiguousarray(rvba[..., :3].astype(np.float16))
+
+    def _image_calculee(self, couche: Couche, largeur: int, hauteur: int,
+                        proxy: bool) -> np.ndarray:
+        """Titre dessiné, ou image de la séquence imbriquée : elle tient entière, centrée."""
+        c = couche.clip
+        if c.titre is not None:
+            return titres.rendre(c.titre, largeur, hauteur)
+        imbriquee = sequence_par_id(self.projet, c.sequence_id)
+        s = min(largeur / imbriquee.largeur, hauteur / imbriquee.hauteur)
+        image = self.image(imbriquee, couche.image_source, s, proxy)
+        hp, lp = image.shape[:2]
+        if (hp, lp) == (hauteur, largeur):
+            return image
+        toile = np.zeros((hauteur, largeur, 4), np.float32)
+        y0, x0 = max(0, (hauteur - hp) // 2), max(0, (largeur - lp) // 2)
+        toile[y0:y0 + hp, x0:x0 + lp] = image[:hauteur - y0, :largeur - x0]
+        return toile
+
+    @staticmethod
+    def _son_du_clip(c: Clip, lire, cadence: float, decalage_s: float, longueur: int,
+                     depart: int, n: int) -> np.ndarray:
+        """Les n échantillons du clip à partir de `depart` (depuis son début), vitesse et sens
+        compris. lire(début, n) lit la source ; vitesse 1 à l'endroit : lecture directe."""
+        if c.vitesse == 1.0 and not c.inverse:
+            source0 = round((c.entree / cadence - decalage_s) * FREQUENCE_MIXAGE)
+            return lire(source0 + depart, n)
+        t = c.entree * c.vitesse / cadence + np.arange(depart, depart + n) * c.vitesse \
+            / FREQUENCE_MIXAGE
+        if c.inverse:
+            t = longueur / cadence - t
+        position = (t - decalage_s) * FREQUENCE_MIXAGE
+        bas = int(np.floor(position.min()))
+        brut = lire(bas, int(np.ceil(position.max())) - bas + 2)
+        x = np.arange(bas, bas + len(brut))
+        return np.stack([np.interp(position, x, brut[:, k]) for k in (0, 1)],
+                        axis=1).astype(np.float32)
 
     def _trame_couche(self, couche: Couche, largeur: int, hauteur: int,
                       proxy: bool) -> tuple[object, int, int]:
@@ -271,15 +339,25 @@ class Compositeur:
                 a, b = max(debut, e0), min(debut + n, e1)
                 if b <= a:
                     continue
-                media = self.projet.medias.get(c.media_id)
-                if media is None or media.hors_ligne or not media.infos.audio:
-                    continue
-                cache = self.pool.audio(chemin_audio(media.infos))
-                if cache is None:
-                    continue
-                cad_media = Fraction(media.infos.video.cadence) if media.infos.video else cadence
-                source0 = round((c.entree / float(cad_media) - cache.decalage_s) * FREQUENCE_MIXAGE)
-                bloc = cache.lire(source0 + (a - e0), b - a)
+                if c.sequence_id is not None:
+                    imbriquee = sequence_par_id(self.projet, c.sequence_id)
+                    if imbriquee is None or imbriquee is seq:
+                        continue
+                    lire = (lambda s, k, q=imbriquee: self.audio(q, s, k))
+                    cad_source, decalage_s, longueur = cadence, 0.0, imbriquee.duree()
+                else:
+                    media = self.projet.medias.get(c.media_id)
+                    if media is None or media.hors_ligne or not media.infos.audio:
+                        continue
+                    cache = self.pool.audio(chemin_audio(media.infos))
+                    if cache is None:
+                        continue
+                    lire = cache.lire
+                    cad_source = Fraction(media.infos.video.cadence) if media.infos.video \
+                        else cadence
+                    decalage_s, longueur = cache.decalage_s, media.nb_images(cadence)
+                bloc = self._son_du_clip(c, lire, float(cad_source), decalage_s, longueur,
+                                         a - e0, b - a)
                 positions = (np.arange(a, b) - e0) / par_image
                 images = np.arange(int(positions[0]), int(positions[-1]) + 2)
                 gains = np.array([c.facteur(c.debut + min(int(k), c.duree - 1)) * piste.niveau

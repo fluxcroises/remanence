@@ -165,6 +165,13 @@ class Clip:
     # Allure du fondu d'entrée (voir effets/transitions.py) : {"type": "volet" | "blocs" |
     # "rvb" | "coupure", réglages…} ; None, le fondu ordinaire.
     style_fondu: dict | None = None
+    # Vitesse (1 : normale ; 0,5 : ralenti) et lecture à rebours. L'entrée se compte alors en
+    # images du média ralenti ou accéléré (et retourné) : voir `source`.
+    vitesse: float = 1.0
+    inverse: bool = False
+    # Titre (texte dessiné, voir rendu/titres.py) ou séquence imbriquée : un clip sans média.
+    titre: dict | None = None
+    sequence_id: str | None = None
 
     @property
     def fin(self) -> int:
@@ -172,7 +179,19 @@ class Clip:
 
     @property
     def est_effet(self) -> bool:
-        return not self.media_id
+        return not self.media_id and self.titre is None and self.sequence_id is None
+
+    @property
+    def est_media(self) -> bool:
+        return bool(self.media_id)
+
+    def source(self, decalage: float, longueur: int) -> int:
+        """L'image de la source (média ou séquence imbriquée, `longueur` images) montrée
+        `decalage` images après le début du clip, vitesse et sens compris."""
+        k = int((self.entree + decalage) * self.vitesse + 1e-6)
+        if self.inverse:
+            k = longueur - 1 - k
+        return max(0, min(longueur - 1, k))
 
     def contient(self, f: int) -> bool:
         return self.debut <= f < self.fin

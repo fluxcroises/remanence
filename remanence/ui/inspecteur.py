@@ -372,15 +372,28 @@ class Inspecteur(PanneauFiche):
         media = projet.medias.get(c.media_id)
         video = piste.type == "video"
         cad = seq.fraction_cadence
-        self.badge.emit("Clip d'effet" if c.est_effet else "Clip vidéo" if video else "Clip audio")
+        imbriquee = next((s for s in projet.sequences if s.id == c.sequence_id), None) \
+            if c.sequence_id else None
+        self.badge.emit("Clip d'effet" if c.est_effet else "Titre" if c.titre is not None
+                        else "Séquence imbriquée" if c.sequence_id
+                        else "Clip vidéo" if video else "Clip audio")
         debut = images_vers_tc(seq.tc_debut + c.debut, cad, seq.tc_drop)
         fin = images_vers_tc(seq.tc_debut + c.fin, cad, seq.tc_drop)
-        titre = "Clip d'effet" if c.est_effet else media.nom if media else "Média manquant"
+        titre = "Clip d'effet" if c.est_effet else \
+            (str(c.titre.get("texte", "")).split("\n")[0] or "Titre") if c.titre is not None \
+            else (imbriquee.nom if imbriquee else "Séquence manquante") if c.sequence_id \
+            else media.nom if media else "Média manquant"
         self._titre(titre, f"Piste {nom_court_piste(seq, piste)} · {debut} à {fin}")
 
         self._section("Clip", "clip")
-        if c.est_effet:
+        calcule = c.titre is not None or c.sequence_id is not None
+        longueur = imbriquee.duree() if imbriquee else media.nb_images(cad) if media else 1
+        if c.est_effet or c.titre is not None:
             self._lignes([("Durée", f"{images_vers_tc(c.duree, cad)} · {c.duree} images")])
+        elif c.vitesse != 1.0 or c.inverse or calcule:
+            premiere = c.source(0, longueur)
+            derniere = c.source(c.duree - 1, longueur)
+            entree, sortie = f"image {premiere}", f"image {derniere}"
         elif media and media.infos.video and media.infos.video.tc_debut is not None:
             v = media.infos.video
             entree = images_vers_tc(v.tc_debut + c.entree, v.fraction_cadence, v.tc_drop)
@@ -388,11 +401,20 @@ class Inspecteur(PanneauFiche):
                                     v.tc_drop)
         else:
             entree, sortie = f"image {c.entree}", f"image {c.entree + c.duree}"
-        if not c.est_effet:
+        if not c.est_effet and c.titre is None:
             self._lignes([("Durée", f"{images_vers_tc(c.duree, cad)} · {c.duree} images"),
                           ("Entrée source", entree),
                           ("Sortie source", sortie),
                           ("Liaison", "liée au son ou à l'image" if c.lien else "indépendante")])
+            vitesse = LigneParametre("Vitesse", 5, 800, c.vitesse * 100, "%", 100)
+            vitesse.valeur_finale.connect(lambda v: self.reglage.emit(c.id, "vitesse", v / 100))
+            self._cible.addWidget(vitesse)
+            rebours = QCheckBox("À rebours")
+            rebours.setChecked(c.inverse)
+            rebours.toggled.connect(lambda v: self.reglage.emit(c.id, "inverse", v))
+            self._cible.addWidget(rebours)
+        if c.titre is not None:
+            self._section_titre(c)
 
         section = self._section("Niveau et fondus", "niveau")
         if c.gain != 1.0 or c.fondu_entree or c.fondu_sortie:
@@ -520,6 +542,70 @@ class Inspecteur(PanneauFiche):
             modifier.setChecked(self.masques_edites == e.id)
             modifier.toggled.connect(lambda v: self.edition_masques.emit(e.id if v else ""))
             rang.addWidget(modifier)
+        rang.addStretch(1)
+        self._cible.addLayout(rang)
+
+    def _section_titre(self, c):
+        """Texte, police, graisse, taille, position, alignement et couleur d'un titre."""
+        from PySide6.QtGui import QColor
+        from PySide6.QtWidgets import QColorDialog, QPlainTextEdit
+        from remanence.rendu import titres
+        t = {**titres.nouveau_titre(), **c.titre}
+        self._section("Titre", "titre")
+
+        def changer(**valeurs):
+            self.reglage.emit(c.id, "titre", {**t, **valeurs})
+
+        texte = QPlainTextEdit(t["texte"])
+        texte.setAccessibleName("Texte du titre")
+        texte.setFixedHeight(64)
+        # Appliqué quand on quitte le champ, comme les autres réglages saisis.
+        texte.focusOutEvent = lambda e, w=texte: (
+            QPlainTextEdit.focusOutEvent(w, e),
+            w.toPlainText() != t["texte"] and changer(texte=w.toPlainText()))
+        self._cible.addWidget(texte)
+
+        def ligne(nom: str, elements, actuel, cle: str):
+            rang = QHBoxLayout()
+            rang.setSpacing(8)
+            libelle = etiquette(nom, "libelle")
+            libelle.setFixedWidth(100)
+            liste = QComboBox()
+            liste.setAccessibleName(nom)
+            for valeur, texte_ in elements:
+                liste.addItem(texte_, valeur)
+            liste.setCurrentIndex(max(0, liste.findData(actuel)))
+            liste.activated.connect(lambda i: changer(**{cle: liste.itemData(i)}))
+            rang.addWidget(libelle)
+            rang.addWidget(liste, 1)
+            self._cible.addLayout(rang)
+
+        ligne("Police", [("sans", "IBM Plex Sans"), ("mono", "IBM Plex Mono")], t["police"],
+              "police")
+        ligne("Graisse", list(titres.GRAISSES.items()), int(t["graisse"]), "graisse")
+        ligne("Alignement", list(titres.ALIGNEMENTS.items()), t["alignement"], "alignement")
+        for cle, nom, mini, maxi in (("taille", "Taille", 1, 50), ("x", "Position X", 0, 100),
+                                     ("y", "Position Y", 0, 100)):
+            l = LigneParametre(nom, mini, maxi, t[cle], "%", titres.nouveau_titre()[cle], 1)
+            l.valeur_finale.connect(lambda v, cle=cle: changer(**{cle: round(v, 1)}))
+            self._cible.addWidget(l)
+        rang = QHBoxLayout()
+        rang.setSpacing(8)
+        libelle = etiquette("Couleur", "libelle")
+        libelle.setFixedWidth(100)
+        bouton = QPushButton("Choisir…")
+        bouton.setAccessibleName("Couleur du titre")
+
+        def choisir():
+            depart = QColor()
+            depart.setRgbF(*t["couleur"])
+            couleur = QColorDialog.getColor(depart, self, "Couleur du titre")
+            if couleur.isValid():
+                changer(couleur=[round(couleur.redF(), 4), round(couleur.greenF(), 4),
+                                 round(couleur.blueF(), 4)])
+        bouton.clicked.connect(choisir)
+        rang.addWidget(libelle)
+        rang.addWidget(bouton)
         rang.addStretch(1)
         self._cible.addLayout(rang)
 

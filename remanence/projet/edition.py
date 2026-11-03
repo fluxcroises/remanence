@@ -29,9 +29,15 @@ def regler_sequence_sur_media(seq: Sequence, media: Media):
 
 def longueur_source(projet: Projet, seq: Sequence, c: Clip) -> int:
     """Longueur de ce que montre le clip ; un clip d'effet peut s'étendre sans limite."""
-    if c.est_effet:
+    if c.est_effet or c.titre is not None:
         return 2 * ENTREE_CLIP_EFFET
-    return projet.medias[c.media_id].nb_images(seq.fraction_cadence)
+    if c.sequence_id is not None:
+        imbriquee = next((s for s in projet.sequences if s.id == c.sequence_id), None)
+        brute = imbriquee.duree() if imbriquee is not None else c.duree
+    else:
+        brute = projet.medias[c.media_id].nb_images(seq.fraction_cadence)
+    # En images de la source ralentie ou accélérée : l'entrée se compte ainsi.
+    return max(1, int(brute / c.vitesse + 1e-6))
 
 
 def _piste_type(seq: Sequence, type_: str, apres: Piste | None = None) -> Piste:
@@ -605,7 +611,7 @@ def ajouter_effet(porteur, effet: Effet):
         raise EditionImpossible("Les effets vont sur les pistes vidéo.")
     from remanence.effets import EFFETS
     if effet.type in EFFETS and EFFETS[effet.type].codec and \
-            not (isinstance(porteur, Clip) and not porteur.est_effet):
+            not (isinstance(porteur, Clip) and porteur.est_media):
         # Le moteur codec réencode les images d'un média : il lui faut un clip.
         raise EditionImpossible(f"{EFFETS[effet.type].nom} se pose sur un clip.")
     porteur.effets.append(effet)
@@ -647,7 +653,7 @@ def ajouter_clip_effet(seq: Sequence, debut: int, duree: int, effets: list[Effet
 def precedent(piste: Piste, clip: Clip) -> Clip | None:
     """Le clip de média qui finit exactement là où celui-ci commence, sur la même piste."""
     return next((o for o in piste.clips if o.fin == clip.debut and o.id != clip.id
-                 and not o.est_effet), None)
+                 and o.est_media), None)
 
 
 def basculer_transition(seq: Sequence, clip_id: str, duree: int | None = None):
@@ -687,6 +693,111 @@ def clip_au_dessus(seq: Sequence, clip: Clip) -> Clip | None:
         return None
     for p in reversed(pistes[:pistes.index(piste)]):
         for c in sorted(p.clips, key=lambda c: c.debut):
-            if not c.est_effet and c.debut < clip.fin and c.fin > clip.debut:
+            if c.est_media and c.debut < clip.fin and c.fin > clip.debut:
                 return c
     return None
+
+
+# Vitesse, titres, séquences imbriquées (étape 5)
+
+VITESSE_MIN, VITESSE_MAX = 0.05, 20.0
+
+
+def _longueur_brute(projet: Projet, seq: Sequence, c: Clip) -> int:
+    """Longueur de la source du clip en images, sans la vitesse."""
+    if c.sequence_id is not None:
+        imbriquee = next((s for s in projet.sequences if s.id == c.sequence_id), None)
+        return max(1, imbriquee.duree()) if imbriquee is not None else c.duree
+    return projet.medias[c.media_id].nb_images(seq.fraction_cadence)
+
+
+def regler_vitesse(projet: Projet, seq: Sequence, clip_id: str, vitesse: float, inverse: bool):
+    """Change la vitesse (et le sens) du clip et de ses clips liés. Le clip montre la même
+    partie de sa source : sa durée change, et ce qui le suit sur sa piste se décale d'autant
+    (rien n'est écrasé)."""
+    vitesse = max(VITESSE_MIN, min(VITESSE_MAX, float(vitesse)))
+    ids = avec_lies(seq, {clip_id})
+    for p, c in list(seq.tous_les_clips()):
+        if c.id not in ids or not (c.est_media or c.sequence_id):
+            continue
+        if p.verrouillee:
+            raise EditionImpossible(f"La piste « {p.nom} » est verrouillée.")
+        longueur = _longueur_brute(projet, seq, c)
+        # La partie de la source que couvre le clip, en images de la source.
+        debut, fin_source = c.entree * c.vitesse, (c.entree + c.duree) * c.vitesse
+        if c.inverse:
+            debut, fin_source = longueur - fin_source, longueur - debut
+        bas = max(0, min(longueur - 1, round(debut)))
+        haut = max(bas + 1, min(longueur, round(fin_source)))
+        fin = c.fin
+        c.vitesse, c.inverse = vitesse, bool(inverse)
+        c.entree = round((longueur - haut if c.inverse else bas) / vitesse)
+        duree = max(1, round((haut - bas) / vitesse))
+        delta = duree - c.duree
+        c.duree = duree
+        c.fondu_entree = min(c.fondu_entree, duree)
+        c.fondu_sortie = min(c.fondu_sortie, duree)
+        if delta:
+            for o in p.clips:
+                if o is not c and o.debut >= fin:
+                    o.debut += delta
+        p.trier()
+
+
+def ajouter_titre(seq: Sequence, debut: int, duree: int, titre: dict,
+                  piste_id: str | None = None) -> Clip:
+    """Titre sur la piste vidéo demandée, ou celle du haut ; si elle est occupée à cet
+    endroit, sur une nouvelle piste au-dessus."""
+    c = ajouter_clip_effet(seq, debut, duree, [], piste_id)
+    c.titre = titre
+    return c
+
+
+def contient_sequence(projet: Projet, seq: Sequence, cible_id: str) -> bool:
+    """La séquence montre-t-elle `cible_id`, elle-même ou par une imbrication ?"""
+    if seq.id == cible_id:
+        return True
+    for _p, c in seq.tous_les_clips():
+        if c.sequence_id is not None:
+            sous = next((s for s in projet.sequences if s.id == c.sequence_id), None)
+            if sous is not None and contient_sequence(projet, sous, cible_id):
+                return True
+    return False
+
+
+def imbriquer(projet: Projet, seq: Sequence, ids: set[str]) -> Sequence:
+    """Les clips choisis (et leurs clips liés) passent dans une nouvelle séquence, à la même
+    place les uns par rapport aux autres, sur autant de pistes. Ils sont remplacés par un clip
+    vidéo de cette séquence (et un clip audio lié s'il y avait du son)."""
+    ids = avec_lies(seq, set(ids))
+    choisis = [(p, c) for p, c in seq.tous_les_clips() if c.id in ids]
+    if not choisis:
+        raise EditionImpossible("Aucun clip choisi.")
+    if any(p.verrouillee for p, _ in choisis):
+        raise EditionImpossible("Une des pistes est verrouillée.")
+    debut = min(c.debut for _, c in choisis)
+    fin = max(c.fin for _, c in choisis)
+    n = len(projet.sequences) + 1
+    nouvelle = Sequence(nouvel_id(), f"Imbrication {n}", seq.largeur, seq.hauteur, seq.cadence,
+                        seq.tc_debut, seq.tc_drop, True)
+    for p in seq.pistes:
+        clips = [c for q, c in choisis if q is p]
+        if not clips:
+            continue
+        copie = Piste(nouvel_id(), p.type, p.nom)
+        for c in clips:
+            p.clips.remove(c)
+            c.debut -= debut
+            copie.clips.append(c)
+        copie.trier()
+        nouvelle.pistes.append(copie)
+    projet.sequences.append(nouvelle)
+    lien = nouvel_id()
+    for type_ in ("video", "audio"):
+        source = next((p for p, _ in choisis if p.type == type_), None)
+        if source is None:
+            continue
+        c = Clip(nouvel_id(), "", debut, 0, fin - debut, lien, sequence_id=nouvelle.id)
+        source.clips.append(c)
+        placer(source, {c.id}, False)
+    return nouvelle

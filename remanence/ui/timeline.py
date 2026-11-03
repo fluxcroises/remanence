@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import QPointF, QRect, QRectF, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QImage, QPainter, QPainterPath, QPen, QPolygonF
-from PySide6.QtWidgets import (QHBoxLayout, QInputDialog, QMenu, QScrollBar, QSlider, QToolButton,
+from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QInputDialog, QMenu, QScrollBar, QSlider, QToolButton,
                                QVBoxLayout, QWidget)
 
 from remanence.media.lecteur import AudioCache
@@ -367,8 +367,18 @@ class VueTimeline(QWidget):
         if clip.est_effet:
             noms = [EFFETS[e.type].nom for e in clip.effets if e.type in EFFETS]
             nom = "Clip d'effet" + (" · " + ", ".join(noms) if noms else "")
+        elif clip.titre is not None:
+            nom = "Titre · " + (str(clip.titre.get("texte", "")).split("\n")[0] or "vide")
+        elif clip.sequence_id is not None:
+            imbriquee = next((s for s in self.projet.sequences if s.id == clip.sequence_id),
+                             None)
+            nom = imbriquee.nom if imbriquee is not None else "Séquence manquante"
         else:
             nom = media.nom if media else "Média manquant"
+        if clip.vitesse != 1.0:
+            nom += f" · {round(clip.vitesse * 100)}\u00a0%"
+        if clip.inverse:
+            nom += " · à rebours"
         if media and media.hors_ligne:
             nom += " (hors ligne)"
         if clip.lien is None and media and media.infos.video and media.infos.audio:
@@ -441,7 +451,7 @@ class VueTimeline(QWidget):
         l = images[0].width() * hauteur / images[0].height()
         x = r.left() + max(0.0, math.floor(-r.left() / l)) * l
         while x < min(r.right(), self.width()):
-            f_source = clip.entree + (self.f_de(x) - clip.debut)
+            f_source = clip.source(self.f_de(x) - clip.debut, media.infos.video.nb_images)
             k = max(0, min(len(images) - 1, int(f_source / pas)))
             p.drawImage(QRectF(x, haut, l, hauteur), images[k])
             x += l
@@ -468,7 +478,11 @@ class VueTimeline(QWidget):
         p.setPen(QPen(charte.actuelle().c("ink-muted"), 1))
         for x in range(max(int(r.left()), 0), min(int(r.right()), self.width())):
             f = self.f_de(x) - clip.debut
-            t = (clip.entree / cad_media) + f / cad - decalage
+            if clip.vitesse == 1.0 and not clip.inverse:
+                t = (clip.entree / cad_media) + f / cad - decalage
+            else:
+                t = clip.source(f, media.nb_images(self.projet.sequence.fraction_cadence)) \
+                    / cad_media - decalage
             k = int(t * 48000 / par_case)
             if 0 <= k < len(cretes):
                 a = float(cretes[k]) * demi * clip.facteur(clip.debut + int(f))
@@ -945,6 +959,12 @@ class VueTimeline(QWidget):
                 effets = menu.addMenu("Ajouter un effet")
                 remplir_menu_effets(effets, lambda liste: fenetre.ajouter_effet(
                     "clip", clip.id, liste))
+            if clip.sequence_id is not None:
+                menu.addAction("Ouvrir la séquence",
+                               lambda: fenetre.ouvrir_sequence(clip.sequence_id))
+            menu.addAction("Imbriquer la sélection", fenetre.imbriquer)
+            if piste_clip.type == "video" and not clip.est_effet:
+                menu.addAction("Rendu sur place (Ctrl+Maj+R)", fenetre.rendre_sur_place)
             scripts_ = menu.addMenu("Scripts")
             scripts_.addAction("Scramble…", fenetre.script_scramble)
             scripts_.addAction("Layer…", fenetre.script_layer)
@@ -1372,6 +1392,16 @@ class Timeline(QWidget):
             outils.addWidget(separateur)
             outils.addSpacing(6)
         outils.addStretch(1)
+        # Séquences du projet : seulement quand il y en a plusieurs (imbrication).
+        self.choix_sequence = QComboBox()
+        self.choix_sequence.setAccessibleName("Séquence")
+        self.choix_sequence.setToolTip("Séquence")
+        self.choix_sequence.setMinimumWidth(160)
+        self.choix_sequence.activated.connect(
+            lambda i: fenetre.ouvrir_sequence(self.choix_sequence.itemData(i)))
+        self.choix_sequence.hide()
+        outils.addWidget(self.choix_sequence)
+        outils.addSpacing(12)
         outils.addWidget(etiquette("Zoom", "libelle"))
         outils.addWidget(self.zoom)
         outils.addWidget(b_tout)
@@ -1424,6 +1454,13 @@ class Timeline(QWidget):
         self._entetes = [EntetePiste(self, p, nom_court_piste(seq, p)) for p in seq.pistes]
         for e in self._entetes:
             e.show()
+        self.choix_sequence.blockSignals(True)
+        self.choix_sequence.clear()
+        for s in projet.sequences:
+            self.choix_sequence.addItem(s.nom, s.id)
+        self.choix_sequence.setCurrentIndex(max(0, self.choix_sequence.findData(seq.id)))
+        self.choix_sequence.blockSignals(False)
+        self.choix_sequence.setVisible(len(projet.sequences) > 1)
         self.placer_entetes()
         self.bornes()
         self.vue.update()

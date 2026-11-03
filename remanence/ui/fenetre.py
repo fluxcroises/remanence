@@ -542,6 +542,10 @@ class FenetrePrincipale(QMainWindow):
         self._remplir_menus_effets()
         mo.addSeparator()
         self._action(mo, "Ajouter un marqueur", self.marqueur, "M")
+        self._action(mo, "Ajouter un titre", self.ajouter_titre, "T")
+        mo.addSeparator()
+        self._action(mo, "Imbriquer la sélection", self.imbriquer)
+        self._action(mo, "Rendu sur place", self.rendre_sur_place, "Ctrl+Shift+R")
         mo.addSeparator()
         scripts_ = mo.addMenu("Scripts")
         self._action(scripts_, "Scramble…", self.script_scramble)
@@ -1195,7 +1199,7 @@ class FenetrePrincipale(QMainWindow):
         if len(ids) != 1:
             return None
         piste, c = self.projet.sequence.trouver(next(iter(ids)))
-        if c is None or piste.type != "video" or c.est_effet \
+        if c is None or piste.type != "video" or not c.est_media \
                 or c.media_id not in self.projet.medias:
             return None
         return c
@@ -1893,9 +1897,106 @@ class FenetrePrincipale(QMainWindow):
             effet, d.reglages_choisis(), debut, fin, v["intervalle"], v["amplitude"] / 100,
             v["passage"], v["graine"]))
 
+    # Titres, séquences imbriquées, rendu sur place
+
+    def ajouter_titre(self):
+        from remanence.rendu import titres
+        seq = self.projet.sequence
+        duree = max(1, round(5 * float(seq.fraction_cadence)))
+        c = edition.ajouter_titre(seq, self.lecture.position, duree, titres.nouveau_titre())
+        self.valider("Titre")
+        self.timeline.vue._choisir({c.id})
+
+    def imbriquer(self):
+        sel = set(self.timeline.vue.selection)
+        if not sel:
+            self.message("Aucun clip choisi")
+            return
+        self.timeline.vue.selection = set()
+        self._tenter("Imbrication", lambda: edition.imbriquer(
+            self.projet, self.projet.sequence, sel))
+
+    def ouvrir_sequence(self, sequence_id: str):
+        """La séquence passe dans la timeline et le programme (double-clic, menu du clip, liste
+        des séquences)."""
+        if sequence_id == self.projet.sequence.id or not any(
+                s.id == sequence_id for s in self.projet.sequences):
+            return
+        self.lecture.pause()
+        self.projet.sequence_active = sequence_id
+        self.timeline.vue.selection = set()
+        self.valider("Séquence ouverte")
+        self.aller_a(0)
+        self.timeline.tout_voir()
+
+    def rendre_sur_place(self):
+        """Chaque clip vidéo choisi est calculé avec ses effets dans un fichier ProRes 4444
+        (alpha compris), qui le remplace sur la timeline. Le niveau, les fondus, l'enveloppe et
+        le mode de fusion restent sur le nouveau clip ; l'ancien média reste dans le projet."""
+        seq = self.projet.sequence
+        clips = [c for p, c in seq.tous_les_clips() if c.id in self.timeline.vue.selection
+                 and p.type == "video" and not c.est_effet]
+        if not clips:
+            self.message("Aucun clip vidéo choisi")
+            return
+        for clip in clips:
+            self._rendre_clip(clip)
+
+    def _rendre_clip(self, clip):
+        copie = Projet.depuis_dict(self.projet.vers_dict())
+        for media in copie.medias.values():
+            media.hors_ligne = self.projet.medias[media.id].hors_ligne
+        s = copie.sequence
+        piste, c = s.trouver(clip.id)
+        # Le clip seul sur sa piste (le clip d'avant reste, pour une transition datamosh) ;
+        # ce qui reste sur le nouveau clip n'est pas calculé.
+        for p in s.pistes:
+            p.effets = []
+            if p is not piste:
+                p.clips = []
+        s.effets = []
+        c.gain, c.enveloppe, c.fondu_entree, c.fondu_sortie = 1.0, [], 0, 0
+        c.style_fondu, c.fusion = None, "normal"
+        dossier = prerendu.dossier() / "rendus"
+        dossier.mkdir(parents=True, exist_ok=True)
+        nom = self._nom_clip(clip)
+        chemin = dossier / f"{nom}_rendu_{nouvel_id()}.mov"
+        debut, fin, clip_id = clip.debut, clip.fin, clip.id
+
+        def travail(progression, annule):
+            return exporter(copie, s, chemin, "prores_4444", debut, fin, progression, annule)
+
+        def fini(_rapport):
+            infos, _ = analyser(str(chemin))
+            media = Media(nouvel_id(), str(chemin), infos)
+            self.projet.medias[media.id] = media
+            piste_, ancien = self.projet.sequence.trouver(clip_id)
+            if ancien is None:
+                return
+            nouveau = copy.deepcopy(ancien)
+            nouveau.id, nouveau.media_id, nouveau.entree = nouvel_id(), media.id, 0
+            nouveau.effets, nouveau.transition, nouveau.cles_supprimees = [], None, []
+            nouveau.vitesse, nouveau.inverse = 1.0, False
+            nouveau.titre, nouveau.sequence_id = None, None
+            nouveau.debut, nouveau.duree = debut, fin - debut
+            piste_.clips[piste_.clips.index(ancien)] = nouveau
+            self.valider("Rendu sur place")
+            self.timeline.vue._choisir({nouveau.id})
+
+        self.taches.lancer(Tache(f"Rendu sur place : {nom}", travail), fini,
+                           lambda message, detail: afficher_erreur(
+                               self, "Rendu impossible", message, detail))
+
     def _nom_clip(self, c) -> str:
         media = self.projet.medias.get(c.media_id)
-        return Path(media.chemin).stem if media is not None else "Clip d'effet"
+        if media is not None:
+            return Path(media.chemin).stem
+        if c.titre is not None:
+            return "Titre"
+        if c.sequence_id is not None:
+            return next((s.nom for s in self.projet.sequences if s.id == c.sequence_id),
+                        "Séquence")
+        return "Clip d'effet"
 
     def _zoom_clavier(self, facteur: float):
         """Zoom de la timeline autour de la tête de lecture."""
@@ -2060,6 +2161,16 @@ class FenetrePrincipale(QMainWindow):
                 QTimer.singleShot(0, lambda: self.valider("Réinitialisation du clip"))
             return
         if c is None or getattr(c, champ) == valeur:
+            return
+        if champ in ("vitesse", "inverse"):
+            vitesse = valeur if champ == "vitesse" else c.vitesse
+            inverse = valeur if champ == "inverse" else c.inverse
+            self._tenter("Vitesse du clip", lambda: edition.regler_vitesse(
+                self.projet, self.projet.sequence, clip_id, vitesse, inverse))
+            return
+        if champ == "titre":
+            c.titre = valeur
+            QTimer.singleShot(0, lambda: self.valider("Titre"))
             return
         if champ == "style_fondu":
             # Une transition remplace un fondu d'entrée : sans fondu, elle en crée un.

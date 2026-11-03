@@ -1176,3 +1176,46 @@ def test_scripts_depuis_le_menu(fenetre, medias, monkeypatch):
     w.script_automator()
     effet = w.projet.sequence.pistes_video[0].clips[0].effets[0]
     assert len(effet.cles["force"]) > 2
+
+
+def test_titre_imbrication_vitesse_et_rendu_sur_place(fenetre, medias):
+    """Titre posé et retouché dans l'inspecteur, vitesse du clip, imbrication puis ouverture de
+    la séquence imbriquée, rendu sur place d'un clip à effet."""
+    from PySide6.QtWidgets import QCheckBox
+    from remanence.effets import nouvel_effet
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    nb = clip.duree
+    w._reglage_clip(clip.id, "vitesse", 2.0)
+    assert w.projet.sequence.pistes_video[0].clips[0].duree == nb // 2
+    w.timeline.vue._choisir({w.projet.sequence.pistes_video[0].clips[0].id})
+    assert _attendre(lambda: any(c.text() == "À rebours"
+                                 for c in w.inspecteur.findChildren(QCheckBox)), 3)
+    w.annuler()
+    w.aller_a(0)
+    w.ajouter_titre()
+    titre = next(c for _, c in w.projet.sequence.tous_les_clips() if c.titre is not None)
+    w._reglage_clip(titre.id, "titre", {**titre.titre, "texte": "Bonjour"})
+    assert _attendre(lambda: next(c for _, c in w.projet.sequence.tous_les_clips()
+                                  if c.titre is not None).titre["texte"] == "Bonjour", 3)
+    principale = w.projet.sequence.id
+    video = w.projet.sequence.pistes_video[-1].clips[0]
+    w.timeline.vue._choisir({video.id})
+    w.imbriquer()
+    imbrique = w.projet.sequence.pistes_video[-1].clips[0]
+    assert imbrique.sequence_id is not None and len(w.projet.sequences) == 2
+    assert w.timeline.choix_sequence.count() == 2
+    w.ouvrir_sequence(imbrique.sequence_id)
+    assert w.projet.sequence.id == imbrique.sequence_id
+    interieur = w.projet.sequence.pistes_video[0].clips[0]
+    w.ajouter_effet("clip", interieur.id, [nouvel_effet("decalage_rvb")])
+    w.timeline.vue._choisir({w.projet.sequence.pistes_video[0].clips[0].id})
+    w.rendre_sur_place()
+    assert _attendre(lambda: not w.projet.sequence.pistes_video[0].clips[0].effets, 60)
+    rendu = w.projet.sequence.pistes_video[0].clips[0]
+    assert w.projet.medias[rendu.media_id].infos.video.nb_images == rendu.duree
+    w.ouvrir_sequence(principale)
+    assert w.projet.sequence.id == principale

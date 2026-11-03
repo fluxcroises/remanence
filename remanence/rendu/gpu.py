@@ -277,6 +277,15 @@ class RenduGPU:
         self._codec_pret = False
         self._fusionner(couche, opacite, dosage=False, fusion=fusion)
 
+    def ajouter_rvba(self, rvba: np.ndarray, opacite: float, effets: list[Effet] = (),
+                     numero: int = 0, fusion: str = "normal"):
+        """Une couche déjà calculée (titre, séquence imbriquée) : H × L × 4 float32, alpha
+        prémultiplié, à la taille de l'image."""
+        t, _ = self._cible("couche", self._taille)
+        t.write(np.ascontiguousarray(rvba, np.float32).tobytes())
+        couche = self.effets("couche", effets, numero)
+        self._fusionner(couche, opacite, dosage=False, fusion=fusion)
+
     def effet_dessous(self, effets: list[Effet], opacite: float, numero: int,
                       fusion: str = "normal"):
         """Clip d'effet : transforme tout ce qui est dessous, dosé par son opacité."""
