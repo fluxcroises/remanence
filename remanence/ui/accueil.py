@@ -1,7 +1,7 @@
 """Écran d'accueil, ouvert au lancement : une seule page qui prolonge l'écran de démarrage.
 
 Sur un fond de points ondulants : à gauche, l'identité de Remanence et les deux actions ; à
-droite, trois volets dépliables (nouveau projet, récents, prise en main). Les fiches de prise
+droite, trois volets en accordéon (nouveau projet, récents, prise en main), un seul ouvert. Les fiches de prise
 en main s'ouvrent dans leur propre fenêtre (`ui/aide.py`).
 """
 
@@ -12,7 +12,7 @@ import math
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QPointF, QSize, Qt, QTimer
+from PySide6.QtCore import QEasingCurve, QPointF, QSize, Qt, QTimer, QVariantAnimation
 from PySide6.QtGui import QIcon, QPainter, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog, QGridLayout,
                                QHBoxLayout, QHeaderView, QLabel, QPushButton, QScrollArea,
@@ -39,6 +39,8 @@ CADENCES = [("24000/1001", "23,976"), ("24", "24"), ("25", "25"), ("30000/1001",
 
 CLE_RECENTS = "projets_recents_dates"
 CLE_AU_DEMARRAGE = "accueil/au_demarrage"
+CLE_VOLET = "accueil/volet"
+TAILLE_MAX = 16777215
 MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre",
         "octobre", "novembre", "décembre"]
 
@@ -90,12 +92,11 @@ def au_demarrage() -> bool:
 
 
 class Volet(QWidget):
-    """Section dépliable de l'accueil : un titre bien visible, son état retenu."""
+    """Volet de l'accueil : un titre bien visible et son contenu. Un seul est ouvert à la fois
+    et prend toute la hauteur ; les autres ne montrent que leur titre (`Accueil.ouvrir_volet`)."""
 
-    def __init__(self, titre: str, cle: str, contenu: QWidget, etire: int = 0):
+    def __init__(self, titre: str, contenu: QWidget):
         super().__init__()
-        self.cle = cle
-        self.etire = etire
         self.setProperty("role", "volet")
         self.setAttribute(Qt.WA_StyledBackground, True)
         lay = QVBoxLayout(self)
@@ -112,25 +113,13 @@ class Volet(QWidget):
         lay.addWidget(self.titre)
         self.corps = contenu
         lay.addWidget(contenu, 1)
-        ouvert = not reglages_interface().value(f"accueil/replie/{cle}", False, type=bool)
-        self.titre.setChecked(ouvert)
-        self._montrer(ouvert)
-        self.titre.toggled.connect(self._basculer)
 
     def ouvert(self) -> bool:
         return self.titre.isChecked()
 
-    def _montrer(self, ouvert: bool):
-        self.corps.setVisible(ouvert)
+    def marquer(self, ouvert: bool):
+        self.titre.setChecked(ouvert)
         poser_icone(self.titre, "chevron-down" if ouvert else "chevron-right", 16)
-        # Replié, le volet ne prend que la hauteur de son titre.
-        parent = self.parentWidget()
-        if parent is not None and parent.layout() is not None:
-            parent.layout().setStretchFactor(self, self.etire if ouvert else 0)
-
-    def _basculer(self, ouvert: bool):
-        self._montrer(ouvert)
-        reglages_interface().setValue(f"accueil/replie/{self.cle}", not ouvert)
 
 
 class FondOndes(QWidget):
@@ -216,11 +205,6 @@ class Accueil(QDialog):
         self.move(ecran.center() - self.rect().center())
         super().showEvent(e)
 
-    def mousePressEvent(self, e):
-        # Sans cadre : la fenêtre se déplace en la tirant par le fond.
-        if e.button() == Qt.LeftButton and self.windowHandle() is not None:
-            self.windowHandle().startSystemMove()
-
     # À gauche : identité et actions
 
     def _colonne_identite(self) -> QWidget:
@@ -286,19 +270,75 @@ class Accueil(QDialog):
         lay.addLayout(haut)
 
         colonne = QWidget()
-        volets = QVBoxLayout(colonne)
-        volets.setContentsMargins(0, 0, 16, 0)
-        volets.setSpacing(0)
+        self._pile_volets = QVBoxLayout(colonne)
+        self._pile_volets.setContentsMargins(0, 0, 16, 0)
+        self._pile_volets.setSpacing(0)
         format_ = QWidget()
-        format_.setLayout(self._ligne_format())
-        self.volets = [Volet("Nouveau projet", "nouveau", format_),
-                       Volet("Récents", "recents", self._liste_recents(), 1),
-                       Volet("Prise en main", "prise_en_main", self._fiches())]
-        for v in self.volets:
-            volets.addWidget(v, v.etire if v.ouvert() else 0)
-        volets.addStretch(0)
+        lay_format = QVBoxLayout(format_)
+        lay_format.setContentsMargins(0, 0, 0, 0)
+        lay_format.addLayout(self._ligne_format())
+        lay_format.addStretch(1)
+        self.volets = [Volet("Nouveau projet", format_),
+                       Volet("Récents", self._liste_recents()),
+                       Volet("Prise en main", self._fiches())]
+        for i, v in enumerate(self.volets):
+            self._pile_volets.addWidget(v)
+            v.titre.clicked.connect(lambda _=False, i=i: self.ouvrir_volet(i))
+        self._pile_volets.addStretch(0)
+        self._animation = QVariantAnimation(self)
+        self._animation.setDuration(220)
+        self._animation.setEasingCurve(QEasingCurve.OutCubic)
+        self._animation.setStartValue(0.0)
+        self._animation.setEndValue(1.0)
+        self._animation.valueChanged.connect(self._glisser)
+        self._animation.finished.connect(self._fin_glisser)
+        self._ouvert = -1
+        self._fermant = -1
+        self.ouvrir_volet(int(reglages_interface().value(CLE_VOLET, 1)), anime=False)
         lay.addWidget(colonne, 1)
         return page
+
+    def ouvrir_volet(self, i: int, anime: bool = True):
+        """Ouvre le volet i en entier ; celui qui était ouvert se replie en glissant."""
+        i = max(0, min(len(self.volets) - 1, i))
+        if self._animation.state() == QVariantAnimation.Running:
+            self._animation.stop()
+            self._fin_glisser()
+        for k, v in enumerate(self.volets):
+            v.marquer(k == i)
+        if i == self._ouvert:
+            return
+        reglages_interface().setValue(CLE_VOLET, i)
+        avant, self._ouvert = self._ouvert, i
+        if not anime or avant < 0 or not self.isVisible():
+            for k, v in enumerate(self.volets):
+                v.corps.setVisible(k == i)
+                v.corps.setMaximumHeight(TAILLE_MAX)
+                self._pile_volets.setStretchFactor(v, 1 if k == i else 0)
+            return
+        self._fermant = avant
+        self._hauteur = self.volets[avant].corps.height()
+        nouveau = self.volets[i].corps
+        nouveau.setMaximumHeight(0)
+        nouveau.show()
+        self._pile_volets.setStretchFactor(self.volets[i], 1)
+        self._animation.start()
+
+    def _glisser(self, x: float):
+        h = round(self._hauteur * x)
+        self.volets[self._ouvert].corps.setMaximumHeight(h)
+        if self._fermant >= 0:
+            self.volets[self._fermant].corps.setMaximumHeight(max(0, self._hauteur - h))
+
+    def _fin_glisser(self):
+        if self._fermant >= 0:
+            ferme = self.volets[self._fermant]
+            ferme.corps.hide()
+            ferme.corps.setMaximumHeight(TAILLE_MAX)
+            self._pile_volets.setStretchFactor(ferme, 0)
+            self._fermant = -1
+        self.volets[self._ouvert].corps.setMaximumHeight(TAILLE_MAX)
+
 
     def _ligne_format(self) -> QGridLayout:
         grille = QGridLayout()
@@ -401,12 +441,12 @@ class Accueil(QDialog):
             self.accept()
 
     def _fiches(self) -> QWidget:
-        """Une carte par fiche, sa première capture en vignette, sur une rangée qui défile.
-        Elle ouvre la fenêtre de prise en main, à part."""
-        rangee = QWidget()
-        lay = QHBoxLayout(rangee)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(10)
+        """Une carte par fiche, sa première capture en vignette, en grille. Elle ouvre la
+        fenêtre de prise en main, à part."""
+        grille_w = QWidget()
+        grille = QGridLayout(grille_w)
+        grille.setContentsMargins(0, 0, 0, 0)
+        grille.setSpacing(10)
         self.boutons_fiches: list[QToolButton] = []
         vignette = QSize(176, 99)
         for i, (titre, _chemin, image) in enumerate(fiches()):
@@ -426,14 +466,18 @@ class Accueil(QDialog):
                 b.setIcon(QIcon(pm))
                 b.setIconSize(vignette)
             b.clicked.connect(lambda _=False, i=i: FenetreAide.ouvrir(i))
-            lay.addWidget(b)
+            grille.addWidget(b, i // 3, i % 3)
             self.boutons_fiches.append(b)
-        lay.addStretch(1)
+        # Les cartes gardent leur taille : pendant le glissement du volet, elles sont coupées
+        # au lieu d'être écrasées (la feuille de style l'emporte sur setFixedSize).
+        rangees = (len(self.boutons_fiches) + 2) // 3
+        grille_w.setMinimumHeight(rangees * (vignette.height() + 48) + (rangees - 1) * 10)
+        grille.setRowStretch(grille.rowCount(), 1)
+        grille.setColumnStretch(3, 1)
         defile = QScrollArea()
-        defile.setWidget(rangee)
+        defile.setWidget(grille_w)
         defile.setWidgetResizable(True)
         defile.setFrameShape(QScrollArea.NoFrame)
         defile.setProperty("fond", "transparent")
-        defile.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        defile.setFixedHeight(vignette.height() + 48 + 14)
+        defile.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         return defile
