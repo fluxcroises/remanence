@@ -46,6 +46,7 @@ from remanence.ui.taches import GestionnaireTaches, Tache
 from remanence.ui.timeline import Timeline
 from remanence.ui import accueil
 from remanence.ui.aide import FenetreAide
+from remanence.ui.midi import EnregistreurMidi
 from remanence.ui.panneau_courbes import PanneauCourbes
 from remanence.ui.panneau_datamosh import CalqueVecteurs, PanneauDatamosh
 from remanence.ui.timeline import NOUVELLE_PISTE
@@ -202,6 +203,10 @@ class FenetrePrincipale(QMainWindow):
         d.visibilityChanged.connect(self._courbes_visibles)
         self.panneau_courbes.modifie.connect(self.valider)
         self.panneau_courbes.reglage_modulateur.connect(self.reglage_modulateur)
+        self.enregistreur_midi = EnregistreurMidi()
+        self.enregistreur_midi.recu.connect(self._midi_recu)
+        self._midi = None  # (courbe, origine, durée, contrôle appris) pendant l'enregistrement
+        self.panneau_courbes.barre_midi.enregistrement.connect(self.enregistrer_midi)
         self.panneau_courbes.tete_demandee.connect(self.aller_a)
         self.panneau_datamosh = PanneauDatamosh()
         d, _ = panneau("Compression", self.panneau_datamosh, "analyse", self)
@@ -1044,9 +1049,48 @@ class FenetrePrincipale(QMainWindow):
                 return
         QTimer.singleShot(0, lambda: self.valider(libelle))
 
+    def enregistrer_midi(self, actif: bool, port: str = ""):
+        """Enregistrement MIDI sur le réglage choisi dans le panneau Courbes. Le premier
+        contrôle bougé est retenu ; ensuite, chacune de ses valeurs pose une image clé à la tête
+        de lecture (lancez la lecture pour enregistrer un geste)."""
+        panneau = self.panneau_courbes
+        if not actif:
+            if self._midi is None:
+                return
+            self.enregistreur_midi.fermer()
+            self._midi = None
+            panneau.barre_midi.montrer_controle(None)
+            self.valider("Enregistrement MIDI")
+            return
+        courbe = panneau.graphe.courbe()
+        if courbe is None:
+            panneau.barre_midi.bouton.setChecked(False)
+            return
+        if port and not self.enregistreur_midi.ouvrir(port):
+            self.message(f"Contrôleur MIDI « {port} » indisponible")
+            panneau.barre_midi.bouton.setChecked(False)
+            return
+        self._midi = [courbe, panneau.origine, panneau.graphe.duree, None]
+
+    def _midi_recu(self, controle: int, x: float):
+        if self._midi is None:
+            return
+        courbe, origine, duree, appris = self._midi
+        if appris is None:
+            self._midi[3] = appris = controle
+            self.panneau_courbes.barre_midi.montrer_controle(controle)
+        if controle != appris:
+            return
+        t = max(0, min(duree - 1, self.lecture.position - origine))
+        cles = courbe.lire() or courbe.creer()
+        courbes.poser(cles, t, courbe.mini + x * (courbe.maxi - courbe.mini),
+                      "palier" if courbe.palier else "lineaire")
+        self.panneau_courbes.graphe.update()
+
     def basculer_courbes(self, montrer: bool):
         dock = self._docks["courbes"]
         if montrer:
+            self.panneau_courbes.barre_midi.actualiser_ports()
             dock.show()
             dock.raise_()
         else:
@@ -1061,11 +1105,11 @@ class FenetrePrincipale(QMainWindow):
         piste_choisie = next((p for p in seq.pistes if p.id == self._piste_choisie), None)
         if len(ids) == 1 and seq.trouver(next(iter(ids)))[1] is not None:
             c = seq.trouver(next(iter(ids)))[1]
-            self.panneau_courbes.afficher(c, c.debut, c.duree, seq)
+            self.panneau_courbes.afficher(c, c.debut, c.duree, seq, self.projet)
         elif piste_choisie is not None:
-            self.panneau_courbes.afficher(piste_choisie, 0, seq.duree(), seq)
+            self.panneau_courbes.afficher(piste_choisie, 0, seq.duree(), seq, self.projet)
         else:
-            self.panneau_courbes.afficher(seq, 0, seq.duree(), seq)
+            self.panneau_courbes.afficher(seq, 0, seq.duree(), seq, self.projet)
         self.panneau_courbes.suivre(self.lecture.position)
 
     # Espace Datamosh : compression du clip choisi, vecteurs sur le programme

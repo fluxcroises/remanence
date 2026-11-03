@@ -919,6 +919,36 @@ def test_modulateurs_dans_le_panneau_courbes(fenetre, medias):
     assert _attendre(lambda: not seq().modulateurs, 2)
 
 
+def test_enregistrement_midi(fenetre, medias):
+    """Le premier contrôle bougé est retenu ; ses valeurs deviennent des images clés à la
+    tête de lecture ; un autre contrôle est ignoré ; l'arrêt valide une action."""
+    import mido
+    from remanence.effets import nouvel_effet
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    w.ajouter_effet("clip", clip.id, [nouvel_effet("decalage_rvb")])
+    w.timeline.vue._choisir({clip.id})
+    w.timeline.b_courbes.setChecked(True)
+    assert _attendre(lambda: w._docks["courbes"].isVisible(), 2)
+    barre = w.panneau_courbes.barre_midi
+    barre.actualiser_ports([])
+    assert not barre.bouton.isEnabled() and barre.port.currentText() == "Aucun contrôleur"
+    w.enregistrer_midi(True, "")
+    effet = lambda: w.projet.sequence.pistes_video[0].clips[0].effets[0]
+    for position, valeur in ((0, 0), (5, 127), (10, 64)):
+        w.aller_a(clip.debut + position)
+        w.enregistreur_midi.recevoir(mido.Message("control_change", control=21, value=valeur))
+        w.enregistreur_midi.recevoir(mido.Message("control_change", control=7, value=99))
+    assert _attendre(lambda: [k[0] for k in effet().cles.get("force", [])] == [0, 5, 10], 2)
+    assert [round(k[1]) for k in effet().cles["force"]] == [0, 100, 50]
+    assert barre.controle.text() == "CC 21"
+    w.enregistrer_midi(False)
+    assert _attendre(lambda: w.historique.libelles()[-1] == "Enregistrement MIDI", 2)
+
+
 def test_losanges_de_la_timeline_et_echap(fenetre, medias):
     """Clic sur un losange d'un clip : la tête y va ; le glisser déplace l'image clé.
     Échap quitte l'outil de coupe."""

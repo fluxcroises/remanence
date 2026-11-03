@@ -670,3 +670,34 @@ def test_effet_module_exporte_deux_fois(medias, tmp_path):
     assert prerendu.cle(projet, seq, clip) != avant
     valeurs = prerendu.valeurs_images(flux, 12, seq, clip.debut)
     assert valeurs[0]["persistance"] != valeurs[6]["persistance"]
+
+
+def test_modulateur_audio(medias):
+    """Le niveau du son d'une piste pilote un réglage ; il suit le gain du clip et entre dans
+    l'empreinte des pré-rendus."""
+    from remanence.effets import modulateurs
+    from remanence.media.lecteur import generer_cache_audio
+    from remanence.media.proxy import chemin_audio
+    from remanence.moteurs import audio
+    from remanence.moteurs.codec import prerendu
+    projet, clip = _projet(medias)
+    seq = projet.sequence
+    media = projet.medias[clip.media_id]
+    if not chemin_audio(media.infos).exists():
+        generer_cache_audio(media.infos, chemin_audio(media.infos))
+    m = modulateurs.nouveau_modulateur("audio")
+    effet = nouvel_effet("persistance")
+    clip.effets = [effet]
+    m.cibles.append([effet.id, "persistance", 50])
+    seq.modulateurs.append(m)
+    lie = next(c for c in seq.pistes_audio[0].clips)
+    niveaux = audio.enveloppe(projet, seq, m.params)
+    assert len(niveaux) == seq.duree() and niveaux.max() > 0.2
+    assert modulateurs.valeur(m, 10, 24, projet, seq) == float(niveaux[10])
+    assert modulateurs.valeur(m, 10, 24) == 0.0, "sans le projet : rien"
+    avant = prerendu.cle(projet, seq, clip)
+    lie.gain = 0.0
+    assert audio.enveloppe(projet, seq, m.params).max() < 0.05, "le gain du clip compte"
+    assert prerendu.cle(projet, seq, clip) != avant
+    m.params["bande"] = "aigus"
+    assert len(audio.enveloppe(projet, seq, m.params)) == seq.duree()

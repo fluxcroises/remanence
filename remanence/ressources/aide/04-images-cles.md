@@ -35,13 +35,25 @@ Devant chaque masque de l'inspecteur, le losange anime sa forme. Placez la tête
 
 Un modulateur fait varier un réglage tout seul, en plus de ses images clés : une oscillation, un hasard qui ondule, des pulsations au tempo.
 
-1. Dans le panneau Courbes, clic droit sur un réglage, puis Moduler par et un nouveau modulateur : Oscillateur, Aléatoire lissé ou Tempo.
+1. Dans le panneau Courbes, clic droit sur un réglage, puis Moduler par et un nouveau modulateur : Oscillateur, Aléatoire lissé, Tempo ou Audio.
 2. Choisissez le modulateur dans la liste du bas : ses réglages s'affichent au-dessus du graphe.
    - **Oscillateur** : forme (sinus, triangle, carré, dents de scie), fréquence, phase.
    - **Aléatoire lissé** : vitesse ; « Autre tirage » change le hasard.
    - **Tempo** : battements par minute, division, déclin de chaque impulsion, décalage.
+   - **Audio** : le niveau du son d'une piste (ou de toutes), en volume ou dans les graves, les médiums ou les aigus ; sensibilité, attaque (vitesse de montée), relâche (vitesse de retombée).
 3. La profondeur dit de combien le modulateur fait bouger le réglage, en % de sa plage. Négative, elle l'inverse.
 
 Un même modulateur peut piloter plusieurs réglages : clic droit sur un autre réglage, Moduler par, puis son nom. Sur la courbe d'un réglage modulé, le pointillé montre les images clés et le trait plein le résultat.
 
 Les modulateurs suivent le temps de la séquence. Le rendu est toujours le même : deux exports donnent les mêmes images.
+
+## Enregistrer un contrôleur MIDI
+
+Avec un contrôleur MIDI branché, choisissez un réglage dans le panneau Courbes : la barre MIDI s'affiche au-dessus du graphe.
+
+1. Choisissez le contrôleur, puis cliquez Enregistrer.
+2. Bougez le bouton ou le curseur voulu : c'est lui qui est retenu (son numéro s'affiche, par exemple CC 21).
+3. Lancez la lecture et jouez : chaque mouvement pose une image clé à la tête de lecture.
+4. Cliquez de nouveau Enregistrer pour arrêter.
+
+Le geste devient une courbe ordinaire, à retoucher comme les autres : le rendu reste le même d'un export à l'autre.

@@ -20,7 +20,8 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QHBoxLayout, QListWidget, Q
                                QMenu, QPushButton, QToolButton, QVBoxLayout, QWidget)
 
 from remanence.effets import EFFETS, courbes, modulateurs, valeur
-from remanence.ui import charte
+from remanence.moteurs.audio import BANDES
+from remanence.ui import charte, midi
 from remanence.ui.composants import LigneParametre, bouton_icone, etiquette, poser_icone
 
 MARGE_X, MARGE_Y = 14, 16
@@ -101,6 +102,7 @@ class Graphe(QWidget):
         self._prise = None  # ("cle" | "g" | "d", rang)
         # La séquence (ses modulateurs) et l'image où commence le temps du porteur.
         self.seq = None
+        self.projet = None  # pour les modulateurs audio
         self.origine = 0
         self.modulateur = None  # modulateur montré à la place des courbes
 
@@ -111,7 +113,7 @@ class Graphe(QWidget):
         cle = (courbe.effet_id, courbe.cle)
         if not any(tuple(c[:2]) == cle for m in self.seq.modulateurs for c in m.cibles):
             return None
-        decalage = modulateurs.decalages(self.seq, self.origine + t).get(cle, 0.0)
+        decalage = modulateurs.decalages(self.seq, self.origine + t, self.projet).get(cle, 0.0)
         v = courbe.valeur_a(t) + decalage * (courbe.maxi - courbe.mini)
         return min(courbe.maxi, max(courbe.mini, v))
 
@@ -143,7 +145,10 @@ class Graphe(QWidget):
         return min(c.maxi, max(c.mini, self.v_libre(c, y)))
 
     def courbe(self) -> Courbe | None:
-        return self.courbes[self.active] if 0 <= self.active < len(self.courbes) else None
+        return self.courbe_de(self.active)
+
+    def courbe_de(self, rang: int) -> Courbe | None:
+        return self.courbes[rang] if 0 <= rang < len(self.courbes) else None
 
     # Dessin
 
@@ -189,13 +194,16 @@ class Graphe(QWidget):
         return chemin
 
     def _dessiner_modulateur(self, p: QPainter):
-        """Le signal du modulateur choisi, de -1 (bas) à 1 (haut), sur la durée montrée."""
+        """Le signal du modulateur choisi sur la durée montrée : de -1 (bas) à 1 (haut), ou
+        de 0 à 1 pour le tempo et l'audio."""
         c = charte.actuelle()
         z = self._zone()
         cadence = float(self.seq.fraction_cadence) if self.seq is not None else 25.0
+        bas = 0.0 if self.modulateur.type in modulateurs.UNIPOLAIRES else -1.0
         chemin = self._chemin(
-            lambda t: modulateurs.valeur(self.modulateur, self.origine + t, cadence),
-            lambda v: z.bottom() - (v + 1) / 2 * z.height())
+            lambda t: modulateurs.valeur(self.modulateur, self.origine + t, cadence,
+                                         self.projet, self.seq),
+            lambda v: z.bottom() - (v - bas) / (1 - bas) * z.height())
         p.setPen(QPen(c.c("focus"), 2))
         p.setBrush(Qt.NoBrush)
         p.drawPath(chemin)
@@ -393,6 +401,8 @@ class FicheModulateur(QWidget):
         self._lay.setContentsMargins(12, 8, 12, 8)
         self._lay.setSpacing(6)
 
+    pistes_audio: dict = {}
+
     def afficher(self, m, noms_cibles: dict):
         while self._lay.count():
             item = self._lay.takeAt(0)
@@ -413,6 +423,9 @@ class FicheModulateur(QWidget):
             haut.addWidget(self._choix("Forme", modulateurs.FORMES, m, "forme"))
         elif m.type == "tempo":
             haut.addWidget(self._choix("Division", modulateurs.DIVISIONS, m, "division"))
+        elif m.type == "audio":
+            haut.addWidget(self._choix("Son", self.pistes_audio, m, "piste"))
+            haut.addWidget(self._choix("Bande", BANDES, m, "bande"))
         elif m.type == "aleatoire":
             tirage = QPushButton("Autre tirage")
             tirage.clicked.connect(lambda: self.reglage.emit(
@@ -466,6 +479,49 @@ def _vider(lay):
             _vider(item.layout())
 
 
+class BarreMidi(QWidget):
+    """Au-dessus de la courbe d'un réglage : le contrôleur MIDI et l'enregistrement."""
+    enregistrement = Signal(bool, str)  # en cours, nom du port
+
+    def __init__(self):
+        super().__init__()
+        self.setProperty("role", "panneau")
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(12, 6, 12, 6)
+        lay.setSpacing(8)
+        lay.addWidget(etiquette("MIDI", "libelle"))
+        self.port = QComboBox()
+        self.port.setAccessibleName("Contrôleur MIDI")
+        self.port.setMinimumWidth(200)
+        lay.addWidget(self.port)
+        self.bouton = QPushButton("Enregistrer")
+        self.bouton.setCheckable(True)
+        self.bouton.setToolTip("Enregistrer le contrôleur sur ce réglage")
+        self.bouton.toggled.connect(lambda v: self.enregistrement.emit(v, self.port.currentText()))
+        lay.addWidget(self.bouton)
+        self.controle = etiquette("", "valeur")
+        lay.addWidget(self.controle)
+        lay.addStretch(1)
+        self.actualiser_ports()
+
+    def actualiser_ports(self, liste: list[str] | None = None):
+        noms = midi.ports() if liste is None else liste
+        actuel = self.port.currentText()
+        self.port.clear()
+        if noms:
+            self.port.addItems(noms)
+            if actuel in noms:
+                self.port.setCurrentText(actuel)
+        else:
+            self.port.addItem("Aucun contrôleur")
+        self.port.setEnabled(bool(noms))
+        self.bouton.setEnabled(bool(noms) or self.bouton.isChecked())
+
+    def montrer_controle(self, numero: int | None):
+        self.controle.setText("" if numero is None else f"CC {numero}")
+
+
 class PanneauCourbes(QWidget):
     modifie = Signal(str)
     tete_demandee = Signal(int)  # image de la séquence
@@ -513,8 +569,10 @@ class PanneauCourbes(QWidget):
         self.fiche = FicheModulateur()
         self.fiche.reglage.connect(self.reglage_modulateur)
         self.fiche.hide()
+        self.barre_midi = BarreMidi()
         self.graphe = Graphe()
         droite.addWidget(self.fiche)
+        droite.addWidget(self.barre_midi)
         droite.addWidget(self.graphe, 1)
         lay.addLayout(droite, 1)
         self.origine = 0
@@ -525,14 +583,16 @@ class PanneauCourbes(QWidget):
         self.graphe.modifie.connect(self.modifie)
         self.graphe.tete_demandee.connect(lambda t: self.tete_demandee.emit(t + self.origine))
 
-    def afficher(self, porteur, origine: int, duree: int, seq=None):
+    def afficher(self, porteur, origine: int, duree: int, seq=None, projet=None):
         """Les courbes du porteur (clip, piste ou séquence ; None : rien) ; origine : image
         de la séquence où commence le temps de ses images clés ; seq : ses modulateurs."""
         nom_actif = self.liste.currentItem().text() if self.liste.currentItem() else None
         mod_actif = self.graphe.modulateur.id if self.graphe.modulateur is not None else None
         self.origine = origine
         self.seq = seq
-        self.graphe.seq, self.graphe.origine = seq, origine
+        self.graphe.seq, self.graphe.origine, self.graphe.projet = seq, origine, projet
+        self.fiche.pistes_audio = {"": "Toutes les pistes", **{
+            p.id: p.nom for p in (seq.pistes_audio if seq is not None else [])}}
         self.graphe.duree = max(1, duree)
         self.graphe.courbes = courbes_de(porteur) if porteur is not None else []
         self.liste.blockSignals(True)
@@ -579,6 +639,7 @@ class PanneauCourbes(QWidget):
         self.liste_modulateurs.blockSignals(False)
         self.graphe.modulateur = None
         self.fiche.hide()
+        self.barre_midi.setVisible(self.graphe.courbe_de(rang) is not None)
         if self.graphe.active != rang or not garder:
             self.graphe.choisie = None
         self.graphe.active = rang
@@ -592,6 +653,7 @@ class PanneauCourbes(QWidget):
         self.graphe.modulateur = mods[rang]
         self.fiche.afficher(mods[rang], self._noms_cibles())
         self.fiche.show()
+        self.barre_midi.hide()
         self.graphe.update()
 
     def _menu_reglage(self, pos):

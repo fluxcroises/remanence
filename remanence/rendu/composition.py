@@ -49,7 +49,7 @@ def actifs(effets: list[Effet], t: float = 0, decalages: dict | None = None) -> 
 def couches(projet: Projet, seq: Sequence, f: int) -> list[Couche]:
     """Clips visibles à l'image f, de la piste la plus basse à la plus haute."""
     resultat = []
-    mod = modulateurs.decalages(seq, f)
+    mod = modulateurs.decalages(seq, f, projet)
     for piste in reversed(seq.pistes_entendues("video")):
         presents = piste.clips_a(f)
         for i, c in enumerate(presents):
@@ -159,7 +159,7 @@ class Compositeur:
                     codec = self._trame_codec(seq, couche, f, trame)
                 g.ajouter(trame, couche.media.infos.video.couleur, couche.opacite, x0, y0,
                           couche.effets, f, couche.fusion, codec)
-            effets = actifs(seq.effets, f, modulateurs.decalages(seq, f))
+            effets = actifs(seq.effets, f, modulateurs.decalages(seq, f, self.projet))
             if effets:
                 g.effets_sequence(effets, f)
             return g.lire()
