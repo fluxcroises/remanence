@@ -8,6 +8,8 @@ import traceback
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, Slot
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QPushButton, QWidget
 
+from remanence import journal
+
 
 class _Signaux(QObject):
     progression = Signal(float)
@@ -29,16 +31,23 @@ class Tache(QRunnable):
         self.setAutoDelete(False)
 
     def run(self):
+        journal.info(f"Tâche lancée : {self.libelle}")
         try:
-            resultat = self.fonction(self._progresser, self.annule)
+            with journal.operation(self.libelle):
+                resultat = self.fonction(self._progresser, self.annule)
         except InterruptedError:
+            journal.info(f"Tâche annulée : {self.libelle}")
             self.signaux.annulee.emit()
         except Exception as e:
-            self.signaux.erreur.emit(str(e), traceback.format_exc())
+            detail = traceback.format_exc()
+            journal.erreur(f"Tâche en échec : {self.libelle}", str(e), detail)
+            self.signaux.erreur.emit(str(e), detail)
         else:
             if self.annule.is_set():
+                journal.info(f"Tâche annulée : {self.libelle}")
                 self.signaux.annulee.emit()
             else:
+                journal.info(f"Tâche finie : {self.libelle}")
                 self.signaux.fini.emit(resultat)
 
     def _progresser(self, valeur: float):

@@ -16,6 +16,7 @@ import os
 import av
 import numpy as np
 
+from remanence import journal
 from remanence.effets import COMMUN, EFFETS, valeur
 from remanence.effets.masques import contour
 from remanence.media.sonde import Couleur
@@ -206,11 +207,19 @@ def gpu_demande() -> bool:
     return moderngl is not None and os.environ.get("REMANENCE_RENDU", "").lower() != "cpu"
 
 
+_carte_notee = False  # la carte graphique n'est écrite qu'une fois au journal
+
 class RenduGPU:
     """Contexte OpenGL hors écran et ses programmes. À créer et utiliser dans un seul fil."""
 
     def __init__(self):
         self.ctx = moderngl.create_standalone_context(require=430)
+        global _carte_notee
+        if not _carte_notee:
+            _carte_notee = True
+            info = self.ctx.info
+            journal.info(f"Carte graphique : {info.get('GL_RENDERER', '?')} · "
+                         f"OpenGL {info.get('GL_VERSION', '?')}")
         quad = np.array([-1, -1, 1, -1, -1, 1, 1, 1], dtype="f4")
         self._vbo = self.ctx.buffer(quad.tobytes())
         self._conv = self.ctx.program(vertex_shader=SOMMETS, fragment_shader=VERS_RVBA)

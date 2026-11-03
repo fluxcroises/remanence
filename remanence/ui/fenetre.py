@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QDockWidg
                                QFileDialog, QInputDialog, QMainWindow, QMenu, QMessageBox,
                                QSizePolicy, QToolBar, QToolButton, QVBoxLayout, QWidget)
 
+from remanence import journal
 from remanence.config import reglages_interface
 from remanence.effets import (EFFETS, courbes, masque_a, modulateurs, poser_cle, retirer_cle,
                               valeur_a)
@@ -704,6 +705,7 @@ class FenetrePrincipale(QMainWindow):
         ai = m.addMenu("&Aide")
         self._action(ai, "Accueil…", self.montrer_accueil)
         self._action(ai, "Prise en main…", lambda: FenetreAide.ouvrir(), "F1")
+        self._action(ai, "Ouvrir le journal", self.ouvrir_journal)
         ai.addSeparator()
         self._action(ai, "À propos de Remanence", lambda: APropos(self).exec())
 
@@ -1064,6 +1066,7 @@ class FenetrePrincipale(QMainWindow):
         """À appeler après toute modification du projet : historique, affichage, aperçu."""
         if self.historique.valider(self.projet, libelle, fusionner):
             self.modifie = True
+            journal.info(f"Action : {libelle}")
         self._afficher_tout()
         self._actualiser_calque()
         self._lancer_prerendus()
@@ -2001,6 +2004,12 @@ class FenetrePrincipale(QMainWindow):
             reglages.setValue("affichage/luts", json.dumps(recentes[:6]))
         self.b_lut.setText(f"LUT {lut.nom}" if lut else "LUT")
         self.b_lut.setVisible(lut is not None)
+
+    def ouvrir_journal(self):
+        """Le dossier du journal dans l'explorateur, pour l'envoyer avec une description."""
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(journal.dossier())))
 
     # Échanges : montage du monteur, image fixe, liste de remplacement
 

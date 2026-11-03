@@ -856,3 +856,39 @@ def test_slit_scan_et_feedback():
     v["retour"] = 50
     sortie = list(feedback(iter(images), [v] * 30))
     assert not np.allclose(sortie[10], images[10])
+
+
+def test_journal(tmp_path, monkeypatch):
+    """Erreurs d'un fil de calcul, opération en cours, pile d'appels ; fichier qui tourne."""
+    import logging
+    import threading
+    from remanence import journal
+    monkeypatch.setenv("REMANENCE_DONNEES", str(tmp_path))
+    for h in list(journal._journal.handlers):
+        journal._journal.removeHandler(h)
+    journal.demarrer({"Remanence": "essai"})
+    with journal.operation("Export de plan.mov"):
+        try:
+            raise ValueError("disque plein")
+        except ValueError as e:
+            journal.exception("Export impossible", type(e), e, e.__traceback__)
+
+    def planter():
+        raise RuntimeError("fil en panne")
+    fil = threading.Thread(target=planter, name="calcul")
+    fil.start()
+    fil.join()
+    for h in journal._journal.handlers:
+        h.flush()
+    texte = journal.fichier().read_text(encoding="utf-8")
+    assert "Séance ouverte" in texte and "Remanence essai" in texte
+    assert "Export impossible : disque plein (pendant : Export de plan.mov)" in texte
+    assert "Traceback" in texte and "fil en panne" in texte and "[calcul]" in texte
+    assert journal.fichier().parent == tmp_path / "journal"
+    for h in list(journal._journal.handlers):
+        h.close()
+        journal._journal.removeHandler(h)
+    threading.excepthook = threading.__excepthook__
+    import faulthandler
+    faulthandler.disable()
+    assert isinstance(logging.getLogger("remanence"), logging.Logger)

@@ -24,6 +24,9 @@ def principal() -> int:
                        QLibraryInfo.path(QLibraryInfo.TranslationsPath)):
         app.installTranslator(traduction)
     debut = time.perf_counter()
+    from remanence import __version__, journal
+    import PySide6
+    journal.demarrer({"Remanence": __version__, "Qt": PySide6.__version__})
 
     from remanence.ui import charte
     charte.charger_polices()
@@ -37,7 +40,8 @@ def principal() -> int:
     ecran.etape("Chargement des polices et de la charte…")
 
     ecran.etape("Démarrage du moteur vidéo (FFmpeg)…")
-    import av  # noqa: F401  (charge les bibliothèques FFmpeg pendant que l'écran est affiché)
+    import av  # charge les bibliothèques FFmpeg pendant que l'écran est affiché
+    journal.info(f"PyAV {av.__version__} · FFmpeg {av.ffmpeg_version_info}")
     from remanence.ui.erreurs import afficher_erreur
     from remanence.ui.fenetre import FenetrePrincipale
 
@@ -45,6 +49,7 @@ def principal() -> int:
     fenetre = FenetrePrincipale()
 
     def erreur_imprevue(type_, valeur, tb):
+        # afficher_erreur l'écrit au journal, pile d'appels comprise.
         detail = "".join(traceback.format_exception(type_, valeur, tb))
         afficher_erreur(fenetre, "Erreur inattendue",
                         "Erreur imprévue. Le projet n'est pas perdu : enregistrez-le.",
@@ -68,7 +73,9 @@ def principal() -> int:
         from remanence.ui import accueil
         if accueil.au_demarrage():
             QTimer.singleShot(0, fenetre.montrer_accueil)
-    return app.exec()
+    code = app.exec()
+    journal.info(f"Séance fermée (code {code})")
+    return code
 
 
 if __name__ == "__main__":

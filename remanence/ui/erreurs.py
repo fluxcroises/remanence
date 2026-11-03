@@ -2,26 +2,17 @@
 
 from __future__ import annotations
 
-import datetime
 import traceback
 
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QLabel, QPushButton, QVBoxLayout)
 
-from remanence.config import dossier_donnees
-
-
-def journaliser(detail: str):
-    try:
-        with open(dossier_donnees() / "journal.txt", "a", encoding="utf-8") as f:
-            f.write(f"\n[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}]\n{detail}\n")
-    except OSError:
-        pass
+from remanence import journal
 
 
 def afficher_erreur(parent, titre: str, message: str, detail: str | None = None):
     detail = detail or traceback.format_exc()
-    journaliser(f"{titre} : {message}\n{detail}")
+    journal.erreur(titre, message, detail)
     d = QDialog(parent)
     d.setWindowTitle(titre)
     lay = QVBoxLayout(d)
