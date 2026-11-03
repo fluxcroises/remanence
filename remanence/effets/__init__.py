@@ -61,6 +61,8 @@ class DescriptionEffet:
     # Moteur flux optique : flux(images RVB float, valeurs de chaque image) rend les images
     # traitées. Pré-rendu comme le moteur codec, mais en 16 bits.
     flux: object = None
+    # Programme interne (transitions des fondus) : ni bibliothèque, ni menus, ni inspecteur.
+    interne: bool = False
 
     @property
     def codec(self) -> bool:

@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (QHBoxLayout, QInputDialog, QMenu, QScrollBar, QSl
 from remanence.media.lecteur import AudioCache
 from remanence.media.proxy import chemin_audio
 from remanence.media.timecode import images_vers_tc
-from remanence.effets import EFFETS, plage_cles
+from remanence.effets import EFFETS, plage_cles, transitions
 from remanence.effets.prereglages import MIME_PREREGLAGE, depuis_mime
 from remanence.projet import edition
 from remanence.projet.modele import Clip, Marqueur, Piste, Projet, valeur_enveloppe
@@ -498,6 +498,16 @@ class VueTimeline(QWidget):
                 p.drawLine(QPointF(x0, r.bottom()), QPointF(x0 + l, corps_haut))
             else:
                 p.drawLine(QPointF(x0, corps_haut), QPointF(x0 + l, r.bottom()))
+            style = clip.style_fondu.get("type") if gauche and clip.style_fondu else None
+            if style in transitions.TYPES and l >= 36:
+                # Le nom de la transition dans le fondu qu'elle remplace.
+                p.save()
+                p.setFont(c.police("caption"))
+                p.drawText(QRectF(x0 + 4, corps_haut + 2, l - 6, 14),
+                           Qt.AlignLeft | Qt.AlignVCenter,
+                           p.fontMetrics().elidedText(transitions.TYPES[style], Qt.ElideRight,
+                                                      int(l - 6)))
+                p.restore()
 
     def _dessiner_enveloppe(self, p: QPainter, clip: Clip, r: QRectF):
         if not clip.enveloppe and clip.gain == 1.0:
@@ -922,6 +932,15 @@ class VueTimeline(QWidget):
                                    lambda: fenetre.basculer_cle("raccord", clip.id, 0))
                 a.setCheckable(True)
                 a.setChecked(clip.transition is not None)
+            if piste_clip.type == "video":
+                style = clip.style_fondu.get("type") if clip.style_fondu else None
+                sous = menu.addMenu("Transition du fondu")
+                for cle, nom in [(None, "Fondu"), *transitions.TYPES.items()]:
+                    a = sous.addAction(nom, lambda cle=cle: fenetre._reglage_clip(
+                        clip.id, "style_fondu",
+                        transitions.nouveau_style(cle) if cle else None))
+                    a.setCheckable(True)
+                    a.setChecked(cle == style)
             if self.projet.sequence.trouver(clip.id)[0].type == "video":
                 effets = menu.addMenu("Ajouter un effet")
                 remplir_menu_effets(effets, lambda liste: fenetre.ajouter_effet(

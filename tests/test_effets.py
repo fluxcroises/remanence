@@ -32,7 +32,7 @@ def _image(projet, f=5, echelle=1.0):
         c.fermer()
 
 
-@pytest.mark.parametrize("cle", sorted(c for c, d in EFFETS.items() if not d.codec))
+@pytest.mark.parametrize("cle", sorted(c for c, d in EFFETS.items() if not d.codec and not d.interne))
 def test_chaque_effet_a_0_50_et_100(medias, cle):
     projet, clip = _projet(medias)
     source = _image(projet)
@@ -52,7 +52,7 @@ def test_chaque_effet_a_0_50_et_100(medias, cle):
 
 def test_prereglages_et_animation(medias):
     projet, clip = _projet(medias)
-    for cle, d in EFFETS.items():
+    for cle, d in ((c, d) for c, d in EFFETS.items() if not d.interne):
         assert len(d.prereglages) >= 3, d.nom
         for nom in d.prereglages:
             clip.effets = [nouvel_effet(cle, nom)]
@@ -773,3 +773,86 @@ def test_plan_en_flux_optique_se_reintegre(medias, tmp_path):
     assert np.abs(_image(projet, b.debut + 10) - source).max() > 0.02, "la bavure se voit"
     tout = exporter(projet, seq, tmp_path / "tout.mov")
     assert tout.conforme and tout.images_recopiees >= a.duree, "le premier plan est recopié"
+
+
+def _fondu_enchaine(medias, longueur=10):
+    """Le plan A (ProRes 422 HQ), puis B (ProRes LT) qui le recouvre sur `longueur` images."""
+    from remanence.projet.modele import Clip
+    projet, a = _projet(medias)
+    infos, _ = analyser(str(medias["sans_audio_2997"]))
+    mb = Media(nouvel_id(), str(medias["sans_audio_2997"]), infos)
+    projet.medias[mb.id] = mb
+    b = Clip(nouvel_id(), mb.id, a.fin - longueur, 0, 20, fondu_entree=longueur)
+    a.fondu_sortie = longueur
+    projet.sequence.pistes_video[0].clips.append(b)
+    projet.sequence.pistes_video[0].trier()
+    return projet, a, b
+
+
+@pytest.mark.parametrize("type_", ["volet", "blocs", "rvb", "coupure"])
+def test_transitions_glitch_du_fondu(medias, type_):
+    from remanence.effets import transitions
+    projet, a, b = _fondu_enchaine(medias)
+    piste = projet.sequence.pistes_video[0]
+    milieu, debut_b = b.debut + 4, b.debut
+
+    def seul(clip, f):
+        autre = b if clip is a else a
+        piste.clips.remove(autre)
+        # Le clip seul, plein, sans ses fondus.
+        etat = clip.style_fondu, clip.fondu_entree, clip.fondu_sortie
+        clip.style_fondu, clip.fondu_entree, clip.fondu_sortie = None, 0, 0
+        try:
+            return _image(projet, f)
+        finally:
+            clip.style_fondu, clip.fondu_entree, clip.fondu_sortie = etat
+            piste.clips.append(autre)
+            piste.trier()
+
+    avant = _image(projet, b.debut - 1)
+    b.style_fondu = transitions.nouveau_style(type_)
+    image = _image(projet, milieu)
+    assert np.array_equal(image, _image(projet, milieu)), "déterministe"
+    image_a, image_b = seul(a, milieu), seul(b, milieu)
+    if type_ == "volet":
+        # Vers la droite, à mi-chemin : B à gauche, A à droite.
+        assert np.abs(image[:, :20] - image_b[:, :20]).max() < 1e-5
+        assert np.abs(image[:, -20:] - image_a[:, -20:]).max() < 1e-5
+    elif type_ == "blocs":
+        de_b = np.all(np.abs(image - image_b) < 1e-5, axis=2)
+        de_a = np.all(np.abs(image - image_a) < 1e-5, axis=2)
+        assert de_b.mean() > 0.1 and de_a.mean() > 0.1, "des blocs de B sur A"
+    else:
+        # Avant le milieu, A abîmé ; après, B abîmé ; ni l'un ni l'autre intact.
+        tot = _image(projet, debut_b + 1)
+        assert np.abs(tot - seul(a, debut_b + 1)).max() > 0.02
+        tard = _image(projet, b.debut + b.fondu_entree - 2)
+        assert np.abs(tard - seul(b, b.debut + b.fondu_entree - 2)).max() > 0.02
+        assert np.abs(tard - seul(a, b.debut + b.fondu_entree - 2)).max() > 0.02
+    assert np.array_equal(_image(projet, b.debut - 1), avant), "avant le fondu, rien ne change"
+    apres = b.debut + b.fondu_entree + 1
+    assert np.abs(_image(projet, apres) - seul(b, apres)).max() < 1e-5, "après, B intact"
+    reloaded = Projet.depuis_dict(projet.vers_dict())
+    assert reloaded.sequence.pistes_video[0].clips[1].style_fondu == b.style_fondu
+
+
+def test_slit_scan_et_feedback():
+    """Slit-scan : la ligne du bas vient de `profondeur` images plus tôt. Feedback : l'image
+    précédente revient ; sans retour, la source."""
+    from remanence.effets.feedback import feedback
+    from remanence.effets.slit_scan import slit_scan
+    images = [np.full((10, 4, 3), k / 100, np.float32) for k in range(30)]
+    valeurs = [{"profondeur": 9, "inverser": 0, "vertical": 0}] * 30
+    sortie = list(slit_scan(iter(images), valeurs))
+    assert len(sortie) == 30
+    assert np.allclose(sortie[20][0], 0.20) and np.allclose(sortie[20][-1], 0.11, atol=1e-3)
+    assert np.allclose(sortie[3][-1], 0.0), "au début, la première image"
+    valeurs = [{"profondeur": 9, "inverser": 1, "vertical": 1}] * 30
+    sortie = list(slit_scan(iter(images), valeurs))
+    assert np.allclose(sortie[20][:, 0], 0.11, atol=1e-3) and np.allclose(sortie[20][:, -1], 0.20)
+    v = {"retour": 0, "zoom": 3, "rotation": 0, "decalage_x": 0, "decalage_y": 0, "teinte": 0,
+         "eclaircir": 0}
+    assert all(np.array_equal(x, y) for x, y in zip(feedback(iter(images), [v] * 30), images))
+    v["retour"] = 50
+    sortie = list(feedback(iter(images), [v] * 30))
+    assert not np.allclose(sortie[10], images[10])

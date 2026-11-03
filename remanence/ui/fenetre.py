@@ -1997,6 +1997,13 @@ class FenetrePrincipale(QMainWindow):
             return
         if c is None or getattr(c, champ) == valeur:
             return
+        if champ == "style_fondu":
+            # Une transition remplace un fondu d'entrée : sans fondu, elle en crée un.
+            c.style_fondu = valeur
+            if valeur and not c.fondu_entree:
+                c.fondu_entree = min(12, c.duree)
+            QTimer.singleShot(0, lambda: self.valider("Transition du fondu"))
+            return
         if champ in ("fondu_entree", "fondu_sortie"):
             edition.regler_fondu(self.projet.sequence, clip_id,
                                  "entree" if champ == "fondu_entree" else "sortie", valeur)

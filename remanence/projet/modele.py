@@ -162,6 +162,9 @@ class Clip:
     # clip (images depuis son début).
     transition: Transition | None = None
     cles_supprimees: list[int] = field(default_factory=list)
+    # Allure du fondu d'entrée (voir effets/transitions.py) : {"type": "volet" | "blocs" |
+    # "rvb" | "coupure", réglages…} ; None, le fondu ordinaire.
+    style_fondu: dict | None = None
 
     @property
     def fin(self) -> int:
@@ -174,7 +177,8 @@ class Clip:
     def contient(self, f: int) -> bool:
         return self.debut <= f < self.fin
 
-    def facteur(self, f: int, sans_fondu_sortie: bool = False) -> float:
+    def facteur(self, f: int, sans_fondu_sortie: bool = False,
+                sans_fondu_entree: bool = False) -> float:
         """Opacité (vidéo) ou volume (audio) à l'image f de la séquence.
 
         sans_fondu_sortie sert au fondu enchaîné vidéo : le clip du dessous reste plein
@@ -184,7 +188,8 @@ class Clip:
         if decalage < 0 or decalage >= self.duree:
             return 0.0
         valeur = self.gain * valeur_enveloppe(self.enveloppe, decalage)
-        if self.fondu_entree and decalage < self.fondu_entree:
+        # sans_fondu_entree : une transition (volet, blocs…) fait entrer le clip.
+        if self.fondu_entree and decalage < self.fondu_entree and not sans_fondu_entree:
             valeur *= (decalage + 1) / (self.fondu_entree + 1)
         reste = self.duree - 1 - decalage
         if self.fondu_sortie and reste < self.fondu_sortie and not sans_fondu_sortie:

@@ -630,7 +630,7 @@ def test_bibliotheque_d_effets(fenetre, medias, monkeypatch):
     b = w.bibliotheque
     assert b.vue.count() == len(pr.fournis())
     b._filtrer("Signal")
-    assert b.vue.count() == 15, "cinq effets Signal, trois préréglages chacun"
+    assert b.vue.count() == 18, "six effets Signal, trois préréglages chacun"
     b._filtrer("")
     b.recherche.setText("cassette")
     assert b.vue.count() == 3, "les trois préréglages de Cassette VHS"
@@ -1121,3 +1121,27 @@ def test_ergonomie_presse_papiers_zoom_et_reperes(fenetre, medias):
     assert _attendre(lambda: w.timeline.barre_outils.property("clavier") is True, 2)
     w.choisir_espace("effets")
     assert w.onglets_droite.currentIndex() == 0, "l'inspecteur dans l'espace Effets"
+
+
+def test_transition_du_fondu_depuis_l_interface(fenetre, medias):
+    """Transition choisie dans l'inspecteur : posée sur le clip, avec un fondu s'il manquait."""
+    from PySide6.QtWidgets import QComboBox
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    w.timeline.vue._choisir({clip.id})
+    assert _attendre(lambda: any(l.accessibleName() == "Transition"
+                                 for l in w.inspecteur.findChildren(QComboBox)), 3)
+    liste = next(l for l in w.inspecteur.findChildren(QComboBox)
+                 if l.accessibleName() == "Transition")
+    liste.activated.emit(liste.findData("volet"))
+    assert _attendre(lambda: (w.projet.sequence.pistes_video[0].clips[0].style_fondu or {})
+                     .get("type") == "volet", 3)
+    c = w.projet.sequence.pistes_video[0].clips[0]
+    assert c.fondu_entree == 12, "un fondu d'entrée créé pour la transition"
+    assert _attendre(lambda: any(l.accessibleName() == "Direction"
+                                 for l in w.inspecteur.findChildren(QComboBox)), 3)
+    w.annuler()
+    assert w.projet.sequence.pistes_video[0].clips[0].style_fondu is None

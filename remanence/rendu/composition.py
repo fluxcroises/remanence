@@ -16,7 +16,7 @@ import numpy as np
 from remanence.media.lecteur import FREQUENCE_MIXAGE, LecteurVideo, Pool
 from remanence.media.proxy import chemin_audio, chemin_proxy
 from remanence.media.sonde import analyser
-from remanence.effets import EFFETS, agit_a, instantane, modulateurs
+from remanence.effets import EFFETS, agit_a, instantane, modulateurs, transitions
 from remanence.projet.modele import Clip, Effet, Media, Projet, Sequence
 from remanence.moteurs.codec import prerendu
 from remanence.rendu.couleur import vers_rvb16_apercu, vers_rvba
@@ -63,13 +63,24 @@ def couches(projet: Projet, seq: Sequence, f: int) -> list[Couche]:
             if media is None or media.hors_ligne or media.infos.video is None:
                 continue
             # Fondu enchaîné : le clip recouvert garde toute son opacité sous le suivant.
-            opacite = c.facteur(f, sans_fondu_sortie=i < len(presents) - 1) * piste.niveau
+            dessous = i < len(presents) - 1
+            opacite = c.facteur(f, sans_fondu_sortie=dessous) * piste.niveau
+            entree_fondu = []
+            if transitions.actif(c, f - c.debut):
+                # Transition : le clip entre par elle et non par un mélange ; celui qui sort
+                # (juste avant sur la piste) peut s'abîmer aussi.
+                part, entree_fondu, sortie_fondu = transitions.effets_du_fondu(c, f - c.debut)
+                opacite = c.facteur(f, dessous, sans_fondu_entree=True) * piste.niveau * part
+                precedente = next((x for x in reversed(resultat)
+                                   if i > 0 and x.clip is presents[i - 1]), None)
+                if precedente is not None:
+                    precedente.effets = precedente.effets + sortie_fondu
             if opacite <= 0.0:
                 continue
             n = min(c.entree + (f - c.debut), media.infos.video.nb_images - 1)
             resultat.append(Couche(c, media, n, min(opacite, 1.0),
                                    actifs(c.effets, f - c.debut, mod)
-                                   + actifs(piste.effets, f, mod),
+                                   + actifs(piste.effets, f, mod) + entree_fondu,
                                    c.fusion, prerendu.dans_plages(projet, seq, c, f - c.debut)))
     return resultat
 

@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QGridLayout, 
                                QMenu, QPushButton, QScrollArea, QSizePolicy, QToolButton,
                                QVBoxLayout, QWidget)
 
-from remanence.effets import EFFETS, courbes, masque_a, valeur_a
+from remanence.effets import EFFETS, courbes, masque_a, transitions, valeur_a
 from remanence.moteurs.codec import ffglitch, scripts
 from remanence.projet import edition
 from remanence.media.timecode import images_vers_tc
@@ -413,6 +413,8 @@ class Inspecteur(PanneauFiche):
             ligne.valeur_finale.connect(lambda v, champ=champ: self.reglage.emit(c.id, champ,
                                                                                  round(v)))
             self._cible.addWidget(ligne)
+            if video and champ == "fondu_entree":
+                self._choix_transition(c)
 
         # La section n'existe qu'avec une enveloppe : vide, elle ne montrait qu'un titre.
         if c.enveloppe:
@@ -520,6 +522,33 @@ class Inspecteur(PanneauFiche):
             rang.addWidget(modifier)
         rang.addStretch(1)
         self._cible.addLayout(rang)
+
+    def _choix_transition(self, c):
+        """Lignes « Transition » (l'allure du fondu d'entrée) et, pour un volet, « Direction »."""
+        style = c.style_fondu or {}
+        choix = [(None, "Fondu"), *transitions.TYPES.items()]
+
+        def ligne(nom: str, elements, actuel, choisir):
+            rang = QHBoxLayout()
+            rang.setSpacing(8)
+            libelle = etiquette(nom, "libelle")
+            libelle.setFixedWidth(100)
+            liste = QComboBox()
+            liste.setAccessibleName(nom)
+            for cle, texte in elements:
+                liste.addItem(texte, cle)
+            liste.setCurrentIndex(max(0, liste.findData(actuel)))
+            liste.activated.connect(lambda i: choisir(liste.itemData(i)))
+            rang.addWidget(libelle)
+            rang.addWidget(liste, 1)
+            self._cible.addLayout(rang)
+
+        ligne("Transition", choix, style.get("type"), lambda cle: self.reglage.emit(
+            c.id, "style_fondu", transitions.nouveau_style(cle) if cle else None))
+        if style.get("type") == "volet":
+            ligne("Direction", list(enumerate(transitions.DIRECTIONS)),
+                  int(style.get("direction", 0)),
+                  lambda i: self.reglage.emit(c.id, "style_fondu", {**style, "direction": i}))
 
     def _choix_fusion(self, actuel: str, choisir, retrait: bool = False) -> QHBoxLayout:
         """Ligne « Fusion » : les sept modes du cahier des charges. retrait : alignée sur les
