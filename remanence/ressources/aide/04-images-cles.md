@@ -28,3 +28,20 @@ Le bouton Courbes de la barre d'outils de la timeline ouvre le panneau, en ongle
 ## Animer un masque
 
 Devant chaque masque de l'inspecteur, le losange anime sa forme. Placez la tête de lecture, cliquez le losange, puis déplacez la tête et modifiez le masque sur l'image : une nouvelle image clé se pose. L'adoucissement et l'expansion s'animent de la même façon.
+
+## Les modulateurs
+
+![Un oscillateur dans le panneau Courbes](modulateurs.png)
+
+Un modulateur fait varier un réglage tout seul, en plus de ses images clés : une oscillation, un hasard qui ondule, des pulsations au tempo.
+
+1. Dans le panneau Courbes, clic droit sur un réglage, puis Moduler par et un nouveau modulateur : Oscillateur, Aléatoire lissé ou Tempo.
+2. Choisissez le modulateur dans la liste du bas : ses réglages s'affichent au-dessus du graphe.
+   - **Oscillateur** : forme (sinus, triangle, carré, dents de scie), fréquence, phase.
+   - **Aléatoire lissé** : vitesse ; « Autre tirage » change le hasard.
+   - **Tempo** : battements par minute, division, déclin de chaque impulsion, décalage.
+3. La profondeur dit de combien le modulateur fait bouger le réglage, en % de sa plage. Négative, elle l'inverse.
+
+Un même modulateur peut piloter plusieurs réglages : clic droit sur un autre réglage, Moduler par, puis son nom. Sur la courbe d'un réglage modulé, le pointillé montre les images clés et le trait plein le résultat.
+
+Les modulateurs suivent le temps de la séquence. Le rendu est toujours le même : deux exports donnent les mêmes images.

@@ -16,7 +16,7 @@ import numpy as np
 from remanence.media.lecteur import FREQUENCE_MIXAGE, LecteurVideo, Pool
 from remanence.media.proxy import chemin_audio, chemin_proxy
 from remanence.media.sonde import analyser
-from remanence.effets import EFFETS, agit_a, instantane
+from remanence.effets import EFFETS, agit_a, instantane, modulateurs
 from remanence.projet.modele import Clip, Effet, Media, Projet, Sequence
 from remanence.moteurs.codec import prerendu
 from remanence.rendu.couleur import vers_rvb16_apercu, vers_rvba
@@ -37,10 +37,11 @@ class Couche:
     modifiee: bool = False
 
 
-def actifs(effets: list[Effet], t: float = 0) -> list[Effet]:
-    """Effets allumés, figés au temps t (depuis le début de leur porteur). Les effets codec
-    passent en tête : leur pré-rendu part de la source, avant tout effet en temps réel."""
-    allumes = [instantane(e, t) for e in effets
+def actifs(effets: list[Effet], t: float = 0, decalages: dict | None = None) -> list[Effet]:
+    """Effets allumés, figés au temps t (depuis le début de leur porteur), avec les décalages
+    des modulateurs à cet instant. Les effets codec passent en tête : leur pré-rendu part de la
+    source, avant tout effet en temps réel."""
+    allumes = [instantane(e, t, decalages) for e in effets
                if e.actif and e.type in EFFETS and agit_a(e, t)]
     return sorted(allumes, key=lambda e: not EFFETS[e.type].codec)
 
@@ -48,11 +49,12 @@ def actifs(effets: list[Effet], t: float = 0) -> list[Effet]:
 def couches(projet: Projet, seq: Sequence, f: int) -> list[Couche]:
     """Clips visibles à l'image f, de la piste la plus basse à la plus haute."""
     resultat = []
+    mod = modulateurs.decalages(seq, f)
     for piste in reversed(seq.pistes_entendues("video")):
         presents = piste.clips_a(f)
         for i, c in enumerate(presents):
             if c.est_effet:
-                effets = actifs(c.effets, f - c.debut)
+                effets = actifs(c.effets, f - c.debut, mod)
                 opacite = c.facteur(f) * piste.niveau
                 if effets and opacite > 0.0:
                     resultat.append(Couche(c, None, 0, min(opacite, 1.0), effets, c.fusion))
@@ -66,7 +68,8 @@ def couches(projet: Projet, seq: Sequence, f: int) -> list[Couche]:
                 continue
             n = min(c.entree + (f - c.debut), media.infos.video.nb_images - 1)
             resultat.append(Couche(c, media, n, min(opacite, 1.0),
-                                   actifs(c.effets, f - c.debut) + actifs(piste.effets, f),
+                                   actifs(c.effets, f - c.debut, mod)
+                                   + actifs(piste.effets, f, mod),
                                    c.fusion, prerendu.dans_plages(projet, seq, c, f - c.debut)))
     return resultat
 
@@ -156,7 +159,7 @@ class Compositeur:
                     codec = self._trame_codec(seq, couche, f, trame)
                 g.ajouter(trame, couche.media.infos.video.couleur, couche.opacite, x0, y0,
                           couche.effets, f, couche.fusion, codec)
-            effets = actifs(seq.effets, f)
+            effets = actifs(seq.effets, f, modulateurs.decalages(seq, f))
             if effets:
                 g.effets_sequence(effets, f)
             return g.lire()

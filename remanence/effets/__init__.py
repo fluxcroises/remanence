@@ -202,18 +202,28 @@ def agit_a(effet: Effet, t: float) -> bool:
     return plage is None or plage[0] <= t <= plage[1]
 
 
-def instantane(effet: Effet, t: float) -> Effet:
-    """L'effet tel qu'il est au temps t : paramètres et opacité fixés, prêt pour le rendu."""
-    if not effet.cles and not any(m.cles for m in effet.masques):
+def valeur_modulee(effet: Effet, p: Parametre | None, t: float, decalage: float = 0.0) -> float:
+    """Valeur au temps t (images clés), plus le décalage des modulateurs (en fraction de la
+    plage), ramenée dans la plage du réglage (une Bézier ou un modulateur peut déborder).
+    p None : l'opacité."""
+    mini, maxi = (0.0, 1.0) if p is None else (p.minimum, p.maximum)
+    v = valeur_a(effet, "opacite" if p is None else p.cle, t) + decalage * (maxi - mini)
+    return min(maxi, max(mini, v))
+
+
+def instantane(effet: Effet, t: float, decalages: dict | None = None) -> Effet:
+    """L'effet tel qu'il est au temps t : paramètres et opacité fixés, prêt pour le rendu.
+    decalages : ceux des modulateurs à cet instant ((effet, réglage) -> fraction)."""
+    module = {cle: v for (eid, cle), v in (decalages or {}).items() if eid == effet.id}
+    if not effet.cles and not module and not any(m.cles for m in effet.masques):
         return effet
     d = EFFETS.get(effet.type)
     params = dict(effet.params)
     for p in (d.parametres if d else []):
-        if p.cle in effet.cles:
-            # Une courbe de Bézier peut déborder : le rendu reste dans la plage du réglage.
-            params[p.cle] = min(p.maximum, max(p.minimum, valeur_a(effet, p.cle, t)))
+        if p.cle in effet.cles or p.cle in module:
+            params[p.cle] = valeur_modulee(effet, p, t, module.get(p.cle, 0.0))
     return Effet(effet.id, effet.type, params, effet.actif, effet.graine,
-                 min(1.0, max(0.0, valeur_a(effet, "opacite", t))), effet.fusion,
+                 valeur_modulee(effet, None, t, module.get("opacite", 0.0)), effet.fusion,
                  masques=[masque_a(m, t) for m in effet.masques], script=effet.script)
 
 

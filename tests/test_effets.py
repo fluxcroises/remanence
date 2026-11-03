@@ -613,3 +613,60 @@ def test_masque_anime_dans_l_image(medias):
     assert np.abs(b[:, droite] - source[20][:, droite]).max() > 0.05
     relu = Projet.depuis_dict(projet.vers_dict())
     assert relu.sequence.pistes_video[0].clips[0].effets[0].masques[0].cles["points"][1][0] == 20
+
+
+def test_signaux_des_modulateurs():
+    from remanence.effets import modulateurs
+    osc = modulateurs.nouveau_modulateur("oscillateur")
+    osc.params["frequence"] = 1.0
+    assert abs(modulateurs.valeur(osc, 0, 24)) < 1e-9
+    assert abs(modulateurs.valeur(osc, 6, 24) - 1) < 1e-9, "un quart de période : le haut"
+    osc.params["forme"] = "carre"
+    assert modulateurs.valeur(osc, 3, 24) == 1.0 and modulateurs.valeur(osc, 15, 24) == -1.0
+    osc.params["forme"] = "dents"
+    assert modulateurs.valeur(osc, 0, 24) == -1.0
+    alea = modulateurs.nouveau_modulateur("aleatoire")
+    serie = [modulateurs.valeur(alea, f, 25) for f in range(200)]
+    assert serie == [modulateurs.valeur(alea, f, 25) for f in range(200)], "toujours le même"
+    assert all(-1 <= v <= 1 for v in serie) and max(serie) - min(serie) > 0.5
+    assert max(abs(a - b) for a, b in zip(serie, serie[1:])) < 0.2, "lissé"
+    alea.params["graine"] = 2
+    assert [modulateurs.valeur(alea, f, 25) for f in range(200)] != serie
+    tempo = modulateurs.nouveau_modulateur("tempo")
+    tempo.params["bpm"] = 120  # un temps toutes les 12 images à 24 i/s
+    assert modulateurs.valeur(tempo, 0, 24) == 1.0 and modulateurs.valeur(tempo, 12, 24) == 1.0
+    assert modulateurs.valeur(tempo, 6, 24) < 0.1, "l'impulsion retombe"
+
+
+def test_effet_module_exporte_deux_fois(medias, tmp_path):
+    """Validation de l'étape 4 : un effet modulé exporté deux fois donne les mêmes images ; la
+    modulation change l'image dans le temps ; elle entre dans l'empreinte des pré-rendus."""
+    from remanence.effets import modulateurs
+    from remanence.moteurs.codec import prerendu
+    projet, clip = _projet(medias)
+    seq = projet.sequence
+    effet = nouvel_effet("decalage_rvb")
+    effet.params["force"] = 0
+    clip.effets = [effet]
+    sans = [_image(projet, f) for f in (0, 6)]
+    osc = modulateurs.nouveau_modulateur("oscillateur")
+    osc.params["frequence"] = 1.0
+    osc.cibles.append([effet.id, "force", 80])
+    seq.modulateurs.append(osc)
+    a, b = _image(projet, 0), _image(projet, 6)
+    assert np.abs(a - sans[0]).max() < 1e-6, "sinus à 0 : l'effet à 0"
+    assert np.abs(b - sans[1]).max() > 0.05, "un quart de période plus tard : l'effet se voit"
+    premier = exporter(projet, seq, tmp_path / "a.mov")
+    second = exporter(projet, seq, tmp_path / "b.mov")
+    assert premier.conforme and second.conforme
+    assert empreintes_images(tmp_path / "a.mov") == empreintes_images(tmp_path / "b.mov")
+    relu = Projet.depuis_dict(projet.vers_dict())
+    assert relu.sequence.modulateurs[0].cibles == [[effet.id, "force", 80]]
+    # Pré-rendu (flux optique) : un modulateur qui le pilote change son empreinte.
+    flux = nouvel_effet("persistance")
+    clip.effets = [flux]
+    avant = prerendu.cle(projet, seq, clip)
+    osc.cibles.append([flux.id, "persistance", 50])
+    assert prerendu.cle(projet, seq, clip) != avant
+    valeurs = prerendu.valeurs_images(flux, 12, seq, clip.debut)
+    assert valeurs[0]["persistance"] != valeurs[6]["persistance"]

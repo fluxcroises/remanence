@@ -111,6 +111,18 @@ class Effet:
     script: str = ""
 
 
+@dataclass
+class Modulateur:
+    """Signal qui fait varier des réglages d'effets (voir effets/modulateurs.py). cibles :
+    [[identifiant de l'effet, réglage, profondeur en % de la plage], ...]."""
+    id: str
+    type: str  # "oscillateur" | "aleatoire" | "tempo"
+    nom: str
+    params: dict = field(default_factory=dict)
+    cibles: list = field(default_factory=list)
+    actif: bool = True
+
+
 # Modes de fusion du cahier des charges : clé enregistrée -> nom affiché.
 MODES_FUSION = {"normal": "Normal", "addition": "Addition", "ecran": "Écran",
                 "produit": "Produit", "difference": "Différence",
@@ -247,6 +259,8 @@ class Sequence:
     point_entree: int | None = None
     point_sortie: int | None = None
     effets: list[Effet] = field(default_factory=list)
+    # Modulateurs de la séquence (clé facultative, absente avant l'étape 4).
+    modulateurs: list[Modulateur] = field(default_factory=list)
 
     @property
     def fraction_cadence(self) -> Fraction:
@@ -369,7 +383,9 @@ class Projet:
                 pistes.append(Piste(**pd, clips=clips, effets=effets))
             marqueurs = [Marqueur(**m) for m in sd.pop("marqueurs", [])]
             effets = _effets(sd.pop("effets", None))
-            p.sequences.append(Sequence(**sd, pistes=pistes, marqueurs=marqueurs, effets=effets))
+            modulateurs = [Modulateur(**m) for m in sd.pop("modulateurs", [])]
+            p.sequences.append(Sequence(**sd, pistes=pistes, marqueurs=marqueurs, effets=effets,
+                                        modulateurs=modulateurs))
         if not p.sequences:
             return Projet.nouveau()
         return p

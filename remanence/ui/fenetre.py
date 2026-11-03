@@ -14,7 +14,8 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QFileDial
                                QWidget)
 
 from remanence.config import reglages_interface
-from remanence.effets import EFFETS, courbes, masque_a, poser_cle, retirer_cle, valeur_a
+from remanence.effets import (EFFETS, courbes, masque_a, modulateurs, poser_cle, retirer_cle,
+                              valeur_a)
 from remanence.effets.masques import nouveau_masque
 from remanence.moteurs.codec import analyse, bavure, prerendu, scripts
 from remanence.effets import prereglages
@@ -200,6 +201,7 @@ class FenetrePrincipale(QMainWindow):
         self._docks["courbes"] = d
         d.visibilityChanged.connect(self._courbes_visibles)
         self.panneau_courbes.modifie.connect(self.valider)
+        self.panneau_courbes.reglage_modulateur.connect(self.reglage_modulateur)
         self.panneau_courbes.tete_demandee.connect(self.aller_a)
         self.panneau_datamosh = PanneauDatamosh()
         d, _ = panneau("Compression", self.panneau_datamosh, "analyse", self)
@@ -1005,6 +1007,43 @@ class FenetrePrincipale(QMainWindow):
         b.blockSignals(False)
         self._actualiser_courbes()
 
+    def reglage_modulateur(self, mod_id: str, champ: str, valeur):
+        """Modulateurs de la séquence : ajouter (valeur : le type, ou [type, cible]), retirer,
+        actif, param:<clé>, cible+ ([effet, réglage]), cible- (rang), profondeur:<rang>."""
+        seq = self.projet.sequence
+        if champ == "ajouter":
+            type_, cible = (valeur, None) if isinstance(valeur, str) else valeur
+            m = modulateurs.nouveau_modulateur(type_, len(seq.modulateurs) + 1)
+            if cible is not None:
+                m.cibles.append([cible[0], cible[1], 25.0])
+            seq.modulateurs.append(m)
+            libelle = "Modulateur ajouté"
+        else:
+            m = next((m for m in seq.modulateurs if m.id == mod_id), None)
+            if m is None:
+                return
+            if champ == "retirer":
+                seq.modulateurs.remove(m)
+                libelle = "Modulateur retiré"
+            elif champ == "actif":
+                m.actif = bool(valeur)
+                libelle = "Modulateur"
+            elif champ.startswith("param:"):
+                m.params[champ[6:]] = valeur
+                libelle = "Modulateur"
+            elif champ == "cible+":
+                m.cibles.append([valeur[0], valeur[1], 25.0])
+                libelle = "Réglage modulé"
+            elif champ == "cible-":
+                del m.cibles[valeur]
+                libelle = "Modulation retirée"
+            elif champ.startswith("profondeur:"):
+                m.cibles[int(champ[11:])][2] = valeur
+                libelle = "Profondeur de modulation"
+            else:
+                return
+        QTimer.singleShot(0, lambda: self.valider(libelle))
+
     def basculer_courbes(self, montrer: bool):
         dock = self._docks["courbes"]
         if montrer:
@@ -1022,11 +1061,11 @@ class FenetrePrincipale(QMainWindow):
         piste_choisie = next((p for p in seq.pistes if p.id == self._piste_choisie), None)
         if len(ids) == 1 and seq.trouver(next(iter(ids)))[1] is not None:
             c = seq.trouver(next(iter(ids)))[1]
-            self.panneau_courbes.afficher(c, c.debut, c.duree)
+            self.panneau_courbes.afficher(c, c.debut, c.duree, seq)
         elif piste_choisie is not None:
-            self.panneau_courbes.afficher(piste_choisie, 0, seq.duree())
+            self.panneau_courbes.afficher(piste_choisie, 0, seq.duree(), seq)
         else:
-            self.panneau_courbes.afficher(seq, 0, seq.duree())
+            self.panneau_courbes.afficher(seq, 0, seq.duree(), seq)
         self.panneau_courbes.suivre(self.lecture.position)
 
     # Espace Datamosh : compression du clip choisi, vecteurs sur le programme

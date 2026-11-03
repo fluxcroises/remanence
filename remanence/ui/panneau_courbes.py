@@ -16,10 +16,12 @@ from typing import Callable
 
 from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QPainter, QPainterPath, QPen, QPolygonF
-from PySide6.QtWidgets import QHBoxLayout, QListWidget, QListWidgetItem, QMenu, QWidget
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QHBoxLayout, QListWidget, QListWidgetItem,
+                               QMenu, QPushButton, QToolButton, QVBoxLayout, QWidget)
 
-from remanence.effets import EFFETS, courbes, valeur
+from remanence.effets import EFFETS, courbes, modulateurs, valeur
 from remanence.ui import charte
+from remanence.ui.composants import LigneParametre, bouton_icone, etiquette, poser_icone
 
 MARGE_X, MARGE_Y = 14, 16
 RAYON = 5
@@ -37,6 +39,10 @@ class Courbe:
     mini: float
     maxi: float
     palier: bool = False
+    # Pour les modulateurs : l'effet et son réglage ("opacite" pour l'opacité) ; None pour
+    # les réglages des masques, qui ne se modulent pas.
+    effet_id: str | None = None
+    cle: str | None = None
 
     def valeur_a(self, t: float) -> float:
         cles = self.lire()
@@ -57,14 +63,14 @@ def courbes_de(porteur) -> list[Courbe]:
                 lambda e=e, c=p.cle: e.cles.setdefault(c, []),
                 lambda e=e, c=p.cle: valeur(e, c),
                 lambda v, e=e, c=p.cle: (e.cles.pop(c, None), e.params.__setitem__(c, v)),
-                p.minimum, p.maximum, p.booleen))
+                p.minimum, p.maximum, p.booleen, e.id, p.cle))
         resultat.append(Courbe(
             f"{d.nom} · Opacité",
             lambda e=e: e.cles.get("opacite"),
             lambda e=e: e.cles.setdefault("opacite", []),
             lambda e=e: e.opacite,
             lambda v, e=e: (e.cles.pop("opacite", None), setattr(e, "opacite", v)),
-            0.0, 1.0))
+            0.0, 1.0, False, e.id, "opacite"))
         for i, m in enumerate(e.masques, 1):
             for champ, nom, mini in (("adoucissement", "Adoucissement", 0.0),
                                      ("expansion", "Expansion", -25.0)):
@@ -93,6 +99,21 @@ class Graphe(QWidget):
         self.tete: int | None = None
         self.choisie: int | None = None  # rang de l'image clé choisie dans la courbe active
         self._prise = None  # ("cle" | "g" | "d", rang)
+        # La séquence (ses modulateurs) et l'image où commence le temps du porteur.
+        self.seq = None
+        self.origine = 0
+        self.modulateur = None  # modulateur montré à la place des courbes
+
+    def module_a(self, courbe: Courbe, t: float) -> float | None:
+        """La valeur finale avec les modulateurs, ou None si rien ne module ce réglage."""
+        if self.seq is None or courbe.effet_id is None or not self.seq.modulateurs:
+            return None
+        cle = (courbe.effet_id, courbe.cle)
+        if not any(tuple(c[:2]) == cle for m in self.seq.modulateurs for c in m.cibles):
+            return None
+        decalage = modulateurs.decalages(self.seq, self.origine + t).get(cle, 0.0)
+        v = courbe.valeur_a(t) + decalage * (courbe.maxi - courbe.mini)
+        return min(courbe.maxi, max(courbe.mini, v))
 
     # Géométrie
 
@@ -140,6 +161,10 @@ class Graphe(QWidget):
             x = self.x_de(self.tete)
             p.drawLine(QPointF(x, 0), QPointF(x, self.height()))
         p.setRenderHint(QPainter.Antialiasing, True)
+        if self.modulateur is not None:
+            self._dessiner_modulateur(p)
+            p.end()
+            return
         for i, courbe in enumerate(self.courbes):
             if i != self.active and not courbe.lire():
                 continue
@@ -154,14 +179,37 @@ class Graphe(QWidget):
                            Qt.AlignLeft | Qt.AlignVCenter, texte)
         p.end()
 
-    def _dessiner(self, p: QPainter, courbe: Courbe, active: bool):
-        c = charte.actuelle()
+    def _chemin(self, valeur_a, y_de) -> QPainterPath:
         chemin = QPainterPath()
         pas = max(1, int(self._zone().width() // 2))
         for k in range(pas + 1):
             t = k / pas * max(1, self.duree - 1)
-            pt = QPointF(self.x_de(t), self.y_de(courbe, courbe.valeur_a(t)))
+            pt = QPointF(self.x_de(t), y_de(valeur_a(t)))
             chemin.moveTo(pt) if k == 0 else chemin.lineTo(pt)
+        return chemin
+
+    def _dessiner_modulateur(self, p: QPainter):
+        """Le signal du modulateur choisi, de -1 (bas) à 1 (haut), sur la durée montrée."""
+        c = charte.actuelle()
+        z = self._zone()
+        cadence = float(self.seq.fraction_cadence) if self.seq is not None else 25.0
+        chemin = self._chemin(
+            lambda t: modulateurs.valeur(self.modulateur, self.origine + t, cadence),
+            lambda v: z.bottom() - (v + 1) / 2 * z.height())
+        p.setPen(QPen(c.c("focus"), 2))
+        p.setBrush(Qt.NoBrush)
+        p.drawPath(chemin)
+
+    def _dessiner(self, p: QPainter, courbe: Courbe, active: bool):
+        c = charte.actuelle()
+        chemin = self._chemin(courbe.valeur_a, lambda v: self.y_de(courbe, v))
+        module = self.module_a(courbe, 0) is not None
+        if active and module:
+            # Réglage modulé : les images clés en pointillé, le résultat en trait plein.
+            p.setPen(QPen(c.c("ink-muted"), 1, Qt.DashLine))
+            p.drawPath(chemin)
+            chemin = self._chemin(lambda t: self.module_a(courbe, t),
+                                  lambda v: self.y_de(courbe, v))
         p.setPen(QPen(c.c("focus" if active else "ink-faint"), 2 if active else 1))
         p.setBrush(Qt.NoBrush)
         p.drawPath(chemin)
@@ -224,6 +272,10 @@ class Graphe(QWidget):
     def mousePressEvent(self, e):
         self.setFocus()
         pos = e.position()
+        if self.modulateur is not None:
+            if e.button() == Qt.LeftButton:
+                self.tete_demandee.emit(max(0, min(self.duree - 1, round(self.t_de(pos.x())))))
+            return
         sous = self._sous(pos)
         if e.button() == Qt.RightButton:
             if sous is not None and sous[0] == "cle":
@@ -273,7 +325,7 @@ class Graphe(QWidget):
 
     def mouseDoubleClickEvent(self, e):
         courbe = self.courbe()
-        if courbe is None or e.button() != Qt.LeftButton or self._sous(e.position()):
+        if self.modulateur is not None or courbe is None or e.button() != Qt.LeftButton or self._sous(e.position()):
             return
         t = int(max(0, min(self.duree - 1, round(self.t_de(e.position().x())))))
         v = self.v_de(courbe, e.position().y())
@@ -329,38 +381,165 @@ class Graphe(QWidget):
         self.modifie.emit("Passage de l'image clé")
 
 
+class FicheModulateur(QWidget):
+    """Réglages du modulateur choisi et ses cibles (profondeur en % de la plage)."""
+    reglage = Signal(str, str, object)  # identifiant, champ, valeur
+
+    def __init__(self):
+        super().__init__()
+        self.setProperty("role", "panneau")
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self._lay = QVBoxLayout(self)
+        self._lay.setContentsMargins(12, 8, 12, 8)
+        self._lay.setSpacing(6)
+
+    def afficher(self, m, noms_cibles: dict):
+        while self._lay.count():
+            item = self._lay.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.setParent(None)
+                w.deleteLater()
+            elif item.layout() is not None:
+                _vider(item.layout())
+        haut = QHBoxLayout()
+        haut.addWidget(etiquette(m.nom, "titre-section"))
+        actif = QCheckBox("Actif")
+        actif.setChecked(m.actif)
+        actif.toggled.connect(lambda v: self.reglage.emit(m.id, "actif", v))
+        haut.addWidget(actif)
+        haut.addStretch(1)
+        if m.type == "oscillateur":
+            haut.addWidget(self._choix("Forme", modulateurs.FORMES, m, "forme"))
+        elif m.type == "tempo":
+            haut.addWidget(self._choix("Division", modulateurs.DIVISIONS, m, "division"))
+        elif m.type == "aleatoire":
+            tirage = QPushButton("Autre tirage")
+            tirage.clicked.connect(lambda: self.reglage.emit(
+                m.id, "param:graine", int(m.params.get("graine", 1)) + 1))
+            haut.addWidget(tirage)
+        retirer = bouton_icone("x", "Supprimer le modulateur", taille=14)
+        retirer.clicked.connect(lambda: self.reglage.emit(m.id, "retirer", None))
+        haut.addWidget(retirer)
+        self._lay.addLayout(haut)
+        grille = QHBoxLayout()
+        grille.setSpacing(16)
+        for p in modulateurs.PARAMETRES[m.type]:
+            ligne = LigneParametre(p.nom, p.minimum, p.maximum, m.params.get(p.cle, p.defaut),
+                                   p.unite, p.defaut, p.decimales)
+            ligne.valeur_finale.connect(lambda v, c=p.cle: self.reglage.emit(m.id, "param:" + c, v))
+            grille.addWidget(ligne, 1)
+        self._lay.addLayout(grille)
+        if not m.cibles:
+            self._lay.addWidget(etiquette("Aucun réglage piloté", "secondaire"))
+        for i, (effet_id, cle, profondeur) in enumerate(m.cibles):
+            rang = QHBoxLayout()
+            nom = etiquette(noms_cibles.get((effet_id, cle), cle), "")
+            nom.setMinimumWidth(220)
+            rang.addWidget(nom)
+            ligne = LigneParametre("Profondeur", -100, 100, profondeur, "%", 25, 0)
+            ligne.valeur_finale.connect(lambda v, i=i: self.reglage.emit(m.id, f"profondeur:{i}", v))
+            rang.addWidget(ligne, 1)
+            enlever = bouton_icone("x", "Ne plus piloter ce réglage", taille=14)
+            enlever.clicked.connect(lambda _=False, i=i: self.reglage.emit(m.id, "cible-", i))
+            rang.addWidget(enlever)
+            self._lay.addLayout(rang)
+
+    def _choix(self, nom: str, choix: dict, m, champ: str) -> QComboBox:
+        liste = QComboBox()
+        liste.setAccessibleName(nom)
+        for cle, texte in choix.items():
+            liste.addItem(texte, cle)
+        liste.setCurrentIndex(max(0, liste.findData(m.params.get(champ))))
+        liste.activated.connect(lambda i: self.reglage.emit(m.id, "param:" + champ,
+                                                            liste.itemData(i)))
+        return liste
+
+
+def _vider(lay):
+    while lay.count():
+        item = lay.takeAt(0)
+        if item.widget() is not None:
+            item.widget().setParent(None)
+            item.widget().deleteLater()
+        elif item.layout() is not None:
+            _vider(item.layout())
+
+
 class PanneauCourbes(QWidget):
     modifie = Signal(str)
     tete_demandee = Signal(int)  # image de la séquence
+    reglage_modulateur = Signal(str, str, object)  # identifiant, champ, valeur
 
     def __init__(self):
         super().__init__()
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
+        gauche = QVBoxLayout()
+        gauche.setContentsMargins(0, 0, 0, 6)
+        gauche.setSpacing(4)
         self.liste = QListWidget()
         self.liste.setAccessibleName("Réglages animables")
-        self.liste.setFixedWidth(250)
+        self.liste.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.liste.customContextMenuRequested.connect(self._menu_reglage)
+        gauche.addWidget(self.liste, 3)
+        marge = QHBoxLayout()
+        marge.setContentsMargins(8, 4, 8, 0)
+        marge.addWidget(etiquette("Modulateurs", "section"))
+        marge.addStretch(1)
+        ajout = QToolButton()
+        ajout.setText("Ajouter")
+        poser_icone(ajout, "plus", 14)
+        ajout.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        ajout.setPopupMode(QToolButton.InstantPopup)
+        menu = QMenu(ajout)
+        for cle, nom in modulateurs.TYPES.items():
+            menu.addAction(nom, lambda cle=cle: self.reglage_modulateur.emit("", "ajouter", cle))
+        ajout.setMenu(menu)
+        self.bouton_ajout = ajout
+        marge.addWidget(ajout)
+        gauche.addLayout(marge)
+        self.liste_modulateurs = QListWidget()
+        self.liste_modulateurs.setAccessibleName("Modulateurs")
+        gauche.addWidget(self.liste_modulateurs, 1)
+        colonne = QWidget()
+        colonne.setFixedWidth(250)
+        colonne.setLayout(gauche)
+        lay.addWidget(colonne)
+        droite = QVBoxLayout()
+        droite.setContentsMargins(0, 0, 0, 0)
+        droite.setSpacing(0)
+        self.fiche = FicheModulateur()
+        self.fiche.reglage.connect(self.reglage_modulateur)
+        self.fiche.hide()
         self.graphe = Graphe()
-        lay.addWidget(self.liste)
-        lay.addWidget(self.graphe, 1)
+        droite.addWidget(self.fiche)
+        droite.addWidget(self.graphe, 1)
+        lay.addLayout(droite, 1)
         self.origine = 0
+        self.seq = None
         self.liste.currentRowChanged.connect(self._choisir)
+        self.liste.itemPressed.connect(lambda _i: self._choisir(self.liste.currentRow()))
+        self.liste_modulateurs.currentRowChanged.connect(self._choisir_modulateur)
         self.graphe.modifie.connect(self.modifie)
         self.graphe.tete_demandee.connect(lambda t: self.tete_demandee.emit(t + self.origine))
 
-    def afficher(self, porteur, origine: int, duree: int):
+    def afficher(self, porteur, origine: int, duree: int, seq=None):
         """Les courbes du porteur (clip, piste ou séquence ; None : rien) ; origine : image
-        de la séquence où commence le temps de ses images clés."""
+        de la séquence où commence le temps de ses images clés ; seq : ses modulateurs."""
         nom_actif = self.liste.currentItem().text() if self.liste.currentItem() else None
+        mod_actif = self.graphe.modulateur.id if self.graphe.modulateur is not None else None
         self.origine = origine
+        self.seq = seq
+        self.graphe.seq, self.graphe.origine = seq, origine
         self.graphe.duree = max(1, duree)
         self.graphe.courbes = courbes_de(porteur) if porteur is not None else []
         self.liste.blockSignals(True)
         self.liste.clear()
-        for i, courbe in enumerate(self.graphe.courbes):
+        for courbe in self.graphe.courbes:
             item = QListWidgetItem(courbe.nom)
-            if courbe.lire():
+            if courbe.lire() or self.graphe.module_a(courbe, 0) is not None:
                 item.setForeground(charte.actuelle().c("focus"))
             self.liste.addItem(item)
         noms = [c.nom for c in self.graphe.courbes]
@@ -368,15 +547,74 @@ class PanneauCourbes(QWidget):
             next((i for i, c in enumerate(self.graphe.courbes) if c.lire()), 0 if noms else -1)
         self.liste.setCurrentRow(rang)
         self.liste.blockSignals(False)
-        self._choisir(rang, garder=True)
+        self.liste_modulateurs.blockSignals(True)
+        self.liste_modulateurs.clear()
+        for m in (seq.modulateurs if seq is not None else []):
+            item = QListWidgetItem(m.nom)
+            item.setData(Qt.UserRole, m.id)
+            self.liste_modulateurs.addItem(item)
+        self.liste_modulateurs.blockSignals(False)
+        ids = [m.id for m in (seq.modulateurs if seq is not None else [])]
+        if mod_actif in ids:
+            self.liste_modulateurs.setCurrentRow(ids.index(mod_actif))
+        else:
+            self._choisir(rang, garder=True)
+
+    def _noms_cibles(self) -> dict:
+        """(effet, réglage) -> nom, pour tous les effets de la séquence."""
+        noms = {}
+        if self.seq is None:
+            return noms
+        porteurs = [self.seq] + self.seq.pistes + [c for p in self.seq.pistes for c in p.clips]
+        for porteur in porteurs:
+            for courbe in courbes_de(porteur):
+                if courbe.effet_id is not None:
+                    noms[(courbe.effet_id, courbe.cle)] = courbe.nom
+        return noms
 
     def _choisir(self, rang: int, garder: bool = False):
+        self.liste_modulateurs.blockSignals(True)
+        self.liste_modulateurs.clearSelection()
+        self.liste_modulateurs.setCurrentRow(-1)
+        self.liste_modulateurs.blockSignals(False)
+        self.graphe.modulateur = None
+        self.fiche.hide()
         if self.graphe.active != rang or not garder:
             self.graphe.choisie = None
         self.graphe.active = rang
         self.graphe.update()
 
+    def _choisir_modulateur(self, rang: int):
+        mods = self.seq.modulateurs if self.seq is not None else []
+        if not 0 <= rang < len(mods):
+            self._choisir(self.liste.currentRow(), garder=True)
+            return
+        self.graphe.modulateur = mods[rang]
+        self.fiche.afficher(mods[rang], self._noms_cibles())
+        self.fiche.show()
+        self.graphe.update()
+
+    def _menu_reglage(self, pos):
+        """Clic droit sur un réglage : le faire piloter par un modulateur."""
+        rang = self.liste.row(self.liste.itemAt(pos)) if self.liste.itemAt(pos) else -1
+        if not 0 <= rang < len(self.graphe.courbes):
+            return
+        courbe = self.graphe.courbes[rang]
+        if courbe.effet_id is None or self.seq is None:
+            return
+        cible = (courbe.effet_id, courbe.cle)
+        menu = QMenu(self)
+        piloter = menu.addMenu("Moduler par")
+        for m in self.seq.modulateurs:
+            a = piloter.addAction(m.nom, lambda m=m: self.reglage_modulateur.emit(
+                m.id, "cible+", list(cible)))
+            a.setEnabled(not any(tuple(c[:2]) == cible for c in m.cibles))
+        piloter.addSeparator()
+        for cle, nom in modulateurs.TYPES.items():
+            piloter.addAction(f"Nouveau : {nom}", lambda cle=cle: self.reglage_modulateur.emit(
+                "", "ajouter", [cle, list(cible)]))
+        menu.exec(self.liste.mapToGlobal(pos))
+
     def suivre(self, f: int):
         self.graphe.tete = f - self.origine
         self.graphe.update()
-

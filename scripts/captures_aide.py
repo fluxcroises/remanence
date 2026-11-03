@@ -97,6 +97,14 @@ def main():
     attendre(app, delai=0.6)
     w.panneau_courbes.graphe.choisie = 0
     photo(w._docks["courbes"], "courbes.png", 1100)
+    w.reglage_modulateur("", "ajouter", ["oscillateur", [effet.id, "force"]])
+    attendre(app, delai=0.6)
+    w.reglage_modulateur(w.projet.sequence.modulateurs[0].id, "param:frequence", 3.0)
+    attendre(app, delai=0.6)
+    w.panneau_courbes.liste_modulateurs.setCurrentRow(0)
+    photo(w._docks["courbes"], "modulateurs.png", 1100)
+    w.reglage_modulateur(w.projet.sequence.modulateurs[0].id, "retirer", None)
+    attendre(app, delai=0.6)
     w.timeline.b_courbes.setChecked(False)
 
     # Script FFglitch dans l'inspecteur.

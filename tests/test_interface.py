@@ -883,6 +883,42 @@ def test_panneau_courbes_et_masques_animes(fenetre, medias):
     assert _attendre(lambda: not w._docks["courbes"].isVisible(), 2)
 
 
+def test_modulateurs_dans_le_panneau_courbes(fenetre, medias):
+    from remanence.effets import nouvel_effet
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    effet = nouvel_effet("decalage_rvb")
+    w.ajouter_effet("clip", clip.id, [effet])
+    w.timeline.vue._choisir({clip.id})
+    w.timeline.b_courbes.setChecked(True)
+    assert _attendre(lambda: w._docks["courbes"].isVisible(), 2)
+    seq = lambda: w.projet.sequence
+    w.reglage_modulateur("", "ajouter", ["tempo", [effet.id, "force"]])
+    assert _attendre(lambda: len(seq().modulateurs) == 1, 2)
+    m = seq().modulateurs[0]
+    assert m.cibles == [[effet.id, "force", 25.0]] and m.nom == "Tempo 1"
+    panneau = w.panneau_courbes
+    assert _attendre(lambda: panneau.liste_modulateurs.count() == 1, 2)
+    panneau.liste_modulateurs.setCurrentRow(0)
+    assert panneau.fiche.isVisibleTo(panneau) and panneau.graphe.modulateur is not None
+    w.reglage_modulateur(m.id, "param:bpm", 90.0)
+    assert _attendre(lambda: seq().modulateurs[0].params["bpm"] == 90.0, 2)
+    w.reglage_modulateur(m.id, "profondeur:0", -60.0)
+    assert _attendre(lambda: seq().modulateurs[0].cibles[0][2] == -60.0, 2)
+    assert _attendre(lambda: panneau.graphe.modulateur is not None, 2), "il reste choisi"
+    w.reglage_modulateur(m.id, "cible+", [effet.id, "opacite"])
+    assert _attendre(lambda: len(seq().modulateurs[0].cibles) == 2, 2)
+    w.reglage_modulateur(m.id, "cible-", 0)
+    assert _attendre(lambda: seq().modulateurs[0].cibles == [[effet.id, "opacite", 25.0]], 2)
+    w.annuler()
+    assert _attendre(lambda: len(seq().modulateurs[0].cibles) == 2, 2), "Ctrl+Z"
+    w.reglage_modulateur(seq().modulateurs[0].id, "retirer", None)
+    assert _attendre(lambda: not seq().modulateurs, 2)
+
+
 def test_losanges_de_la_timeline_et_echap(fenetre, medias):
     """Clic sur un losange d'un clip : la tête y va ; le glisser déplace l'image clé.
     Échap quitte l'outil de coupe."""

@@ -14,6 +14,7 @@ cadence, réglages, moteur) : changer un réglage ne recalcule que ce clip.
 from __future__ import annotations
 
 import hashlib
+from dataclasses import asdict
 import json
 import threading
 from fractions import Fraction
@@ -27,7 +28,7 @@ from remanence.effets import EFFETS
 from remanence.media.lecteur import LecteurVideo
 from remanence.rendu.couleur import depuis_rvba, vers_rvba
 from remanence.media.sonde import analyser
-from remanence.effets import valeur_a
+from remanence.effets import modulateurs, valeur_modulee
 from remanence.moteurs.codec import bavure, ffglitch
 from remanence.projet import edition
 from remanence.projet.modele import Clip, Effet, Projet, Sequence
@@ -89,7 +90,11 @@ def cle(projet: Projet, seq: Sequence, clip: Clip) -> str | None:
                "dessus": None if dessus is None else [_signature(projet, dessus),
                                                       dessus.debut - clip.debut],
                "effets": [[e.type, sorted(e.params.items()), e.graine, e.cles, e.script]
-                          for e in effets]}
+                          for e in effets],
+               "modulateurs": [[asdict(m) for m in modulateurs.cibles_de(seq, e.id)]
+                               for e in effets]}
+    if any(donnees["modulateurs"]):
+        donnees["debut"] = clip.debut  # les modulateurs suivent le temps de la séquence
     return _empreinte(donnees)
 
 
@@ -267,7 +272,8 @@ def _etape(progression, debut: float, part: float):
 
 def encoder(images, n: int, largeur: int, hauteur: int, cadence: Fraction, blocs: int,
             cles: set[int], travail: Path, progression=None, annule=None,
-            effet: Effet | None = None, mouvement=None) -> list[bytes]:
+            effet: Effet | None = None, mouvement=None, seq: Sequence | None = None,
+            debut: int = 0) -> list[bytes]:
     """Les images en paquets MPEG-4, images clés au début et aux indices de `cles`. Avec
     FFglitch, un effet à script réécrit ensuite les vecteurs de mouvement ; `mouvement`
     (images) donne les vecteurs du transfert de mouvement."""
@@ -286,14 +292,13 @@ def encoder(images, n: int, largeur: int, hauteur: int, cadence: Fraction, blocs
                             progression, n, annule, outils)
     d = EFFETS[effet.type] if effet is not None else None
     if d is not None and d.script is not None:
-        valeurs = [{p.cle: valeur_a(effet, p.cle, t) for p in d.parametres_pour(effet)}
-                   for t in range(n)]
+        valeurs = valeurs_images(effet, n, seq, debut)
         flux = ffglitch.appliquer_script(flux, d.script(valeurs, effet.graine, effet),
                                          travail / "script.avi", annule, outils)
     elif d is not None and d.transfert and mouvement is not None:
         autre = ffglitch.encoder(mouvement, largeur, hauteur, cadence, blocs, set(),
                                  travail / "mouvement.avi", annule=annule, outils=outils)
-        forces = [valeur_a(effet, "force", t) / 100 for t in range(n)]
+        forces = [v["force"] / 100 for v in valeurs_images(effet, n, seq, debut)]
         flux = ffglitch.transferer(flux, autre, forces, travail / "transfert.avi", annule, outils)
     return ffglitch.paquets(flux)
 
@@ -396,13 +401,13 @@ def _calculer(projet: Projet, seq: Sequence, clip: Clip, progression=None,
             paquets = encoder(images, n, largeur, hauteur, cadence, valeurs.get("blocs", 4),
                               cles, Path(travail), _etape(progression, etape / len(effets) / 2,
                                                           0.5 / len(effets)),
-                              annule, effet, mouvement)
+                              annule, effet, mouvement, seq, clip.debut)
         if d.traiter is not None:
             paquets = d.traiter(paquets, valeurs, effet.graine)
         images = bavure.decoder(paquets, n)
     format_ = "yuv420p"
     if effets_flux:
-        images = _flux(images, effets_flux, n, v.couleur)
+        images = _flux(images, effets_flux, n, v.couleur, seq, clip.debut)
         format_ = FORMAT_FLUX
     _ecrire(final, images, n, largeur, hauteur, cadence, v.couleur, progression, annule,
             0.5 if effets else 0.0, format_)
@@ -415,13 +420,28 @@ def _calculer(projet: Projet, seq: Sequence, clip: Clip, progression=None,
 FORMAT_FLUX = "yuv444p16le"
 
 
-def _flux(images, effets: list[Effet], n: int, couleur):
+def valeurs_images(effet: Effet, n: int, seq: Sequence | None = None, debut: int = 0
+                   ) -> list[dict]:
+    """Les réglages de l'effet à chaque image du clip : images clés, puis modulateurs de la
+    séquence (le clip commence à l'image `debut` de la séquence)."""
+    d = EFFETS[effet.type]
+    parametres = d.parametres_pour(effet)
+    resultat = []
+    for t in range(n):
+        mod = modulateurs.decalages(seq, debut + t) if seq is not None and seq.modulateurs \
+            else {}
+        resultat.append({p.cle: valeur_modulee(effet, p, t, mod.get((effet.id, p.cle), 0.0))
+                         for p in parametres})
+    return resultat
+
+
+def _flux(images, effets: list[Effet], n: int, couleur, seq: Sequence | None = None,
+          debut: int = 0):
     """Effets du moteur flux optique, enchaînés image par image, en flottants."""
     rvb = (vers_rvba(image, couleur)[..., :3] for image in images)
     for effet in effets:
         d = EFFETS[effet.type]
-        valeurs = [{p.cle: valeur_a(effet, p.cle, t) for p in d.parametres} for t in range(n)]
-        rvb = d.flux(rvb, valeurs)
+        rvb = d.flux(rvb, valeurs_images(effet, n, seq, debut))
     for image in rvb:
         rvba = np.dstack([image, np.ones(image.shape[:2], np.float32)])
         yield depuis_rvba(rvba, FORMAT_FLUX, couleur)
@@ -440,8 +460,7 @@ def apercu(images: list[np.ndarray], effets: list[Effet], cadence: Fraction = Fr
             continue
         if d.flux is not None:
             n = len(trames)
-            valeurs = [{p.cle: valeur_a(effet, p.cle, t) for p in d.parametres}
-                       for t in range(n)]
+            valeurs = valeurs_images(effet, n)
             rvb = d.flux((t.to_ndarray(format="rgb24").astype(np.float32) / 255
                           for t in trames), valeurs)
             trames = [av.VideoFrame.from_ndarray(
