@@ -374,7 +374,8 @@ def test_espaces_de_travail(fenetre, medias, tmp_path):
 
     w.choisir_espace("export")
     assert w._docks["file_export"].isVisible() and not w._docks["medias"].isVisible()
-    w.formulaire_export.fichier.setText(str(tmp_path / "file.mov"))
+    w.formulaire_export.dossier.setText(str(tmp_path))
+    w.formulaire_export.modele.setText("file")
     w.formulaire_export.tout.setChecked(True)
     w.formulaire_export.bouton.click()
     lignes = w.file_export.findChildren(type(w.file_export.ajouter("", "", lambda: None)))
@@ -1219,3 +1220,43 @@ def test_titre_imbrication_vitesse_et_rendu_sur_place(fenetre, medias):
     assert w.projet.medias[rendu.media_id].infos.video.nb_images == rendu.duree
     w.ouvrir_sequence(principale)
     assert w.projet.sequence.id == principale
+
+
+def test_export_par_plan_et_liste_de_remplacement(fenetre, medias, tmp_path, monkeypatch):
+    """Un fichier par plan, nommé par le modèle ; liste de remplacement ; montage réimporté ;
+    image fixe."""
+    from pathlib import Path
+    from PySide6.QtWidgets import QFileDialog
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    w.aller_a(10)
+    w.couper()
+    w.choisir_espace("export")
+    f = w.formulaire_export
+    f.dossier.setText(str(tmp_path))
+    f.modele.setText("{plan}_remanence_v{version}")
+    f.par_plan.setChecked(True)
+    assert f.nom_final.text().endswith("_remanence_v01.mov (+1)")
+    f.bouton.click()
+    stem = Path(medias["prores_hq"]).stem
+    attendus = [tmp_path / f"{stem}_remanence_v01.mov", tmp_path / f"{stem}_remanence_v02.mov"]
+    assert _attendre(lambda: all(p.exists() for p in attendus) and len(w._plans_exportes) == 2, 60)
+    assert w.a_remplacement.isEnabled()
+    edl = tmp_path / "remplacement.edl"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *a, **k: (str(edl), ""))
+    w.exporter_remplacement()
+    assert edl.exists() and f"{stem}_remanence_v02" in edl.read_text(encoding="utf-8")
+    image = tmp_path / "image.png"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *a, **k: (str(image), ""))
+    w.exporter_image()
+    assert image.exists()
+    w.importer_chemins([str(p) for p in attendus])
+    assert _attendre(lambda: len(w.projet.medias) == 3, 30)
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", lambda *a, **k: (str(edl), ""))
+    w.importer_montage()
+    seq = w.projet.sequence
+    assert len(w.projet.sequences) == 2 and len(seq.pistes_video[0].clips) == 2
+    noms = {Path(w.projet.medias[c.media_id].chemin).name for c in seq.pistes_video[0].clips}
+    assert noms == {p.name for p in attendus}, "chaque plan relié à son fichier exporté"

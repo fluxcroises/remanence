@@ -447,3 +447,34 @@ def exporter(projet: Projet, seq: Sequence, chemin: Path, cle_format: str = "sou
                    {"copie": "recopié sans réencodage", "mix": "mixé et encodé",
                     None: "aucun"}[mode_audio],
                    verifier(infos_sortie, attendu), avertissements)
+
+
+def exporter_image(projet: Projet, seq: Sequence, f: int, chemin: Path):
+    """Une image de la séquence, en pleine résolution : PNG 16 bits (alpha droit) ou EXR
+    demi-flottant (valeurs au-delà du blanc gardées), selon l'extension."""
+    chemin = Path(chemin)
+    c = Compositeur(projet, synchrone=True)
+    try:
+        rvba = c.image(seq, f)
+    finally:
+        c.fermer()
+    if chemin.suffix.lower() == ".exr":
+        trame, codec, pix_fmt = _trame_flottante(rvba), "exr", "gbrapf32le"
+    else:
+        a = rvba[..., 3:4]
+        droit = np.where(a > 1e-6, rvba[..., :3] / np.maximum(a, 1e-6), 0.0)
+        pixels = np.clip(np.concatenate([droit, a], axis=2), 0.0, 1.0) * 65535 + 0.5
+        trame = av.VideoFrame.from_ndarray(np.ascontiguousarray(pixels.astype(np.uint16)),
+                                           format="rgba64le")
+        codec, pix_fmt = "png", "rgba64be"
+    h, l = rvba.shape[:2]
+    with av.open(str(chemin), "w", format="image2") as sortie:
+        flux = sortie.add_stream(codec, rate=1)
+        flux.width, flux.height, flux.pix_fmt = l, h, pix_fmt
+        if codec == "exr":
+            flux.options = {"compression": "zip16", "format": "half"}
+        trame.pts = 0
+        for p in flux.encode(trame):
+            sortie.mux(p)
+        for p in flux.encode():
+            sortie.mux(p)

@@ -22,6 +22,9 @@ Remanence est distribué en code source, sans but commercial. Ce fichier liste c
 | OpenCV (opencv-contrib-python-headless) | 5.0.0.93 | Flux optique DIS du moteur flux optique, suivi des masques (étape 4). Version sans interface : la version complète embarque son propre Qt | Apache 2.0 |
 | mido | 1.3.3 | Messages MIDI des contrôleurs (modulateurs, étape 4) | MIT |
 | python-rtmidi (et RtMidi) | 1.5.8 | Accès aux ports MIDI de Windows pour mido | MIT |
+| OpenTimelineIO | 0.18.1 | Lecture des montages EDL et FCP XML, écriture de la liste de remplacement (étape 5) | Apache 2.0 |
+| otio-cmx3600-adapter | 1.0.0 | Format EDL CMX 3600 pour OpenTimelineIO | Apache 2.0 |
+| otio-fcp-adapter | 1.0.0 | Format FCP XML (Final Cut Pro 7) pour OpenTimelineIO | Apache 2.0 |
 | pytest | 9.2.0 | Tests automatiques (développement seulement) | MIT |
 | uv | 0.13.6 | Installation de l'environnement (outil, non embarqué) | MIT ou Apache 2.0 |
 

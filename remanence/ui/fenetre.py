@@ -24,12 +24,12 @@ from remanence.media import intermediaire
 from remanence.media.lecteur import LecteurVideo, generer_cache_audio
 from remanence.media.proxy import chemin_audio, chemin_proxy, generer_proxy, proxy_utile
 from remanence.media.sonde import EXTENSIONS_IMAGES, analyser, detecter_sequence_images
-from remanence.projet import edition, scripts_montage, serialisation
+from remanence.projet import echanges, edition, scripts_montage, serialisation
 from remanence.projet.historique import Historique
 from remanence.projet.modele import Clip, Marqueur, Media, Projet, nouvel_id
 from remanence.rendu.couleur import vers_rvb16_apercu, vers_rvba
 from remanence.media.timecode import images_vers_tc
-from remanence.rendu.export import exporter
+from remanence.rendu.export import exporter, exporter_image
 from remanence.ui import charte
 from remanence.ui.apropos import APropos
 from remanence.ui.barres import BarreEspaces, BarreTitre
@@ -211,6 +211,8 @@ class FenetrePrincipale(QMainWindow):
         self.enregistreur_midi.recu.connect(self._midi_recu)
         self._midi = None  # (courbe, origine, durée, contrôle appris) pendant l'enregistrement
         self._presse_papiers: list = []  # (piste, clip) copiés par Ctrl+C
+        # Plans exportés pendant la session, pour la liste de remplacement.
+        self._plans_exportes: list[dict] = []
         self.panneau_courbes.barre_midi.enregistrement.connect(self.enregistrer_midi)
         self.panneau_courbes.tete_demandee.connect(self.aller_a)
         self.panneau_datamosh = PanneauDatamosh()
@@ -488,7 +490,13 @@ class FenetrePrincipale(QMainWindow):
         f.addSeparator()
         self._action(f, "Importer des médias…", self.importer, "Ctrl+I")
         self._action(f, "Importer des scripts FFglitch…", self.importer_scripts)
+        self._action(f, "Importer un montage (EDL, XML)…", self.importer_montage)
+        f.addSeparator()
         self._action(f, "Exporter la séquence…", lambda: self.choisir_espace("export"), "Ctrl+E")
+        self._action(f, "Exporter l'image…", self.exporter_image, "Ctrl+Shift+E")
+        self.a_remplacement = self._action(f, "Exporter une liste de remplacement…",
+                                           self.exporter_remplacement)
+        self.a_remplacement.setEnabled(False)
         f.addSeparator()
         self._action(f, "Quitter", self.close, "Ctrl+Q")
 
@@ -1897,6 +1905,65 @@ class FenetrePrincipale(QMainWindow):
             effet, d.reglages_choisis(), debut, fin, v["intervalle"], v["amplitude"] / 100,
             v["passage"], v["graine"]))
 
+    # Échanges : montage du monteur, image fixe, liste de remplacement
+
+    def importer_montage(self):
+        chemin, _ = QFileDialog.getOpenFileName(
+            self, "Importer un montage", "", "Montage (*.edl *.xml);;EDL (*.edl);;FCP XML (*.xml)")
+        if not chemin:
+            return
+        try:
+            seq, manquants = echanges.importer_montage(self.projet, Path(chemin))
+        except Exception as e:  # fichier illisible : le message d'OpenTimelineIO suffit
+            afficher_erreur(self, "Import impossible", str(e))
+            return
+        self.projet.sequence_active = seq.id
+        self.timeline.vue.selection = set()
+        self.valider("Import de montage")
+        self.aller_a(0)
+        self.timeline.tout_voir()
+        if manquants:
+            self.message(f"{len(manquants)} plan(s) sans média : marqueurs posés", 8000)
+
+    def exporter_image(self):
+        """L'image à la tête de lecture, en pleine résolution."""
+        seq = self.projet.sequence
+        if not seq.duree():
+            self.message("Timeline vide")
+            return
+        f = min(self.lecture.position, seq.duree() - 1)
+        tc = images_vers_tc(seq.tc_debut + f, seq.fraction_cadence, seq.tc_drop)
+        dossier = Path(self.formulaire_export.dossier.text() or Path.home())
+        nom = dossier / f"{seq.nom}_{tc.replace(':', '').replace(';', '')}.png"
+        chemin, _ = QFileDialog.getSaveFileName(self, "Exporter l'image", str(nom),
+                                                "PNG 16 bits (*.png);;EXR demi-flottant (*.exr)")
+        if not chemin:
+            return
+        try:
+            exporter_image(self.projet, seq, f, Path(chemin))
+        except Exception as e:
+            afficher_erreur(self, "Export impossible", str(e))
+            return
+        self.message(f"Image enregistrée : {Path(chemin).name}", 6000)
+
+    def exporter_remplacement(self):
+        """Les plans exportés pendant la session, à leur place, pour le monteur."""
+        if not self._plans_exportes:
+            return
+        chemin, _ = QFileDialog.getSaveFileName(
+            self, "Liste de remplacement", str(Path(self._plans_exportes[-1]["fichier"])
+                                                .with_name("remplacement.edl")),
+            "EDL (*.edl);;FCP XML (*.xml)")
+        if not chemin:
+            return
+        try:
+            echanges.ecrire_remplacement(self._plans_exportes, Path(chemin),
+                                         self._plans_exportes[-1]["cadence"])
+        except Exception as e:
+            afficher_erreur(self, "Export impossible", str(e))
+            return
+        self.message(f"Liste enregistrée : {Path(chemin).name}", 6000)
+
     # Titres, séquences imbriquées, rendu sur place
 
     def ajouter_titre(self):
@@ -2410,8 +2477,15 @@ class FenetrePrincipale(QMainWindow):
         def termine(rapport):
             ligne.termine(rapport)
             self.message(f"Export de {nom} terminé.", 6000)
+            self.formulaire_export._reserves.discard(r["chemin"])
+            if "tc" in r:
+                self._plans_exportes.append({
+                    "fichier": str(r["chemin"]), "tc": r["tc"], "duree": r["fin"] - r["debut"],
+                    "enregistrement": r["tc"], "cadence": r["cadence"]})
+                self.a_remplacement.setEnabled(True)
 
         def echec(m, det):
+            self.formulaire_export._reserves.discard(r["chemin"])
             ligne.echec(m)
             afficher_erreur(self, "Export impossible", f"L'export de « {nom} » a échoué : {m}", det)
 
