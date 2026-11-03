@@ -429,6 +429,40 @@ def couper(seq: Sequence, f: int, ids: set[str] | None = None) -> list[str]:
     return crees
 
 
+def copier(seq: Sequence, ids: set[str]) -> list[tuple[str, Clip]]:
+    """(piste, copie) des clips choisis et de leurs clips liés."""
+    ids = avec_lies(seq, ids)
+    return [(p.id, copy.deepcopy(c)) for p, c in seq.tous_les_clips() if c.id in ids]
+
+
+def coller(seq: Sequence, copies: list[tuple[str, Clip]], debut: int) -> set[str]:
+    """Pose les copies sur leurs pistes, la plus précoce à l'image `debut`, les autres à la même
+    distance qu'au moment de la copie. Elles écrasent ce qu'elles recouvrent. Chaque copie est
+    un nouveau clip (ses effets et ses liens aussi). Renvoie les identifiants posés."""
+    pistes = {p.id: p for p in seq.pistes}
+    copies = [(pistes[i], c) for i, c in copies if i in pistes]
+    if not copies:
+        raise EditionImpossible("Les pistes copiées n'existent plus.")
+    if any(p.verrouillee for p, _ in copies):
+        raise EditionImpossible("Une des pistes est verrouillée.")
+    origine = min(c.debut for _, c in copies)
+    liens: dict[str, str] = {}
+    poses = set()
+    for p, modele in copies:
+        c = copy.deepcopy(modele)
+        c.id = nouvel_id()
+        _renouveler_effets(c)
+        c.transition = None
+        if c.lien:
+            c.lien = liens.setdefault(c.lien, nouvel_id())
+        c.debut = debut + modele.debut - origine
+        p.clips.append(c)
+        poses.add(c.id)
+    for p in {p.id: p for p, _ in copies}.values():
+        placer(p, poses, False)
+    return poses
+
+
 def supprimer(seq: Sequence, ids: set[str], inclure_lies: bool = True):
     ids = avec_lies(seq, ids) if inclure_lies else ids
     for p in seq.pistes:

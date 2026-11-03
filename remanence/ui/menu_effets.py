@@ -17,12 +17,9 @@ def remplir_menu_effets(menu: QMenu, appliquer):
         if not descriptions:
             continue
         sous = menu.addMenu(famille)
+        # Deux niveaux seulement : les préréglages sont dans la bibliothèque d'effets.
         for d in descriptions:
-            m = sous.addMenu(d.nom)
-            m.addAction("Par défaut", lambda d=d: appliquer([nouvel_effet(d.cle)]))
-            m.addSeparator()
-            for nom in d.prereglages:
-                m.addAction(nom, lambda d=d, nom=nom: appliquer([nouvel_effet(d.cle, nom)]))
+            sous.addAction(d.nom, lambda d=d: appliquer([nouvel_effet(d.cle)]))
     perso = prereglages_.personnels()
     if perso:
         menu.addSeparator()

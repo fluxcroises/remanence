@@ -9,9 +9,9 @@ from pathlib import Path
 import numpy as np
 from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QGuiApplication, QImage, QKeySequence
-from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QFileDialog, QInputDialog,
-                               QMainWindow, QMessageBox, QSizePolicy, QToolBar, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QDockWidget,
+                               QFileDialog, QInputDialog, QMainWindow, QMessageBox, QSizePolicy,
+                               QToolBar, QVBoxLayout, QWidget)
 
 from remanence.config import reglages_interface
 from remanence.effets import (EFFETS, courbes, masque_a, modulateurs, poser_cle, retirer_cle,
@@ -122,6 +122,7 @@ class FenetrePrincipale(QMainWindow):
         self._analyses = 0
         self._derniere_sauvegarde: float | None = None
         self._espace = "montage"
+        self._moniteurs_a_ajuster = False
         self.setWindowIcon(charte.actuelle().icone_application())
         self.setMouseTracking(True)
 
@@ -209,6 +210,7 @@ class FenetrePrincipale(QMainWindow):
         self.enregistreur_midi = EnregistreurMidi()
         self.enregistreur_midi.recu.connect(self._midi_recu)
         self._midi = None  # (courbe, origine, durée, contrôle appris) pendant l'enregistrement
+        self._presse_papiers: list = []  # (piste, clip) copiés par Ctrl+C
         self.panneau_courbes.barre_midi.enregistrement.connect(self.enregistrer_midi)
         self.panneau_courbes.tete_demandee.connect(self.aller_a)
         self.panneau_datamosh = PanneauDatamosh()
@@ -355,21 +357,34 @@ class FenetrePrincipale(QMainWindow):
         for nom, dock in d.items():
             if not self._est_externe(nom):
                 dock.setVisible(nom in visibles and nom not in ("analyse", "courbes"))
-        if espace in ("montage", "effets") and not self._est_externe("medias"):
-            # Moniteurs à la hauteur d'une image 16:9 de leur largeur (en-tête et transport
-            # compris), la timeline prend le reste. Après avoir caché la compression : sinon
-            # la timeline reste à sa petite hauteur.
-            ecran = self.screen().availableGeometry()
-            largeur = self.width() if self.isVisible() and self.width() > 800 else ecran.width()
-            hauteur = self.height() if self.isVisible() and self.height() > 500                 else ecran.height()
-            if espace == "montage":
-                moniteur = (largeur - 300 - 340) // 2
-            else:
-                moniteur = largeur - 420 - 360
-            haut = min(round(moniteur * 9 / 16) + HAUTEUR_HABILLAGE_MONITEUR,
-                       hauteur - 72 - 260)
-            self.resizeDocks([d["medias"], d["visionneuse"], d["timeline"]],
-                             [haut, haut, max(260, hauteur - 72 - haut)], Qt.Vertical)
+        # Hauteur des moniteurs : quand la fenêtre a sa taille finale (au lancement, elle est
+        # construite petite puis agrandie, et Qt rapetissait les moniteurs avec elle).
+        self._moniteurs_a_ajuster = espace in ("montage", "effets")
+        QTimer.singleShot(0, self._ajuster_moniteurs)
+
+    def _ajuster_moniteurs(self):
+        """Moniteurs à la hauteur d'une image 16:9 de leur largeur (en-tête et transport
+        compris), la timeline prend le reste. Une seule fois par disposition par défaut : ensuite,
+        la hauteur choisie à la main reste."""
+        if not self._moniteurs_a_ajuster or self._est_externe("medias"):
+            return
+        if not self.isVisible() or self.width() <= 800 or self.height() <= 500:
+            return  # resizeEvent rappellera
+        self._moniteurs_a_ajuster = False
+        d = self._docks
+        largeur, hauteur = self.width(), self.height()
+        if self._espace == "montage":
+            moniteur = (largeur - 300 - 340) // 2
+        else:
+            moniteur = largeur - 420 - 360
+        haut = min(round(moniteur * 9 / 16) + HAUTEUR_HABILLAGE_MONITEUR, hauteur - 72 - 260)
+        self.resizeDocks([d["medias"], d["visionneuse"], d["timeline"]],
+                         [haut, haut, max(260, hauteur - 72 - haut)], Qt.Vertical)
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        if self._moniteurs_a_ajuster:
+            QTimer.singleShot(0, self._ajuster_moniteurs)
 
     def _appliquer_espace(self, espace: str, par_defaut: bool = False):
         reglages = reglages_interface()
@@ -393,6 +408,8 @@ class FenetrePrincipale(QMainWindow):
         self.onglets_gauche.masquer_onglet(garde, False)
         self.onglets_gauche.choisir(garde)
         self.onglets_gauche.masquer_onglet(cache, not self._est_externe("medias"))
+        if espace == "effets":
+            self.onglets_droite.choisir(0)  # on y règle les effets : l'inspecteur
         self._espace = espace
         self._actualiser_datamosh()
         self.barre_espaces.activer(espace)
@@ -463,6 +480,8 @@ class FenetrePrincipale(QMainWindow):
         f = m.addMenu("&Fichier")
         self._action(f, "Nouveau projet", self.nouveau, "Ctrl+N")
         self._action(f, "Ouvrir un projet…", self.ouvrir, "Ctrl+O")
+        self._menu_recents = f.addMenu("Projets récents")
+        self._menu_recents.aboutToShow.connect(self._remplir_recents)
         self._action(f, "Enregistrer", self.enregistrer, "Ctrl+S",
                      "")
         self._action(f, "Enregistrer sous…", self.enregistrer_sous, "Ctrl+Shift+S")
@@ -476,6 +495,12 @@ class FenetrePrincipale(QMainWindow):
         e = m.addMenu("É&dition")
         self.a_annuler = self._action(e, "Annuler", self.annuler, "Ctrl+Z")
         self.a_retablir = self._action(e, "Rétablir", self.retablir, ["Ctrl+Y", "Ctrl+Shift+Z"])
+        e.addSeparator()
+        self._action(e, "Copier", self.copier, "Ctrl+C")
+        self._action(e, "Coller", self.coller, "Ctrl+V")
+        self._action(e, "Dupliquer", self.dupliquer, "Ctrl+D")
+        e.addSeparator()
+        self._action(e, "Tout sélectionner", self.tout_selectionner, "Ctrl+A")
 
         mo = m.addMenu("&Montage")
         self._action(mo, "Outil de sélection", lambda: self.timeline.choisir_outil("selection"),
@@ -565,6 +590,10 @@ class FenetrePrincipale(QMainWindow):
                                             lambda v: self.barre_bas.setVisible(v))
         self.a_barre_espaces.setCheckable(True)
         self.a_barre_espaces.setChecked(True)
+        self._action(a, "Zoom avant", lambda: self._zoom_clavier(1.25), ["+", "="])
+        self._action(a, "Zoom arrière", lambda: self._zoom_clavier(0.8), "-")
+        self._action(a, "Tout voir", self.timeline.tout_voir, "Ctrl+0")
+        a.addSeparator()
         self._action(a, "Plein écran", self._plein_ecran, "F11")
         a.addSeparator()
         self.a_un_seul = self._action(a, "Un seul moniteur", self.basculer_un_seul_moniteur,
@@ -846,12 +875,36 @@ class FenetrePrincipale(QMainWindow):
         self.lecture_source.position_changee.connect(self._position_source)
         self.source.zone.glisser_depart.connect(self._glisser_source)
         self.timeline.vue.installEventFilter(self)
+        self._entete_clavier = None
+        QApplication.instance().focusChanged.connect(self._clavier_change)
 
     def eventFilter(self, objet, e):
         # Travailler dans la timeline rend le programme actif, comme un clic dans son moniteur.
         if objet is self.timeline.vue and e.type() == QEvent.MouseButtonPress:
             self.activer_moniteur("programme")
         return False
+
+    def _clavier_change(self, _ancien, nouveau):
+        """Repère du panneau qui reçoit le clavier (Suppr, flèches…) : un filet turquoise sous
+        son en-tête, ou sous la barre d'outils de la timeline."""
+        if nouveau is None:
+            return  # Remanence a perdu le clavier : le repère reste sur le dernier panneau
+        dock = nouveau
+        while dock is not None and not isinstance(dock, QDockWidget):
+            dock = dock.parentWidget()
+        entete = None
+        if dock is self._docks.get("timeline"):
+            entete = self.timeline.barre_outils
+        elif dock is not None and dock.titleBarWidget() is not None                 and dock.titleBarWidget().property("role") == "entete":
+            entete = dock.titleBarWidget()
+        if entete is self._entete_clavier:
+            return
+        for widget, valeur in ((self._entete_clavier, False), (entete, True)):
+            if widget is not None:
+                widget.setProperty("clavier", valeur)
+                widget.style().unpolish(widget)
+                widget.style().polish(widget)
+        self._entete_clavier = entete
 
     # Affichage de l'état
 
@@ -1779,6 +1832,56 @@ class FenetrePrincipale(QMainWindow):
         self._tenter("Coupe", lambda: edition.couper(self.projet.sequence, self.lecture.position,
                                                      edition.avec_lies(self.projet.sequence, sel)
                                                      if sel else None))
+
+    def _zoom_clavier(self, facteur: float):
+        """Zoom de la timeline autour de la tête de lecture."""
+        vue = self.timeline.vue
+        self.timeline.zoomer(facteur, vue.x_de(vue.tete))
+
+    def _remplir_recents(self):
+        self._menu_recents.clear()
+        liste = accueil.recents()
+        for chemin, _instant in liste:
+            a = self._menu_recents.addAction(chemin.stem,
+                                             lambda c=str(chemin): self.ouvrir(c))
+            a.setToolTip(str(chemin))
+        if not liste:
+            self._menu_recents.addAction("Aucun projet récent").setEnabled(False)
+
+    def copier(self):
+        sel = set(self.timeline.vue.selection)
+        if sel:
+            self._presse_papiers = edition.copier(self.projet.sequence, sel)
+
+    def coller(self, debut: int | None = None):
+        """Les clips copiés, à la tête de lecture, sur leurs pistes."""
+        if not self._presse_papiers:
+            return
+        poses: set[str] = set()
+        self._tenter("Collage", lambda: poses.update(edition.coller(
+            self.projet.sequence, self._presse_papiers,
+            self.lecture.position if debut is None else debut)))
+        if poses:
+            self.timeline.vue._choisir(poses)
+
+    def dupliquer(self):
+        """Une copie de la sélection, juste après elle."""
+        seq = self.projet.sequence
+        sel = edition.avec_lies(seq, set(self.timeline.vue.selection))
+        if not sel:
+            return
+        fin = max(c.fin for _, c in seq.tous_les_clips() if c.id in sel)
+        copies, self._presse_papiers = self._presse_papiers, edition.copier(seq, sel)
+        try:
+            self.coller(fin)
+        finally:
+            self._presse_papiers = copies
+
+    def tout_selectionner(self):
+        if self.medias.vue.hasFocus():
+            self.medias.vue.selectAll()
+            return
+        self.timeline.vue._choisir({c.id for _, c in self.projet.sequence.tous_les_clips()})
 
     def retirer_medias(self, ids: list[str]):
         """Retire des médias du projet ; ceux qui servent encore sur la timeline restent."""

@@ -1083,3 +1083,41 @@ def test_piste_des_images_cles_et_transition(fenetre, medias):
     assert _attendre(lambda: w.projet.sequence.pistes_video[0].clips[1].transition.duree == 10, 2)
     w._reglage_clip(b.id, "transition_retirer", None)
     assert _attendre(lambda: w.projet.sequence.pistes_video[0].clips[1].transition is None, 2)
+
+
+def test_ergonomie_presse_papiers_zoom_et_reperes(fenetre, medias):
+    """Copier, coller, dupliquer, tout sélectionner ; zoom au clavier ; projets récents ;
+    repère du panneau qui a le clavier ; inspecteur dans l'espace Effets."""
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    seq = w.projet.sequence
+    clip = seq.pistes_video[0].clips[0]
+    duree = clip.duree
+    w.timeline.vue._choisir({clip.id})
+    w.copier()
+    w.aller_a(duree + 10)
+    w.coller()
+    videos = seq.pistes_video[0].clips
+    assert [c.debut for c in videos] == [0, duree + 10]
+    assert len({c.id for c in videos}) == 2
+    colle = videos[1]
+    assert w.timeline.vue.selection >= {colle.id}, "les clips collés sont choisis"
+    audio = [c for c in seq.pistes_audio[0].clips if c.debut == duree + 10]
+    assert audio and audio[0].lien == colle.lien and colle.lien != clip.lien, \
+        "le son suit, avec un lien neuf"
+    w.timeline.vue._choisir({clip.id})
+    w.dupliquer()
+    assert [c.debut for c in seq.pistes_video[0].clips][:2] == [0, duree], "copie juste après"
+    w.tout_selectionner()
+    assert w.timeline.vue.selection == {c.id for _, c in seq.tous_les_clips()}
+    avant = w.timeline.vue.px_par_image
+    w._zoom_clavier(0.8)
+    assert w.timeline.vue.px_par_image < avant
+    w._remplir_recents()
+    assert w._menu_recents.actions()
+    w.timeline.vue.setFocus()
+    assert _attendre(lambda: w.timeline.barre_outils.property("clavier") is True, 2)
+    w.choisir_espace("effets")
+    assert w.onglets_droite.currentIndex() == 0, "l'inspecteur dans l'espace Effets"

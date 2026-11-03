@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (QComboBox, QFileDialog, QHBoxLayout, QLineEdit,
                                QProgressBar, QPushButton, QRadioButton, QScrollArea, QVBoxLayout,
                                QWidget)
@@ -40,6 +40,8 @@ class FormulaireExport(QWidget):
         lay.addWidget(etiquette("Fichier", "section"))
         self.fichier = QLineEdit()
         self.fichier.setAccessibleName("Fichier exporté")
+        # Le nom du fichier compte plus que le début du dossier : la fin reste visible.
+        self.fichier.textChanged.connect(self._fin_du_chemin)
         parcourir = QPushButton("Choisir…")
         parcourir.clicked.connect(self._choisir)
         ligne = QHBoxLayout()
@@ -53,12 +55,22 @@ class FormulaireExport(QWidget):
         self.erreur.setWordWrap(True)
         self.erreur.hide()
         lay.addWidget(self.erreur)
-        lay.addStretch(1)
+        lay.addSpacing(8)
         self.bouton = QPushButton("Exporter")
         self.bouton.setProperty("variante", "principal")
         self.bouton.setToolTip("Exporter (Ctrl+Entrée)")
         self.bouton.clicked.connect(self._valider)
         lay.addWidget(self.bouton)
+        lay.addStretch(1)
+
+    def _fin_du_chemin(self, texte: str):
+        self.fichier.setToolTip(texte)
+        if not self.fichier.hasFocus():
+            QTimer.singleShot(0, lambda: self.fichier.end(False))
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        QTimer.singleShot(0, lambda: self.fichier.end(False))
 
     def actualiser(self, projet: Projet, chemin_projet: Path | None):
         """Remet les choix à jour pour la séquence courante, sans effacer un fichier déjà saisi."""

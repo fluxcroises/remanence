@@ -414,8 +414,9 @@ class Inspecteur(PanneauFiche):
                                                                                  round(v)))
             self._cible.addWidget(ligne)
 
-        self._section("Enveloppe d'opacité" if video else "Enveloppe de volume", "enveloppe")
+        # La section n'existe qu'avec une enveloppe : vide, elle ne montrait qu'un titre.
         if c.enveloppe:
+            self._section("Enveloppe d'opacité" if video else "Enveloppe de volume", "enveloppe")
             self._lignes([("Points", str(len(c.enveloppe)))])
             b = QPushButton("Effacer l'enveloppe")
             b.clicked.connect(lambda: self.reglage.emit(c.id, "enveloppe", []))
