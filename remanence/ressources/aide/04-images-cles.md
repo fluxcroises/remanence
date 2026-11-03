@@ -65,3 +65,5 @@ Avec un contrôleur MIDI branché, choisissez un réglage dans le panneau Courbe
 4. Cliquez de nouveau Enregistrer pour arrêter.
 
 Le geste devient une courbe ordinaire, à retoucher comme les autres : le rendu reste le même d'un export à l'autre.
+
+Automator (Montage > Scripts) pose des images clés au hasard sur les réglages cochés d'un effet du clip choisi, à intervalle régulier. Elles se retouchent ensuite comme les autres.

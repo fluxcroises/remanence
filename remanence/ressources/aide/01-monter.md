@@ -11,4 +11,6 @@
 6. **Enchaîner** : posez un clip sur la fin du précédent : ils se fondent l'un dans l'autre. Clic droit sur le clip qui entre, Transition du fondu, pour un volet, des blocs, un décalage RVB ou une coupure de signal à la place du mélange (aussi dans l'inspecteur, sous Fondu d'entrée).
 7. **Copier** : Ctrl+C, puis Ctrl+V colle à la tête de lecture. Ctrl+D duplique juste après.
 
+8. **Scripts** (Montage > Scripts, ou clic droit sur un clip) : Scramble découpe les clips choisis en morceaux et mélange leur ordre ; Layer les recopie sur de nouvelles pistes, décalés et de plus en plus transparents, pour un écho. Une même graine redonne le même résultat ; Autre tirage en propose un nouveau.
+
 Ctrl+Z annule, sans limite.

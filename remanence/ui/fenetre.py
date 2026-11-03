@@ -24,7 +24,7 @@ from remanence.media import intermediaire
 from remanence.media.lecteur import LecteurVideo, generer_cache_audio
 from remanence.media.proxy import chemin_audio, chemin_proxy, generer_proxy, proxy_utile
 from remanence.media.sonde import EXTENSIONS_IMAGES, analyser, detecter_sequence_images
-from remanence.projet import edition, serialisation
+from remanence.projet import edition, scripts_montage, serialisation
 from remanence.projet.historique import Historique
 from remanence.projet.modele import Clip, Marqueur, Media, Projet, nouvel_id
 from remanence.rendu.couleur import vers_rvb16_apercu, vers_rvba
@@ -45,7 +45,7 @@ from remanence.ui.menu_effets import remplir_menu_effets
 from remanence.ui.panneau_export import FileExport, FormulaireExport
 from remanence.ui.taches import GestionnaireTaches, Tache
 from remanence.ui.timeline import Timeline
-from remanence.ui import accueil
+from remanence.ui import accueil, dialogue_scripts
 from remanence.ui.aide import FenetreAide
 from remanence.ui.midi import EnregistreurMidi
 from remanence.ui.panneau_courbes import PanneauCourbes
@@ -542,6 +542,11 @@ class FenetrePrincipale(QMainWindow):
         self._remplir_menus_effets()
         mo.addSeparator()
         self._action(mo, "Ajouter un marqueur", self.marqueur, "M")
+        mo.addSeparator()
+        scripts_ = mo.addMenu("Scripts")
+        self._action(scripts_, "Scramble…", self.script_scramble)
+        self._action(scripts_, "Layer…", self.script_layer)
+        self._action(scripts_, "Automator…", self.script_automator)
         mo.addSeparator()
         self._action(mo, "Timecode de début de la séquence…", self.regler_timecode_debut,
                      aide="")
@@ -1832,6 +1837,65 @@ class FenetrePrincipale(QMainWindow):
         self._tenter("Coupe", lambda: edition.couper(self.projet.sequence, self.lecture.position,
                                                      edition.avec_lies(self.projet.sequence, sel)
                                                      if sel else None))
+
+    # Scripts de glitch (section 4.12 du cahier) : une boîte de réglages, puis une action
+    # ordinaire de l'historique.
+
+    def script_scramble(self):
+        sel = set(self.timeline.vue.selection)
+        if not sel:
+            self.message("Aucun clip choisi")
+            return
+        d = dialogue_scripts.dialogue_scramble(self)
+        if d.exec() != QDialog.Accepted:
+            return
+        v = d.valeurs()
+        poses: set[str] = set()
+        self._tenter("Scramble", lambda: poses.update(scripts_montage.scramble(
+            self.projet.sequence, sel, v["longueur"], v["graine"])))
+        if poses:
+            self.timeline.vue._choisir(poses)
+
+    def script_layer(self):
+        sel = set(self.timeline.vue.selection)
+        if not sel:
+            self.message("Aucun clip choisi")
+            return
+        d = dialogue_scripts.dialogue_layer(self)
+        if d.exec() != QDialog.Accepted:
+            return
+        v = d.valeurs()
+        self._tenter("Layer", lambda: scripts_montage.layer(
+            self.projet.sequence, sel, v["copies"], v["decalage"], v["attenuation"] / 100,
+            v["fusion"]))
+
+    def script_automator(self):
+        """Sur un effet des clips choisis, sinon de la séquence."""
+        seq = self.projet.sequence
+        sel = set(self.timeline.vue.selection)
+        effets = []  # (libellé, effet, début de son temps, fin)
+        for _p, c in seq.tous_les_clips():
+            if c.id in sel:
+                effets += [(f"{EFFETS[e.type].nom} · {self._nom_clip(c)}", e, 0, c.duree - 1)
+                           for e in c.effets if e.type in EFFETS and EFFETS[e.type].animable]
+        if not sel:
+            effets = [(f"{EFFETS[e.type].nom} · Séquence", e, 0, max(0, seq.duree() - 1))
+                      for e in seq.effets if e.type in EFFETS and EFFETS[e.type].animable]
+        if not effets:
+            self.message("Aucun effet animable")
+            return
+        d = dialogue_scripts.DialogueAutomator([(nom, e) for nom, e, _d, _f in effets], self)
+        if d.exec() != QDialog.Accepted:
+            return
+        v = d.valeurs()
+        _nom, effet, debut, fin = effets[v["effet"]]
+        self._tenter("Automator", lambda: scripts_montage.automator(
+            effet, d.reglages_choisis(), debut, fin, v["intervalle"], v["amplitude"] / 100,
+            v["passage"], v["graine"]))
+
+    def _nom_clip(self, c) -> str:
+        media = self.projet.medias.get(c.media_id)
+        return Path(media.chemin).stem if media is not None else "Clip d'effet"
 
     def _zoom_clavier(self, facteur: float):
         """Zoom de la timeline autour de la tête de lecture."""

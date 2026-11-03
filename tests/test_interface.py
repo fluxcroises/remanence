@@ -1145,3 +1145,34 @@ def test_transition_du_fondu_depuis_l_interface(fenetre, medias):
                                  for l in w.inspecteur.findChildren(QComboBox)), 3)
     w.annuler()
     assert w.projet.sequence.pistes_video[0].clips[0].style_fondu is None
+
+
+def test_scripts_depuis_le_menu(fenetre, medias, monkeypatch):
+    """Scramble, Layer et Automator depuis Montage > Scripts : une action de l'historique."""
+    from PySide6.QtWidgets import QDialog
+    from remanence.effets import nouvel_effet
+    from remanence.ui import dialogue_scripts
+    monkeypatch.setattr(dialogue_scripts.DialogueScript, "exec", lambda self: QDialog.Accepted)
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    seq = w.projet.sequence
+    clip = seq.pistes_video[0].clips[0]
+    w.timeline.vue._choisir({clip.id})
+    w.script_scramble()
+    assert len(seq.pistes_video[0].clips) > 1
+    w.annuler()
+    assert len(w.projet.sequence.pistes_video[0].clips) == 1
+    seq = w.projet.sequence
+    w.timeline.vue._choisir({seq.pistes_video[0].clips[0].id})
+    w.script_layer()
+    assert len(w.projet.sequence.pistes_video) == 4
+    w.annuler()
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    w.ajouter_effet("clip", clip.id, [nouvel_effet("scanlines")])
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    w.timeline.vue._choisir({clip.id})
+    w.script_automator()
+    effet = w.projet.sequence.pistes_video[0].clips[0].effets[0]
+    assert len(effet.cles["force"]) > 2

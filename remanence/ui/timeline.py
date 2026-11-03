@@ -945,6 +945,10 @@ class VueTimeline(QWidget):
                 effets = menu.addMenu("Ajouter un effet")
                 remplir_menu_effets(effets, lambda liste: fenetre.ajouter_effet(
                     "clip", clip.id, liste))
+            scripts_ = menu.addMenu("Scripts")
+            scripts_.addAction("Scramble…", fenetre.script_scramble)
+            scripts_.addAction("Layer…", fenetre.script_layer)
+            scripts_.addAction("Automator…", fenetre.script_automator)
             if clip.lien:
                 menu.addAction("Dissocier son et image (U)", fenetre.dissocier)
             elif len(self.selection) > 1:
