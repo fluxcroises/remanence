@@ -12,9 +12,10 @@ import math
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QEasingCurve, QPointF, QSize, Qt, QTimer, QVariantAnimation
+from PySide6.QtCore import (QEasingCurve, QPointF, QRectF, QSize, Qt, QTimer,
+                            QVariantAnimation)
 from PySide6.QtGui import QIcon, QPainter, QPen, QPixmap, QPolygonF
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog, QGridLayout,
+from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog, QFileDialog, QGridLayout,
                                QHBoxLayout, QHeaderView, QLabel, QPushButton, QScrollArea,
                                QSizePolicy, QToolButton, QTreeWidget, QTreeWidgetItem,
                                QVBoxLayout, QWidget)
@@ -91,6 +92,31 @@ def au_demarrage() -> bool:
     return str(reglages_interface().value(CLE_AU_DEMARRAGE, "true")).lower() == "true"
 
 
+def _icone_format(cle: str) -> QIcon:
+    """Un cadre aux proportions du format, gris au repos, mauve quand la tuile est choisie."""
+    l, h = FORMATS[cle][1][0][1:]
+    boite_l, boite_h = 44, 32
+    echelle = min((boite_l - 4) / l, (boite_h - 4) / h)
+    cadre = QRectF(0, 0, l * echelle, h * echelle)
+    cadre.moveCenter(QPointF(boite_l / 2, boite_h / 2))
+    c = charte.actuelle()
+    icone = QIcon()
+    for mode, etat, couleur in [(QIcon.Normal, QIcon.Off, "ink-muted"),
+                                (QIcon.Active, QIcon.Off, "ink"),
+                                (QIcon.Normal, QIcon.On, "accent"),
+                                (QIcon.Active, QIcon.On, "accent")]:
+        pm = QPixmap(boite_l * 2, boite_h * 2)
+        pm.setDevicePixelRatio(2.0)
+        pm.fill(Qt.transparent)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setPen(QPen(c.c(couleur), 1.5))
+        p.drawRoundedRect(cadre.adjusted(0.75, 0.75, -0.75, -0.75), 2, 2)
+        p.end()
+        icone.addPixmap(pm, mode, etat)
+    return icone
+
+
 class Volet(QWidget):
     """Volet de l'accueil : un titre bien visible et son contenu. Un seul est ouvert à la fois
     et prend toute la hauteur ; les autres ne montrent que leur titre (`Accueil.ouvrir_volet`)."""
@@ -130,7 +156,9 @@ class FondOndes(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WA_OpaquePaintEvent)
         self._t = 0.0
+        self._image: QPixmap | None = None
         self._horloge = QTimer(self)
         self._horloge.setInterval(40)
         self._horloge.timeout.connect(self._avancer)
@@ -143,14 +171,38 @@ class FondOndes(QWidget):
         self._horloge.stop()
         super().hideEvent(e)
 
+    def pause(self, oui: bool):
+        """Arrêtée pendant le glissement d'un volet : chaque pas redessinait toute la fenêtre."""
+        if oui:
+            self._horloge.stop()
+        elif self.isVisible():
+            self._horloge.start()
+
+    def resizeEvent(self, e):
+        self._image = None
+        super().resizeEvent(e)
+
     def _avancer(self):
         self._t += 0.04
+        self._image = None
         self.update()
 
     def paintEvent(self, _e):
-        c = charte.actuelle()
+        # Les volets sont transparents : chacun de leurs dessins redessine le fond. La nappe
+        # n'est donc calculée qu'une fois par pas de l'horloge.
+        if self._image is None or self._image.size() != self.size() * self.devicePixelRatioF():
+            self._image = self._dessiner()
         p = QPainter(self)
-        p.fillRect(self.rect(), c.c("bg-app"))
+        p.drawPixmap(0, 0, self._image)
+        p.end()
+
+    def _dessiner(self) -> QPixmap:
+        c = charte.actuelle()
+        ratio = self.devicePixelRatioF()
+        image = QPixmap(self.size() * ratio)
+        image.setDevicePixelRatio(ratio)
+        image.fill(c.c("bg-app"))
+        p = QPainter(image)
         p.setRenderHint(QPainter.Antialiasing)
         l, h = self.width(), self.height()
         horizon = h * 0.45
@@ -170,6 +222,7 @@ class FondOndes(QWidget):
                           Qt.SolidLine, Qt.RoundCap))
             p.drawPoints(points)
         p.end()
+        return image
 
 
 class Accueil(QDialog):
@@ -229,13 +282,11 @@ class Accueil(QDialog):
         lay.addSpacing(6)
         lay.addWidget(etiquette(f"Version {__version__}", "secondaire"))
         lay.addSpacing(32)
-        self._creer_bouton = QPushButton("Nouveau projet")
-        self._creer_bouton.setProperty("variante", "principal")
-        self._creer_bouton.setDefault(True)
-        self._creer_bouton.clicked.connect(self._creer)
+        nouveau = QPushButton("Nouveau projet")
+        nouveau.clicked.connect(self._vers_nouveau_projet)
         ouvrir = QPushButton("Ouvrir…")
         ouvrir.clicked.connect(self._parcourir)
-        for b in (self._creer_bouton, ouvrir):
+        for b in (nouveau, ouvrir):
             b.setFixedWidth(200)
             lay.addWidget(b)
             lay.addSpacing(8)
@@ -255,6 +306,10 @@ class Accueil(QDialog):
         lay.addWidget(self.au_demarrage)
         return colonne
 
+    def _vers_nouveau_projet(self):
+        self.ouvrir_volet(0)
+        self._creer_bouton.setFocus()
+
     # À droite : nouveau projet, récents, prise en main
 
     def _contenu(self) -> QWidget:
@@ -273,12 +328,7 @@ class Accueil(QDialog):
         self._pile_volets = QVBoxLayout(colonne)
         self._pile_volets.setContentsMargins(0, 0, 16, 0)
         self._pile_volets.setSpacing(0)
-        format_ = QWidget()
-        lay_format = QVBoxLayout(format_)
-        lay_format.setContentsMargins(0, 0, 0, 0)
-        lay_format.addLayout(self._ligne_format())
-        lay_format.addStretch(1)
-        self.volets = [Volet("Nouveau projet", format_),
+        self.volets = [Volet("Nouveau projet", self._nouveau_projet()),
                        Volet("Récents", self._liste_recents()),
                        Volet("Prise en main", self._fiches())]
         for i, v in enumerate(self.volets):
@@ -286,7 +336,7 @@ class Accueil(QDialog):
             v.titre.clicked.connect(lambda _=False, i=i: self.ouvrir_volet(i))
         self._pile_volets.addStretch(0)
         self._animation = QVariantAnimation(self)
-        self._animation.setDuration(220)
+        self._animation.setDuration(260)
         self._animation.setEasingCurve(QEasingCurve.OutCubic)
         self._animation.setStartValue(0.0)
         self._animation.setEndValue(1.0)
@@ -322,6 +372,7 @@ class Accueil(QDialog):
         nouveau.setMaximumHeight(0)
         nouveau.show()
         self._pile_volets.setStretchFactor(self.volets[i], 1)
+        self.fond.pause(True)
         self._animation.start()
 
     def _glisser(self, x: float):
@@ -338,19 +389,42 @@ class Accueil(QDialog):
             self._pile_volets.setStretchFactor(ferme, 0)
             self._fermant = -1
         self.volets[self._ouvert].corps.setMaximumHeight(TAILLE_MAX)
+        self.fond.pause(False)
 
 
-    def _ligne_format(self) -> QGridLayout:
+    def _nouveau_projet(self) -> QWidget:
+        """Le format en tuiles (le dessin de chaque tuile a ses proportions), puis résolution,
+        cadence et timecode, et le bouton qui crée le projet."""
+        volet = QWidget()
+        lay = QVBoxLayout(volet)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(16)
+        tuiles = QHBoxLayout()
+        tuiles.setSpacing(8)
+        self._groupe_format = QButtonGroup(self)
+        self.tuiles_format: dict[str, QToolButton] = {}
+        for cle, nom in [("auto", "D'après le média")] + [(k, v[0]) for k, v in FORMATS.items()]:
+            b = QToolButton()
+            b.setProperty("variante", "format")
+            b.setText(nom)
+            b.setAccessibleName(f"Format {nom}")
+            b.setCheckable(True)
+            b.setCursor(Qt.PointingHandCursor)
+            b.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+            b.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            b.setFixedHeight(84)
+            b.setIcon(charte.actuelle().icone("film", 28) if cle == "auto" else _icone_format(cle))
+            b.setIconSize(QSize(44, 32))
+            b.clicked.connect(lambda _=False, cle=cle: self.choisir_format(cle))
+            self._groupe_format.addButton(b)
+            self.tuiles_format[cle] = b
+            tuiles.addWidget(b)
+        lay.addLayout(tuiles)
+
         grille = QGridLayout()
         grille.setContentsMargins(0, 0, 0, 0)
         grille.setHorizontalSpacing(8)
         grille.setVerticalSpacing(4)
-        self.format = QComboBox()
-        self.format.setAccessibleName("Format")
-        self.format.addItem("D'après le média", "auto")
-        for cle, (nom, _r) in FORMATS.items():
-            self.format.addItem(nom, cle)
-        self.format.currentIndexChanged.connect(lambda _i: self._format_change())
         self.resolution = QComboBox()
         self.resolution.setAccessibleName("Résolution")
         self.cadence = QComboBox()
@@ -363,19 +437,26 @@ class Accueil(QDialog):
         self.timecode.addItem("01:00:00:00", True)
         self.timecode.addItem("00:00:00:00", False)
         for colonne, (nom, champ, etire) in enumerate((
-                ("Format", self.format, 3), ("Résolution", self.resolution, 4),
-                ("Cadence", self.cadence, 2), ("Timecode", self.timecode, 2))):
+                ("Résolution", self.resolution, 4), ("Cadence", self.cadence, 2),
+                ("Timecode", self.timecode, 2))):
             grille.addWidget(etiquette(nom, "libelle"), 0, colonne)
             grille.addWidget(champ, 1, colonne)
             grille.setColumnStretch(colonne, etire)
-        self._format_change()
-        return grille
+        lay.addLayout(grille)
 
-    def format_choisi(self) -> str:
-        return self.format.currentData()
+        self._creer_bouton = QPushButton("Créer le projet")
+        self._creer_bouton.setProperty("variante", "principal")
+        self._creer_bouton.setDefault(True)
+        self._creer_bouton.setFixedWidth(200)
+        self._creer_bouton.clicked.connect(self._creer)
+        lay.addWidget(self._creer_bouton)
+        lay.addStretch(1)
+        self.choisir_format("auto")
+        return volet
 
-    def _format_change(self):
-        cle = self.format_choisi()
+    def choisir_format(self, cle: str):
+        self._format = cle
+        self.tuiles_format[cle].setChecked(True)
         auto = cle == "auto"
         for champ in (self.resolution, self.cadence, self.timecode):
             champ.setEnabled(not auto)
@@ -384,6 +465,9 @@ class Accueil(QDialog):
             self.resolution.addItem("Celle du premier média", None)
         for nom, l, h in ([] if auto else FORMATS[cle][1]):
             self.resolution.addItem(f"{nom} ({l} × {h})", (l, h))
+
+    def format_choisi(self) -> str:
+        return self._format
 
     def _creer(self):
         cle = self.format_choisi()

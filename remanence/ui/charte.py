@@ -360,6 +360,13 @@ QToolButton[variante="volet"] {{ {police_title} background: transparent; border:
     border-radius: 0; color: {ink}; padding: 0; text-align: left; }}
 QToolButton[variante="volet"]:hover {{ background: transparent; color: {accent}; }}
 QWidget[role="volet"] {{ border-top: 1px solid {line}; }}
+QToolButton[variante="format"] {{ background: {surface}; border: 1px solid {line};
+    border-radius: {radius_sm}; color: {ink_muted}; padding: {space_2}; min-height: 0;
+    max-height: 400px; }}
+QToolButton[variante="format"]:hover {{ color: {ink}; border-color: {control_border};
+    background: {surface_hover}; }}
+QToolButton[variante="format"]:checked {{ color: {ink}; border-color: {accent};
+    background: {surface_raised}; }}
 QToolButton[variante="fiche"] {{ background: {surface}; border: 1px solid {line};
     border-radius: {radius_sm}; color: {ink_muted}; padding: {space_2}; min-height: 0;
     max-height: 400px; }}

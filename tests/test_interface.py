@@ -311,7 +311,7 @@ def test_ecran_d_accueil(fenetre, medias, tmp_path):
     w = fenetre
     d = accueil.Accueil(w)
     assert d.format_choisi() == "auto" and not d.resolution.isEnabled()
-    d.format.setCurrentIndex(d.format.findData("9:16"))
+    d.tuiles_format["9:16"].click()
     assert d.resolution.isEnabled() and d.resolution.currentData() == (1080, 1920)
     d.cadence.setCurrentIndex(d.cadence.findData("25"))
     d._creer()
