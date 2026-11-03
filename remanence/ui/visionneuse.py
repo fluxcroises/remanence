@@ -31,12 +31,46 @@ in vec2 pos;
 out vec2 uv;
 void main() { uv = vec2(pos.x * 0.5 + 0.5, 0.5 - pos.y * 0.5); gl_Position = vec4(pos, 0.0, 1.0); }
 """
+# Avant / après : mode 1, volet (l'avant à gauche du trait) ; mode 2, côte à côte (l'avant
+# à gauche). LUT d'affichage : texture 3D, le rouge sur x, échantillonnée au centre des cases.
 FRAGMENTS = """
 #version 330
 uniform sampler2D image;
+uniform sampler2D avant;
+uniform sampler3D lut;
+uniform int mode;
+uniform float volet;
+uniform float trait;
+uniform vec3 couleur_trait;
+uniform int a_lut;
+uniform float lut_n;
+uniform vec3 lut_min;
+uniform vec3 lut_max;
 in vec2 uv;
 out vec4 couleur;
-void main() { couleur = vec4(texture(image, uv).rgb, 1.0); }
+
+vec3 lire() {
+    if (mode == 1) {
+        return uv.x < volet ? texture(avant, uv).rgb : texture(image, uv).rgb;
+    }
+    if (mode == 2) {
+        return uv.x < 0.5 ? texture(avant, vec2(uv.x * 2.0, uv.y)).rgb
+                          : texture(image, vec2(uv.x * 2.0 - 1.0, uv.y)).rgb;
+    }
+    return texture(image, uv).rgb;
+}
+
+void main() {
+    vec3 c = lire();
+    if (a_lut == 1) {
+        vec3 t = clamp((c - lut_min) / max(lut_max - lut_min, vec3(1e-6)), 0.0, 1.0);
+        c = texture(lut, t * (lut_n - 1.0) / lut_n + 0.5 / lut_n).rgb;
+    }
+    if (mode == 1 && abs(uv.x - volet) < trait) {
+        c = couleur_trait;
+    }
+    couleur = vec4(c, 1.0);
+}
 """
 LIBELLES_QUALITE = {"Pleine": "Pleine résolution", "1/2": "Proxy 1/2", "1/4": "Proxy 1/4"}
 ZOOMS = [("Adapter", None), ("25 %", 0.25), ("50 %", 0.5), ("100 %", 1.0), ("200 %", 2.0)]
@@ -53,6 +87,15 @@ class ZoneImage(QOpenGLWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._image: np.ndarray | None = None
+        # Avant / après : l'image sans effets, et la façon de la montrer.
+        self._avant: np.ndarray | None = None
+        self.comparaison = "apres"
+        self.volet = 0.5
+        self._en_volet = False
+        self.lut = None
+        self._lut_a_envoyer = False
+        self._texture_lut = None
+        self._texture_avant = None
         self._a_envoyer = False
         self._ctx = None
         self._texture = None
@@ -73,8 +116,12 @@ class ZoneImage(QOpenGLWidget):
     def rendu_gpu(self) -> bool:
         return self._ctx is not None and not self._echec_gl
 
-    def montrer(self, image: np.ndarray):
-        self._image = image
+    def montrer(self, image):
+        """Une image, ou (après, avant) pour un volet ou un côte à côte."""
+        if isinstance(image, tuple):
+            self._image, self._avant = image
+        else:
+            self._image, self._avant = image, None
         self._a_envoyer = True
         self._message = ""
         self.update()
@@ -89,6 +136,18 @@ class ZoneImage(QOpenGLWidget):
         super().resizeEvent(e)
         for calque in self._calques():
             calque.setGeometry(self.rect())
+
+    def definir_lut(self, lut):
+        """LUT d'affichage (rendu.lut.Lut) ou None."""
+        self.lut = lut
+        self._lut_a_envoyer = True
+        self.update()
+
+    @property
+    def mode_comparaison(self) -> int:
+        if self._avant is None or self._image is None or self._avant.shape != self._image.shape:
+            return 0
+        return {"volet": 1, "cote": 2}.get(self.comparaison, 0)
 
     def montrer_message(self, texte: str):
         self._image = None
@@ -117,6 +176,8 @@ class ZoneImage(QOpenGLWidget):
 
     def _rect_image(self, largeur: float, hauteur: float, ratio: float = 1.0) -> QRectF:
         h, l = self._image.shape[:2]
+        if self.mode_comparaison == 2:
+            l *= 2  # côte à côte : deux images dans la largeur
         if self.zoom is None:
             s = min(largeur / l, hauteur / h)
         else:
@@ -148,11 +209,51 @@ class ZoneImage(QOpenGLWidget):
                 self._texture = self._ctx.texture((l, h), 3, dtype=dtype)
                 self._texture.filter = (moderngl.LINEAR, moderngl.LINEAR)
             self._texture.write(self._image.tobytes())
+            if self._avant is not None:
+                dtype_avant = "nu2" if self._avant.dtype == np.uint16 else "f2"
+                ha, la = self._avant.shape[:2]
+                if self._texture_avant is None or self._texture_avant.size != (la, ha) or \
+                        self._texture_avant.dtype != dtype_avant:
+                    if self._texture_avant is not None:
+                        self._texture_avant.release()
+                    self._texture_avant = self._ctx.texture((la, ha), 3, dtype=dtype_avant)
+                    self._texture_avant.filter = (moderngl.LINEAR, moderngl.LINEAR)
+                self._texture_avant.write(np.ascontiguousarray(self._avant).tobytes())
             self._a_envoyer = False
+        if self._lut_a_envoyer:
+            if self._texture_lut is not None:
+                self._texture_lut.release()
+                self._texture_lut = None
+            if self.lut is not None:
+                n = self.lut.taille
+                self._texture_lut = self._ctx.texture3d((n, n, n), 3, self.lut.table.tobytes(),
+                                                        dtype="f4")
+                self._texture_lut.filter = (moderngl.LINEAR, moderngl.LINEAR)
+                self._texture_lut.repeat_x = self._texture_lut.repeat_y = False
+                self._texture_lut.repeat_z = False
+            self._lut_a_envoyer = False
         r = self._rect_image(lp, hp, ratio)
         self._ctx.viewport = (int(r.x()), int(hp - r.y() - r.height()), int(r.width()),
                               int(r.height()))
+        mode = self.mode_comparaison
         self._texture.use(0)
+        if self._texture_avant is not None:
+            self._texture_avant.use(1)
+        if self._texture_lut is not None:
+            self._texture_lut.use(2)
+        trait = charte.actuelle().c("accent")
+        for nom, valeur in (("image", 0), ("avant", 1), ("lut", 2), ("mode", mode),
+                            ("volet", float(self.volet)),
+                            ("trait", ratio / max(1.0, r.width())),
+                            ("couleur_trait", (trait.redF(), trait.greenF(), trait.blueF())),
+                            ("a_lut", int(self._texture_lut is not None))):
+            if nom in self._prog:
+                self._prog[nom].value = valeur
+        if self.lut is not None:
+            for nom, valeur in (("lut_n", float(self.lut.taille)), ("lut_min", self.lut.minimum),
+                                ("lut_max", self.lut.maximum)):
+                if nom in self._prog:
+                    self._prog[nom].value = tuple(valeur) if nom != "lut_n" else valeur
         self._vao.render(moderngl.TRIANGLE_STRIP)
 
     def _peindre_qpainter(self):
@@ -160,10 +261,7 @@ class ZoneImage(QOpenGLWidget):
         p = QPainter(self)
         p.fillRect(self.rect(), c.c("viewer-bg"))
         if self._image is not None:
-            if self._image.dtype == np.uint16:
-                rgb = (self._image >> 8).astype(np.uint8)
-            else:
-                rgb = np.clip(self._image.astype(np.float32) * 255.0 + 0.5, 0, 255).astype(np.uint8)
+            rgb = np.clip(self.image_affichee() * 255.0 + 0.5, 0, 255).astype(np.uint8)
             rgb = np.ascontiguousarray(rgb)
             h, l = rgb.shape[:2]
             qimg = QImage(rgb.data, l, h, 3 * l, QImage.Format_RGB888)
@@ -174,14 +272,48 @@ class ZoneImage(QOpenGLWidget):
                        self._message)
         p.end()
 
-    # Souris : déplacer l'image zoomée, ou glisser la source vers la timeline.
+    def image_affichee(self) -> np.ndarray:
+        """Ce que montre le moniteur, calculé sur le processeur (sans OpenGL, et pour les
+        tests) : comparaison avant / après, puis LUT."""
+        def flottant(image):
+            if image.dtype == np.uint16:
+                return image.astype(np.float32) / 65535.0
+            return image.astype(np.float32)
+        apres = flottant(self._image)
+        mode = self.mode_comparaison
+        if mode == 1:
+            avant = flottant(self._avant)
+            limite = int(round(self.volet * apres.shape[1]))
+            apres = apres.copy()
+            apres[:, :limite] = avant[:, :limite]
+        elif mode == 2:
+            apres = np.concatenate([flottant(self._avant), apres], axis=1)
+        if self.lut is not None:
+            from remanence.rendu.lut import appliquer
+            apres = appliquer(apres, self.lut)
+        return apres
+
+    # Souris : déplacer l'image zoomée, glisser la source vers la timeline, ou tirer le volet.
+
+    def _deplacer_volet(self, pos: QPointF):
+        r = self._rect_image(self.width(), self.height())
+        if r.width() > 0:
+            self.volet = min(1.0, max(0.0, (pos.x() - r.x()) / r.width()))
+            self.update()
 
     def mousePressEvent(self, e):
+        if self.mode_comparaison == 1 and e.button() == Qt.LeftButton:
+            self._en_volet = True
+            self._deplacer_volet(e.position())
+            return
         self._clic = e.position()
         self._decalage_depart = QPointF(self._decalage)
         super().mousePressEvent(e)
 
     def mouseMoveEvent(self, e):
+        if self._en_volet:
+            self._deplacer_volet(e.position())
+            return
         if self._clic is None or not e.buttons() & Qt.LeftButton:
             return
         delta = e.position() - self._clic
@@ -195,6 +327,7 @@ class ZoneImage(QOpenGLWidget):
             self.glisser_depart.emit()
 
     def mouseReleaseEvent(self, e):
+        self._en_volet = False
         self._clic = None
         super().mouseReleaseEvent(e)
 

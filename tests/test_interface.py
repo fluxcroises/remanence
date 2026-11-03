@@ -1260,3 +1260,41 @@ def test_export_par_plan_et_liste_de_remplacement(fenetre, medias, tmp_path, mon
     assert len(w.projet.sequences) == 2 and len(seq.pistes_video[0].clips) == 2
     noms = {Path(w.projet.medias[c.media_id].chemin).name for c in seq.pistes_video[0].clips}
     assert noms == {p.name for p in attendus}, "chaque plan relié à son fichier exporté"
+
+
+def test_moniteur_avant_apres_et_lut(fenetre, medias, tmp_path):
+    import numpy as np
+    from tests.test_affichage import _cube
+    from remanence.effets import nouvel_effet
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    effet = nouvel_effet("decalage_rvb")
+    effet.params["force"] = 100
+    w.ajouter_effet("clip", clip.id, [effet])
+    zone = w.visionneuse.zone
+    w.aller_a(5)
+    assert _attendre(lambda: zone._image is not None, 10)
+    w.comparer("volet")
+    assert _attendre(lambda: zone._avant is not None, 10), "l'image sans effets arrive"
+    apres, avant = zone._image.copy(), zone._avant.copy()
+    assert apres.shape == avant.shape and not np.array_equal(apres, avant)
+    zone.volet = 0.5
+    vue = zone.image_affichee()
+    moitie = apres.shape[1] // 2
+    def f(x):  # l'aperçu rapide arrive en uint16, l'image composée en float16
+        return x.astype(np.float32) / 65535 if x.dtype == np.uint16 else x.astype(np.float32)
+    assert np.allclose(vue[:, :moitie - 2], f(avant)[:, :moitie - 2])
+    assert np.allclose(vue[:, moitie + 2:], f(apres)[:, moitie + 2:])
+    w.comparer("cote")
+    assert zone.image_affichee().shape[1] == 2 * apres.shape[1]
+    w.comparer("apres")
+    assert _attendre(lambda: zone._avant is None, 10)
+    assert w.b_comparaison.text() == "Après"
+    w.choisir_lut(str(_cube(tmp_path, transformer=lambda r, v, b: (1 - r, 1 - v, 1 - b))))
+    assert w.b_lut.isVisibleTo(w) and w.source.zone.lut is not None
+    assert np.allclose(zone.image_affichee(), 1 - np.clip(f(zone._image), 0, 1), atol=1e-3)
+    w.choisir_lut(None)
+    assert zone.lut is None and not w.b_lut.isVisibleTo(w)

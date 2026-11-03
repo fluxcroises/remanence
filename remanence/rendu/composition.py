@@ -8,6 +8,7 @@ l'export recopie alors l'image d'origine sans la recalculer.
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 from fractions import Fraction
 
@@ -97,6 +98,26 @@ def couches(projet: Projet, seq: Sequence, f: int) -> list[Couche]:
                                    c.fusion, not calcul and prerendu.dans_plages(
                                        projet, seq, c, f - c.debut), calcul))
     return resultat
+
+
+def sans_effets(projet: Projet) -> Projet:
+    """Copie du projet sans aucun effet : ni effets, ni modulateurs, ni datamosh, ni clips
+    d'effet, ni transitions glitch. Le montage (vitesse, fondus, titres) reste. Sert au suivi
+    des masques (un glitch ne doit pas perdre le suiveur) et à l'avant / après."""
+    copie = copy.deepcopy(projet)
+    for seq in copie.sequences:
+        seq.effets = []
+        seq.modulateurs = []
+        for piste in seq.pistes:
+            piste.effets = []
+            for c in piste.clips:
+                c.effets = []
+                c.transition = None
+                c.cles_supprimees = []
+                c.style_fondu = None
+            # Les clips d'effet ne montrent rien sans leurs effets.
+            piste.clips = [c for c in piste.clips if not c.est_effet]
+    return copie
 
 
 def sequence_par_id(projet: Projet, sequence_id: str) -> Sequence | None:

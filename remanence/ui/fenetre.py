@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import time
 from pathlib import Path
 
@@ -10,8 +11,8 @@ import numpy as np
 from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QGuiApplication, QImage, QKeySequence
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QDockWidget,
-                               QFileDialog, QInputDialog, QMainWindow, QMessageBox, QSizePolicy,
-                               QToolBar, QVBoxLayout, QWidget)
+                               QFileDialog, QInputDialog, QMainWindow, QMenu, QMessageBox,
+                               QSizePolicy, QToolBar, QToolButton, QVBoxLayout, QWidget)
 
 from remanence.config import reglages_interface
 from remanence.effets import (EFFETS, courbes, masque_a, modulateurs, poser_cle, retirer_cle,
@@ -30,6 +31,7 @@ from remanence.projet.modele import Clip, Marqueur, Media, Projet, nouvel_id
 from remanence.rendu.couleur import vers_rvb16_apercu, vers_rvba
 from remanence.media.timecode import images_vers_tc
 from remanence.rendu.export import exporter, exporter_image
+from remanence.rendu.lut import lire_cube
 from remanence.ui import charte
 from remanence.ui.apropos import APropos
 from remanence.ui.barres import BarreEspaces, BarreTitre
@@ -38,7 +40,7 @@ from remanence.ui.dialogue_timecode import DialogueTimecode, preference, timecod
 from remanence.ui.erreurs import afficher_erreur
 from remanence.ui.inspecteur import Historique as ListeHistorique
 from remanence.ui.inspecteur import Inspecteur, Metadonnees
-from remanence.ui.lecture import MoteurLecture
+from remanence.ui.lecture import COMPARAISONS, MoteurLecture
 from remanence.ui.medias import PanneauMedias
 from remanence.ui.bibliotheque import PanneauEffets
 from remanence.ui.menu_effets import remplir_menu_effets
@@ -194,6 +196,25 @@ class FenetrePrincipale(QMainWindow):
         self.source.qualite.hide()
         d, self._entete_visionneuse = panneau("Programme", self.visionneuse, "visionneuse", self)
         self._docks["visionneuse"] = d
+        # Avant / après et LUT d'affichage : des badges comme la résolution de l'aperçu.
+        self.b_comparaison = QToolButton()
+        self.b_comparaison.setProperty("variante", "badge")
+        self.b_comparaison.setPopupMode(QToolButton.InstantPopup)
+        self.b_comparaison.setToolTip("Avant / après (Alt+A)")
+        self.b_comparaison.setAccessibleName("Avant / après")
+        menu_comparaison = QMenu(self.b_comparaison)
+        for cle, nom in COMPARAISONS.items():
+            menu_comparaison.addAction(nom, lambda cle=cle: self.comparer(cle))
+        self.b_comparaison.setMenu(menu_comparaison)
+        self.b_comparaison.setText(COMPARAISONS["apres"])
+        self._entete_visionneuse.ajouter(self.b_comparaison)
+        self.b_lut = QToolButton()
+        self.b_lut.setProperty("variante", "badge")
+        self.b_lut.setPopupMode(QToolButton.InstantPopup)
+        self.b_lut.setToolTip("LUT d'affichage")
+        self.b_lut.setAccessibleName("LUT d'affichage")
+        self.b_lut.hide()
+        self._entete_visionneuse.ajouter(self.b_lut)
         self._entete_visionneuse.ajouter(self.visionneuse.qualite)
         self.duree_source = etiquette("", "info-valeur")
         self._entete_source.ajouter(self.duree_source)
@@ -213,6 +234,9 @@ class FenetrePrincipale(QMainWindow):
         self._presse_papiers: list = []  # (piste, clip) copiés par Ctrl+C
         # Plans exportés pendant la session, pour la liste de remplacement.
         self._plans_exportes: list[dict] = []
+        lut = reglages_interface().value("affichage/lut", "") or ""
+        if lut and Path(lut).exists():
+            self.choisir_lut(lut)
         self.panneau_courbes.barre_midi.enregistrement.connect(self.enregistrer_midi)
         self.panneau_courbes.tete_demandee.connect(self.aller_a)
         self.panneau_datamosh = PanneauDatamosh()
@@ -607,6 +631,21 @@ class FenetrePrincipale(QMainWindow):
                                             lambda v: self.barre_bas.setVisible(v))
         self.a_barre_espaces.setCheckable(True)
         self.a_barre_espaces.setChecked(True)
+        comparaison = a.addMenu("Avant / après")
+        self._actions_comparaison = {}
+        for cle, nom in COMPARAISONS.items():
+            act = self._action(comparaison, nom, lambda _=False, cle=cle: self.comparer(cle))
+            act.setCheckable(True)
+            act.setChecked(cle == "apres")
+            self._actions_comparaison[cle] = act
+        self._action(a, "Basculer avant / après",
+                     lambda: self.comparer("apres" if self.lecture.comparaison == "avant"
+                                           else "avant"), "Alt+A")
+        self.menu_lut = a.addMenu("LUT d'affichage")
+        self.menu_lut.aboutToShow.connect(lambda: self._remplir_menu_lut(self.menu_lut))
+        self.b_lut.setMenu(QMenu(self.b_lut))
+        self.b_lut.menu().aboutToShow.connect(lambda: self._remplir_menu_lut(self.b_lut.menu()))
+        a.addSeparator()
         self._action(a, "Zoom avant", lambda: self._zoom_clavier(1.25), ["+", "="])
         self._action(a, "Zoom arrière", lambda: self._zoom_clavier(0.8), "-")
         self._action(a, "Tout voir", self.timeline.tout_voir, "Ctrl+0")
@@ -1904,6 +1943,64 @@ class FenetrePrincipale(QMainWindow):
         self._tenter("Automator", lambda: scripts_montage.automator(
             effet, d.reglages_choisis(), debut, fin, v["intervalle"], v["amplitude"] / 100,
             v["passage"], v["graine"]))
+
+    # Avant / après et LUT d'affichage (moniteurs seulement : le rendu ne les voit pas)
+
+    def comparer(self, mode: str):
+        """apres (normal), avant (la séquence sans effets), volet ou cote, dans le programme."""
+        self.lecture.definir_comparaison(mode)
+        self.visionneuse.zone.comparaison = mode
+        self.b_comparaison.setText(COMPARAISONS[mode])
+        self.b_comparaison.setProperty("actif", mode != "apres")
+        self.b_comparaison.style().unpolish(self.b_comparaison)
+        self.b_comparaison.style().polish(self.b_comparaison)
+        for cle, act in self._actions_comparaison.items():
+            act.setChecked(cle == mode)
+
+    def _remplir_menu_lut(self, menu):
+        menu.clear()
+        actuelle = reglages_interface().value("affichage/lut", "") or ""
+        aucune = menu.addAction("Aucune", lambda: self.choisir_lut(None))
+        aucune.setCheckable(True)
+        aucune.setChecked(not actuelle)
+        for chemin in self._luts_recentes():
+            act = menu.addAction(Path(chemin).stem, lambda c=chemin: self.choisir_lut(c))
+            act.setCheckable(True)
+            act.setChecked(chemin == actuelle)
+            act.setToolTip(chemin)
+        menu.addSeparator()
+        menu.addAction("Charger un fichier .cube…", self._charger_lut)
+
+    def _luts_recentes(self) -> list[str]:
+        try:
+            liste = json.loads(reglages_interface().value("affichage/luts", "[]") or "[]")
+        except ValueError:
+            return []
+        return [c for c in liste if isinstance(c, str) and Path(c).exists()]
+
+    def _charger_lut(self):
+        chemin, _ = QFileDialog.getOpenFileName(self, "LUT d'affichage", "", "LUT 3D (*.cube)")
+        if chemin:
+            self.choisir_lut(chemin)
+
+    def choisir_lut(self, chemin: str | None):
+        """La LUT des deux moniteurs, retenue d'une séance à l'autre ; None : aucune."""
+        lut = None
+        if chemin:
+            try:
+                lut = lire_cube(Path(chemin))
+            except (OSError, ValueError) as e:
+                afficher_erreur(self, "LUT illisible", str(e))
+                return
+        for zone in (self.visionneuse.zone, self.source.zone):
+            zone.definir_lut(lut)
+        reglages = reglages_interface()
+        reglages.setValue("affichage/lut", chemin or "")
+        if chemin:
+            recentes = [chemin] + [c for c in self._luts_recentes() if c != chemin]
+            reglages.setValue("affichage/luts", json.dumps(recentes[:6]))
+        self.b_lut.setText(f"LUT {lut.nom}" if lut else "LUT")
+        self.b_lut.setVisible(lut is not None)
 
     # Échanges : montage du monteur, image fixe, liste de remplacement
 

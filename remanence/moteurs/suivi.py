@@ -21,22 +21,6 @@ from remanence.projet.modele import Masque, Projet, Sequence
 LARGEUR_SUIVI = 640
 
 
-def _sans_effets(projet: Projet) -> Projet:
-    copie = copy.deepcopy(projet)
-    for seq in copie.sequences:
-        seq.effets = []
-        seq.modulateurs = []
-        for piste in seq.pistes:
-            piste.effets = []
-            for c in piste.clips:
-                c.effets = []
-                c.transition = None
-                c.cles_supprimees = []
-            # Les clips d'effet ne montrent rien sans leurs effets.
-            piste.clips = [c for c in piste.clips if not c.est_effet]
-    return copie
-
-
 def boite(points: list) -> tuple[float, float, float, float]:
     """(x0, y0, x1, y1) du rectangle qui entoure les points (coordonnées de 0 à 1)."""
     xs = [p[0] for p in points]
@@ -58,9 +42,9 @@ def suivre(projet: Projet, seq: Sequence, masque: Masque, debut: int, fin: int,
     """Suit la zone du masque de l'image `debut` à l'image `fin` de la séquence (incluses ;
     fin < debut : à rebours). Renvoie ({image de la séquence: points du masque}, image où le
     sujet a été perdu ou None)."""
-    from remanence.rendu.composition import Compositeur
+    from remanence.rendu.composition import Compositeur, sans_effets
 
-    nettoye = _sans_effets(projet)
+    nettoye = sans_effets(projet)
     seq_n = next(s for s in nettoye.sequences if s.id == seq.id)
     echelle = min(1.0, LARGEUR_SUIVI / seq.largeur)
     compositeur = Compositeur(nettoye, apercu=True)

@@ -15,7 +15,7 @@ from PySide6.QtCore import QObject, Signal
 
 from remanence.media.lecteur import FREQUENCE_MIXAGE
 from remanence.projet.modele import Projet
-from remanence.rendu.composition import Compositeur
+from remanence.rendu.composition import Compositeur, sans_effets
 
 try:
     import sounddevice
@@ -25,7 +25,12 @@ except Exception:  # Pas de PortAudio : lecture muette, l'horloge système prend
 QUALITES = {"Pleine": (1.0, False), "1/2": (0.5, True), "1/4": (0.25, True)}
 
 
+# Comparaison avant / après : « avant » est la séquence sans aucun effet (sans_effets).
+COMPARAISONS = {"apres": "Après", "avant": "Avant", "volet": "Volet", "cote": "Côte à côte"}
+
+
 class MoteurLecture(QObject):
+    # L'image, ou (après, avant) pour un volet ou un côte à côte.
     image_prete = Signal(object, int)
     position_changee = Signal(int)
     lecture_changee = Signal(bool)
@@ -40,6 +45,8 @@ class MoteurLecture(QObject):
         self._derniere_rendue = None
         self._vitesse = 0.0
         self._qualite = "1/2"
+        self._comparaison = "apres"
+        self._projet_avant: Projet | None = None
         self._version = 0
         self._arret = False
         self._flux = None
@@ -63,12 +70,30 @@ class MoteurLecture(QObject):
         copie = Projet.depuis_dict(projet.vers_dict())
         for m in copie.medias.values():
             m.hors_ligne = projet.medias[m.id].hors_ligne
+        avant = sans_effets(copie) if self._comparaison != "apres" else None
         with self._verrou:
             self._projet = copie
+            self._projet_avant = avant
             self._version += 1
             self._derniere_rendue = None
             self._compo_audio = None
             self._verrou.notify_all()
+
+    def definir_comparaison(self, mode: str):
+        """apres (normal), avant, volet ou cote : voir COMPARAISONS."""
+        with self._verrou:
+            if mode == self._comparaison:
+                return
+            self._comparaison = mode
+            if mode != "apres" and self._projet_avant is None and self._projet is not None:
+                self._projet_avant = sans_effets(self._projet)
+            self._version += 1
+            self._derniere_rendue = None
+            self._verrou.notify_all()
+
+    @property
+    def comparaison(self) -> str:
+        return self._comparaison
 
     def definir_qualite(self, qualite: str):
         with self._verrou:
@@ -181,7 +206,7 @@ class MoteurLecture(QObject):
     # Fil de rendu
 
     def _boucle(self):
-        compositeur = None
+        compositeur = avant = None
         version = -1
         while True:
             with self._verrou:
@@ -211,10 +236,14 @@ class MoteurLecture(QObject):
                     arret_auto = False
                 cle = (cible, self._version, self._qualite)
                 qualite = self._qualite
+                comparaison = self._comparaison
+                projet_avant = self._projet_avant if comparaison != "apres" else None
                 if self._version != version:
-                    if compositeur is not None:
-                        compositeur.fermer()
+                    for c in (compositeur, avant):
+                        if c is not None:
+                            c.fermer()
                     compositeur = Compositeur(projet, apercu=True) if projet else None
+                    avant = Compositeur(projet_avant, apercu=True) if projet_avant else None
                     version = self._version
             if arret_auto:
                 self.lecture_changee.emit(False)
@@ -226,6 +255,10 @@ class MoteurLecture(QObject):
             echelle, proxy = QUALITES[qualite]
             try:
                 image = compositeur.image_apercu(projet.sequence, cible, echelle, proxy)
+                if avant is not None and projet_avant is not None:
+                    image_avant = avant.image_apercu(projet_avant.sequence, cible, echelle,
+                                                     proxy)
+                    image = image_avant if comparaison == "avant" else (image, image_avant)
             except Exception as e:
                 self.erreur.emit(str(e), traceback.format_exc())
                 with self._verrou:
@@ -234,5 +267,6 @@ class MoteurLecture(QObject):
             with self._verrou:
                 self._derniere_rendue = cle
             self.image_prete.emit(image, cible)
-        if compositeur is not None:
-            compositeur.fermer()
+        for c in (compositeur, avant):
+            if c is not None:
+                c.fermer()

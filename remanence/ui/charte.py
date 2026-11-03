@@ -416,6 +416,7 @@ QToolButton[variante="badge"] {{ background: {surface_raised}; border: 1px solid
     color: {ink_muted}; {police_label} min-height: 22px; max-height: 22px; padding: 0 {space_2}; }}
 QToolButton[variante="badge"]::menu-indicator {{ image: none; width: 0; }}
 QToolButton[variante="badge"]:hover {{ background: {surface_hover}; color: {ink}; }}
+QToolButton[variante="badge"][actif="true"] {{ color: {accent}; border-color: {accent}; }}
 QToolButton[variante="panneau"]:checked {{ background: {surface_raised}; color: {ink}; }}
 QToolButton[variante="panneau"] {{ background: transparent; border: 1px solid transparent;
     color: {ink_muted}; }}
