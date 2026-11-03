@@ -701,3 +701,75 @@ def test_modulateur_audio(medias):
     assert prerendu.cle(projet, seq, clip) != avant
     m.params["bande"] = "aigus"
     assert len(audio.enveloppe(projet, seq, m.params)) == seq.duree()
+
+
+def carre_mobile(chemin, n: int = 40):
+    """Un carré à motif qui traverse un fond bruité : x = 20 + 6 i, y = 60 + i (320 × 180)."""
+    import av
+    rng = np.random.default_rng(3)
+    fond = (rng.random((180, 320, 3)) * 60).astype(np.uint8)
+    motif = (np.kron(rng.integers(0, 2, (4, 4)), np.ones((8, 8)))[..., None]
+             * np.array([255, 200, 40])).astype(np.uint8)
+    with av.open(str(chemin), "w") as c:
+        s = c.add_stream("prores_ks", rate=25)
+        s.width, s.height, s.pix_fmt = 320, 180, "yuv422p10le"
+        for i in range(n):
+            im = fond.copy()
+            im[60 + i:92 + i, 20 + 6 * i:52 + 6 * i] = motif
+            image = av.VideoFrame.from_ndarray(im, format="rgb24").reformat(format="yuv422p10le")
+            image.pts = i
+            for p in s.encode(image):
+                c.mux(p)
+        for p in s.encode(None):
+            c.mux(p)
+    return chemin
+
+
+def test_un_masque_suit_un_objet(tmp_path):
+    """Validation de l'étape 4 : un rectangle posé sur le carré à la première image le suit
+    jusqu'à la dernière, et l'effet masqué reste sur lui."""
+    from remanence.effets import courbes, instantane
+    from remanence.effets.masques import nouveau_masque
+    from remanence.moteurs import suivi
+    chemin = carre_mobile(tmp_path / "carre.mov")
+    projet = Projet.nouveau()
+    infos, _ = analyser(str(chemin))
+    m = Media(nouvel_id(), str(chemin), infos)
+    projet.medias[m.id] = m
+    edition.ajouter_media(projet, projet.sequence, m, 0)
+    clip = projet.sequence.pistes_video[0].clips[0]
+    masque = nouveau_masque("rectangle")
+    masque.points = [[20 / 320, 60 / 180], [52 / 320, 92 / 180]]
+    effet = nouvel_effet("decalage_rvb")
+    effet.params["force"] = 100
+    effet.masques = [masque]
+    clip.effets = [effet]
+    positions, perdu = suivi.suivre(projet, projet.sequence, masque, 0, 39)
+    assert perdu is None and len(positions) == 40
+    masque.cles["points"] = []
+    for f, points in positions.items():
+        courbes.poser(masque.cles["points"], f, points)
+    x0, y0, x1, y1 = suivi.boite(instantane(effet, 39).masques[0].points)
+    assert abs(x0 * 320 - (20 + 6 * 39)) < 3 and abs(y0 * 180 - 99) < 3
+    assert abs((x1 - x0) * 320 - 32) < 4, "même taille"
+    # À rebours depuis la dernière image : il retrouve le départ.
+    retour, _ = suivi.suivre(projet, projet.sequence, instantane(effet, 39).masques[0], 39, 0)
+    x0, y0, _, _ = suivi.boite(retour[0])
+    assert abs(x0 * 320 - 20) < 3 and abs(y0 * 180 - 60) < 3
+
+
+def test_plan_en_flux_optique_se_reintegre(medias, tmp_path):
+    """Validation de l'étape 4 : un plan avec bavure par flux optique, exporté seul, garde sa
+    durée et son timecode du montage ; hors du plan, la source est recopiée."""
+    projet, seq, a, b = _deux_plans(medias)
+    b.effets = [nouvel_effet("bavure_flux", "Coulée violente")]
+    source = _image(projet, b.debut + 10)
+    sortie = tmp_path / "plan_b.mov"
+    rapport = exporter(projet, seq, sortie, debut=b.debut, fin=b.fin)
+    assert rapport.conforme, [(v.critere, v.obtenu) for v in rapport.verifications if not v.ok]
+    infos, _ = analyser(str(sortie))
+    assert infos.video.nb_images == b.duree
+    assert infos.video.tc_debut == seq.tc_debut + b.debut, "même timecode que dans le montage"
+    assert np.abs(_image(projet, b.debut + 10) - source).max() > 0.02, "la bavure se voit"
+    tout = exporter(projet, seq, tmp_path / "tout.mov")
+    assert tout.conforme and tout.images_recopiees >= a.duree, "le premier plan est recopié"

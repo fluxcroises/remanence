@@ -29,6 +29,14 @@ Le bouton Courbes de la barre d'outils de la timeline ouvre le panneau, en ongle
 
 Devant chaque masque de l'inspecteur, le losange anime sa forme. Placez la tête de lecture, cliquez le losange, puis déplacez la tête et modifiez le masque sur l'image : une nouvelle image clé se pose. L'adoucissement et l'expansion s'animent de la même façon.
 
+## Faire suivre un sujet par un masque
+
+1. Placez la tête de lecture sur une image où le sujet est bien visible, et dessinez le masque autour de lui.
+2. Cliquez la cible à droite du masque, dans l'inspecteur, puis Vers l'avant ou Vers l'arrière.
+3. Le suivi se calcule en arrière-plan, jusqu'au bout du clip. Chaque position devient une image clé de la forme du masque.
+
+Le suivi regarde l'image sans ses effets : un glitch ne le perd pas. Si le sujet sort de l'image ou se cache, le suivi s'arrête là et l'indique en bas de la fenêtre. Corrigez alors le masque à la main, puis relancez le suivi depuis cette image.
+
 ## Les modulateurs
 
 ![Un oscillateur dans le panneau Courbes](modulateurs.png)

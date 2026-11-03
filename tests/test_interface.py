@@ -949,6 +949,29 @@ def test_enregistrement_midi(fenetre, medias):
     assert _attendre(lambda: w.historique.libelles()[-1] == "Enregistrement MIDI", 2)
 
 
+def test_suivi_du_masque_depuis_l_inspecteur(fenetre, tmp_path):
+    from remanence.effets import nouvel_effet
+    from tests.test_effets import carre_mobile
+    w = fenetre
+    w.importer_chemins([str(carre_mobile(tmp_path / "carre.mov"))])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    w.ajouter_effet("clip", clip.id, [nouvel_effet("decalage_rvb")])
+    effet = lambda: w.projet.sequence.pistes_video[0].clips[0].effets[0]
+    w.reglage_masque(effet().id, "", "ajouter", "rectangle")
+    assert _attendre(lambda: len(effet().masques) == 1, 2)
+    m_id = effet().masques[0].id
+    w.reglage_masque(effet().id, m_id, "points", [[20 / 320, 60 / 180], [52 / 320, 92 / 180]])
+    assert _attendre(lambda: effet().masques[0].points[0][0] == 20 / 320, 2)
+    w.aller_a(0)
+    w.reglage_masque(effet().id, m_id, "suivre", "avant")
+    assert _attendre(lambda: "Suivi du masque" in w.historique.libelles(), 30)
+    cles = effet().masques[0].cles["points"]
+    assert [k[0] for k in cles] == list(range(40)), "de la tête de lecture à la fin du clip"
+    assert abs(cles[-1][1][0][0] * 320 - (20 + 6 * 39)) < 4, "le masque suit le carré"
+
+
 def test_losanges_de_la_timeline_et_echap(fenetre, medias):
     """Clic sur un losange d'un clip : la tête y va ; le glisser déplace l'image clé.
     Échap quitte l'outil de coupe."""

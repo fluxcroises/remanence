@@ -472,6 +472,14 @@ class Inspecteur(PanneauFiche):
             inverse.toggled.connect(lambda v, m=m: self.reglage_masque.emit(e.id, m.id,
                                                                             "inverse", v))
             rang.addWidget(inverse)
+            suivre = bouton_icone("crosshair", "Suivre", taille=14)
+            suivre.setPopupMode(QToolButton.InstantPopup)
+            menu_suivi = QMenu(suivre)
+            for sens, texte in (("avant", "Vers l'avant"), ("arriere", "Vers l'arrière")):
+                menu_suivi.addAction(texte, lambda m=m, sens=sens: self.reglage_masque.emit(
+                    e.id, m.id, "suivre", sens))
+            suivre.setMenu(menu_suivi)
+            rang.addWidget(suivre)
             retirer = bouton_icone("x", "Retirer le masque", taille=14)
             retirer.clicked.connect(lambda _=False, m=m: self.reglage_masque.emit(
                 e.id, m.id, "retirer", None))

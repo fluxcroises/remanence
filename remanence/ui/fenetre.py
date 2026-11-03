@@ -17,6 +17,7 @@ from remanence.config import reglages_interface
 from remanence.effets import (EFFETS, courbes, masque_a, modulateurs, poser_cle, retirer_cle,
                               valeur_a)
 from remanence.effets.masques import nouveau_masque
+from remanence.moteurs import suivi
 from remanence.moteurs.codec import analyse, bavure, prerendu, scripts
 from remanence.effets import prereglages
 from remanence.media import intermediaire
@@ -1433,6 +1434,9 @@ class FenetrePrincipale(QMainWindow):
             if m is None:
                 return
             t = self._temps_effet(porteur)
+            if champ == "suivre":
+                self.suivre_masque(porteur, e, m, valeur)
+                return
             if champ == "retirer":
                 e.masques.remove(m)
                 libelle = "Masque retiré"
@@ -1460,6 +1464,53 @@ class FenetrePrincipale(QMainWindow):
                 setattr(m, champ, valeur)
                 libelle = "Masque"
         QTimer.singleShot(0, lambda: self.valider(libelle))
+
+    def suivre_masque(self, porteur, e, m, sens: str = "avant"):
+        """Suivi automatique du masque depuis la tête de lecture, jusqu'au bout du clip (ou de
+        la séquence pour un effet de piste ou de séquence), en arrière-plan. Le résultat
+        remplace les images clés de forme du masque sur la plage suivie."""
+        seq = self.projet.sequence
+        f0 = self.lecture.position
+        if isinstance(porteur, Clip):
+            premiere, derniere, origine = porteur.debut, porteur.fin - 1, porteur.debut
+        else:
+            premiere, derniere, origine = 0, max(0, seq.duree() - 1), 0
+        f0 = max(premiere, min(derniere, f0))
+        fin = derniere if sens == "avant" else premiere
+        if fin == f0:
+            self.message("Rien à suivre de ce côté")
+            return
+        depart = masque_a(m, f0 - origine)
+        projet = Projet.depuis_dict(self.projet.vers_dict())
+        for media in projet.medias.values():
+            media.hors_ligne = self.projet.medias[media.id].hors_ligne
+        copie_seq = next(s for s in projet.sequences if s.id == seq.id)
+        effet_id, masque_id = e.id, m.id
+
+        def travail(progression, annule, projet=projet, s=copie_seq, depart=depart):
+            return suivi.suivre(projet, s, depart, f0, fin, progression, annule)
+
+        def fini(resultat):
+            positions, perdu = resultat
+            _, effet = edition.trouver_effet(self.projet.sequence, effet_id)
+            masque = next((x for x in effet.masques if x.id == masque_id), None) \
+                if effet is not None else None
+            if masque is None or len(positions) < 2:
+                self.message("Sujet perdu dès le départ")
+                return
+            bas, haut = min(positions) - origine, max(positions) - origine
+            cles = masque.cles.setdefault("points", [])
+            cles[:] = [k for k in cles if not bas <= k[0] <= haut]
+            for image, points in positions.items():
+                courbes.poser(cles, image - origine, points)
+            self.valider("Suivi du masque")
+            if perdu is not None:
+                self.message("Sujet perdu à " + images_vers_tc(
+                    seq.tc_debut + perdu, seq.fraction_cadence, seq.tc_drop))
+
+        self.taches.lancer(Tache("Suivi du masque", travail), fini,
+                           lambda message, detail: afficher_erreur(
+                               self, "Suivi impossible", message, detail))
 
     def modifier_masques(self, effet_id: str):
         self._masques_effet = effet_id
