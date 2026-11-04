@@ -33,7 +33,9 @@ def lignes() -> list[tuple[str, bool, str]]:
         polices = charte.charger_polices()
         if not charte.FICHIER_TOKENS.exists() or not aide.fiches():
             raise RuntimeError("charte ou fiches d'aide introuvables")
-        return f"{len(polices)} polices, {len(aide.fiches())} fiches"
+        if not (charte.RESSOURCES / "guide" / "index.html").exists():
+            raise RuntimeError("guide introuvable")
+        return f"{len(polices)} polices, {len(aide.fiches())} fiches, guide"
 
     def echanges():
         import opentimelineio as otio
@@ -79,6 +81,52 @@ def lignes() -> list[tuple[str, bool, str]]:
         f.deleteLater()
         return f"fenêtre principale, {menus} menus"
 
+    def montage():
+        """Le parcours complet, dans un dossier temporaire : une vidéo fabriquée, un projet
+        avec un effet, enregistré puis rouvert, exporté et vérifié."""
+        import shutil
+        import tempfile
+        from fractions import Fraction
+        from pathlib import Path
+        import av
+        import numpy as np
+        from remanence.effets import nouvel_effet
+        from remanence.media.sonde import analyser
+        from remanence.projet import edition, serialisation
+        from remanence.projet.modele import Media, Projet, nouvel_id
+        from remanence.rendu.export import exporter
+        dossier = Path(tempfile.mkdtemp(prefix="remanence_diagnostic_"))
+        source = dossier / "essai.mov"
+        with av.open(str(source), "w") as sortie:
+            flux = sortie.add_stream("prores_ks", rate=Fraction(25))
+            flux.width, flux.height, flux.pix_fmt = 320, 180, "yuv422p10le"
+            for i in range(25):
+                x = np.linspace(0, 1, 320, dtype=np.float32)[None, :, None]
+                image = np.broadcast_to(((x + i / 25) % 1) * 255, (180, 320, 3))
+                trame = av.VideoFrame.from_ndarray(image.astype(np.uint8), format="rgb24")
+                trame.pts = i
+                for paquet in flux.encode(trame):
+                    sortie.mux(paquet)
+            for paquet in flux.encode():
+                sortie.mux(paquet)
+        projet = Projet.nouveau()
+        infos, _ = analyser(str(source))
+        media = Media(nouvel_id(), str(source), infos)
+        projet.medias[media.id] = media
+        edition.ajouter_media(projet, projet.sequence, media, 0)
+        clip = projet.sequence.pistes_video[0].clips[0]
+        clip.effets.append(nouvel_effet("decalage_rvb"))
+        try:
+            fichier = dossier / "essai.remanence"
+            serialisation.enregistrer(projet, fichier)
+            projet = serialisation.ouvrir(fichier)
+            rapport = exporter(projet, projet.sequence, dossier / "export.mov", "prores_hq")
+            if not rapport.conforme:
+                raise RuntimeError("export non conforme")
+            return f"{rapport.images_calculees} images calculées, export conforme"
+        finally:
+            shutil.rmtree(dossier, ignore_errors=True)
+
     def ffglitch_():
         from remanence.moteurs.codec import ffglitch
         d = ffglitch.dossier()
@@ -87,7 +135,8 @@ def lignes() -> list[tuple[str, bool, str]]:
     for nom, fonction in (("Effets", effets), ("Ressources", ressources),
                           ("Échanges", echanges), ("Traductions", traductions),
                           ("FFmpeg", ffmpeg), ("Carte graphique", carte),
-                          ("Interface", interface), ("FFglitch", ffglitch_)):
+                          ("Interface", interface), ("Montage et export", montage),
+                          ("FFglitch", ffglitch_)):
         verifier(nom, fonction)
     return resultats
 

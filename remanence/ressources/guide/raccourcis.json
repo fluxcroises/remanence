@@ -1,0 +1,268 @@
+[
+ [
+  "Fichier",
+  [
+   [
+    "Nouveau projet",
+    "Ctrl+N"
+   ],
+   [
+    "Ouvrir un projet…",
+    "Ctrl+O"
+   ],
+   [
+    "Enregistrer",
+    "Ctrl+S"
+   ],
+   [
+    "Enregistrer sous…",
+    "Ctrl+Shift+S"
+   ],
+   [
+    "Importer des médias…",
+    "Ctrl+I"
+   ],
+   [
+    "Exporter la séquence…",
+    "Ctrl+E"
+   ],
+   [
+    "Exporter l'image…",
+    "Ctrl+Shift+E"
+   ],
+   [
+    "Quitter",
+    "Ctrl+Q"
+   ]
+  ]
+ ],
+ [
+  "Édition",
+  [
+   [
+    "Annuler effet décalage rvb",
+    "Ctrl+Z"
+   ],
+   [
+    "Rétablir",
+    "Ctrl+Y"
+   ],
+   [
+    "Copier",
+    "Ctrl+C"
+   ],
+   [
+    "Coller",
+    "Ctrl+V"
+   ],
+   [
+    "Dupliquer",
+    "Ctrl+D"
+   ],
+   [
+    "Tout sélectionner",
+    "Ctrl+A"
+   ]
+  ]
+ ],
+ [
+  "Montage",
+  [
+   [
+    "Outil de sélection",
+    "V"
+   ],
+   [
+    "Outil de coupe",
+    "C"
+   ],
+   [
+    "Couper à la tête de lecture",
+    "S"
+   ],
+   [
+    "Supprimer les clips sélectionnés",
+    "Del"
+   ],
+   [
+    "Dissocier son et image",
+    "U"
+   ],
+   [
+    "Lier la sélection",
+    "G"
+   ],
+   [
+    "Ripple",
+    "Ctrl+L"
+   ],
+   [
+    "Aimantation",
+    "F8"
+   ],
+   [
+    "Insérer depuis la source",
+    "F9"
+   ],
+   [
+    "Écraser depuis la source",
+    "F10"
+   ],
+   [
+    "Ajouter un marqueur",
+    "M"
+   ],
+   [
+    "Ajouter un titre",
+    "T"
+   ],
+   [
+    "Rendu sur place",
+    "Ctrl+Shift+R"
+   ]
+  ]
+ ],
+ [
+  "Lecture",
+  [
+   [
+    "Lire / Pause",
+    "Space"
+   ],
+   [
+    "Lecture arrière",
+    "J"
+   ],
+   [
+    "Arrêt",
+    "K"
+   ],
+   [
+    "Lecture avant",
+    "L"
+   ],
+   [
+    "Lecture en boucle",
+    "Ctrl+B"
+   ],
+   [
+    "Image précédente",
+    "Left"
+   ],
+   [
+    "Image suivante",
+    "Right"
+   ],
+   [
+    "Une seconde en arrière",
+    "Shift+Left"
+   ],
+   [
+    "Une seconde en avant",
+    "Shift+Right"
+   ],
+   [
+    "Coupe précédente",
+    "Up"
+   ],
+   [
+    "Coupe suivante",
+    "Down"
+   ],
+   [
+    "Marqueur précédent",
+    "Ctrl+Left"
+   ],
+   [
+    "Marqueur suivant",
+    "Ctrl+Right"
+   ],
+   [
+    "Aller au début",
+    "Home"
+   ],
+   [
+    "Aller à la fin",
+    "End"
+   ],
+   [
+    "Basculer entre source et programme",
+    "Q"
+   ],
+   [
+    "Point d'entrée",
+    "I"
+   ],
+   [
+    "Point de sortie",
+    "O"
+   ],
+   [
+    "Effacer les points d'entrée et de sortie",
+    "Alt+X"
+   ]
+  ]
+ ],
+ [
+  "Affichage",
+  [
+   [
+    "Espace Média",
+    "Shift+1"
+   ],
+   [
+    "Espace Montage",
+    "Shift+2"
+   ],
+   [
+    "Espace Effets",
+    "Shift+3"
+   ],
+   [
+    "Espace Export",
+    "Shift+4"
+   ],
+   [
+    "Basculer avant / après",
+    "Alt+A"
+   ],
+   [
+    "Zoom avant",
+    "+"
+   ],
+   [
+    "Zoom arrière",
+    "-"
+   ],
+   [
+    "Tout voir",
+    "Ctrl+0"
+   ],
+   [
+    "Plein écran",
+    "F11"
+   ],
+   [
+    "Un seul moniteur",
+    "Ctrl+Shift+Q"
+   ],
+   [
+    "Programme en plein écran",
+    "Ctrl+F"
+   ]
+  ]
+ ],
+ [
+  "Aide",
+  [
+   [
+    "Prise en main…",
+    "F1"
+   ],
+   [
+    "Guide",
+    "Shift+F1"
+   ]
+  ]
+ ]
+]

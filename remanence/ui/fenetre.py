@@ -705,6 +705,7 @@ class FenetrePrincipale(QMainWindow):
         ai = m.addMenu("&Aide")
         self._action(ai, "Accueil…", self.montrer_accueil)
         self._action(ai, "Prise en main…", lambda: FenetreAide.ouvrir(), "F1")
+        self._action(ai, "Guide", self.ouvrir_guide, "Shift+F1")
         self._action(ai, "Ouvrir le journal", self.ouvrir_journal)
         self.a_ffglitch = self._action(ai, "Installer FFglitch…", self.installer_ffglitch)
         self.a_ffglitch.setVisible(not ffglitch.disponible())
@@ -2039,6 +2040,18 @@ class FenetrePrincipale(QMainWindow):
                                      progression, annule)), fini,
                            lambda message, detail: afficher_erreur(
                                self, "Téléchargement impossible", message, detail))
+
+    def ouvrir_guide(self):
+        """Le guide illustré (ressources/guide/index.html, fait par scripts/guide.py) dans le
+        navigateur."""
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        from remanence.ui.charte import RESSOURCES
+        guide = RESSOURCES / "guide" / "index.html"
+        if not guide.exists():
+            self.message("Guide introuvable")
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(guide)))
 
     def ouvrir_journal(self):
         """Le dossier du journal dans l'explorateur, pour l'envoyer avec une description."""

@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guide de Remanence</title>
+<style>
+@font-face { font-family: "IBM Plex Sans"; src: url("../polices/IBMPlexSans-Regular.ttf"); }
+@font-face { font-family: "IBM Plex Sans"; font-weight: 600;
+  src: url("../polices/IBMPlexSans-SemiBold.ttf"); }
+@font-face { font-family: "IBM Plex Mono"; src: url("../polices/IBMPlexMono-Regular.ttf"); }
+:root { --fond: #0e0e10; --surface: #161618; --ligne: #2c2c31;
+  --texte: #ececef; --discret: #a1a1aa; --accent: #b07cc6; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--fond); color: var(--texte);
+  font: 16px/1.6 "IBM Plex Sans", "Segoe UI", sans-serif; }
+nav { position: fixed; top: 0; bottom: 0; left: 0; width: 260px; overflow-y: auto;
+  padding: 28px 20px; background: var(--surface); border-right: 1px solid var(--ligne); }
+nav h1 { font-size: 20px; margin: 0 0 4px; }
+nav p { color: var(--discret); margin: 0 0 20px; font-size: 14px; }
+nav ol { padding-left: 20px; margin: 0; }
+nav li { margin: 6px 0; }
+nav a { color: var(--texte); text-decoration: none; }
+nav a:hover { color: var(--accent); }
+main { margin-left: 260px; padding: 32px 48px 80px; max-width: 1100px; }
+section { border-bottom: 1px solid var(--ligne); padding-bottom: 32px; }
+h2 { font-size: 26px; font-weight: 600; margin: 40px 0 12px; }
+h3 { font-size: 19px; font-weight: 600; margin: 28px 0 8px; }
+p, li { max-width: 72ch; }
+a { color: var(--accent); }
+code, kbd { font-family: "IBM Plex Mono", Consolas, monospace; font-size: 14px;
+  background: var(--surface); border: 1px solid var(--ligne); border-radius: 4px;
+  padding: 1px 5px; }
+figure { margin: 16px 0; }
+img { max-width: 100%; border: 1px solid var(--ligne); border-radius: 4px; }
+table { border-collapse: collapse; margin: 8px 0 16px; }
+td { padding: 6px 16px 6px 0; border-bottom: 1px solid var(--ligne); vertical-align: top; }
+.effets { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 16px; }
+.effet { background: var(--surface); border: 1px solid var(--ligne); border-radius: 6px;
+  padding: 12px; }
+.effet img { width: 100%; border: 0; }
+.effet h4 { margin: 8px 0 0; font-size: 16px; }
+.effet p { margin: 4px 0; font-size: 14px; }
+.effet .moteur { color: var(--discret); }
+@media (max-width: 800px) { nav { position: static; width: auto; }
+  main { margin-left: 0; padding: 16px; } }
+</style>
+</head>
+<body>
+<nav><h1>Remanence</h1><p>Guide · version 0.1</p><ol>
+<li><a href="#00-bienvenue">Bienvenue</a></li>
+<li><a href="#01-ecran">L&#x27;écran</a></li>
+<li><a href="#aide-01-monter">Monter des clips</a></li>
+<li><a href="#aide-02-pistes">Organiser les pistes</a></li>
+<li><a href="#aide-03-effet">Poser un effet</a></li>
+<li><a href="#aide-04-images-cles">Animer un effet</a></li>
+<li><a href="#aide-05-datamosh">Faire baver un plan dans le suivant</a></li>
+<li><a href="#aide-06-codec">Effets codec et scripts FFglitch</a></li>
+<li><a href="#aide-07-compression">Lire la compression d&#x27;un clip</a></li>
+<li><a href="#aide-08-exporter">Exporter</a></li>
+<li><a href="#aide-09-comparer">Comparer avant et après</a></li>
+<li><a href="#20-courbes">Courbes, modulateurs et suivi</a></li>
+<li><a href="#catalogue">Catalogue des effets</a></li>
+<li><a href="#raccourcis">Raccourcis clavier</a></li>
+<li><a href="#90-depannage">Dépannage</a></li>
+</ol></nav>
+<main>
+<section><h2 id="00-bienvenue">Bienvenue</h2>
+<p>Remanence est un logiciel de montage pour le datamosh et le glitch art. On y importe ses plans, on les monte, on y pose des effets (glitchs en temps réel, datamosh par le codec, bavures par le mouvement réel de l'image), on les anime, puis on exporte des fichiers qui repartent dans le montage du film avec la même durée, la même cadence et le même timecode.</p>
+<h3>Lancer Remanence</h3>
+<p>Le programme est un dossier : <code>Remanence.exe</code> et, à côté, le dossier <code>_internal</code> qui contient tout ce dont il a besoin. Rien d'autre n'est à installer. On peut copier ce dossier où l'on veut, par exemple dans Documents, ou sur un disque externe.</p>
+<p>La première fois, Windows peut afficher « Windows a protégé votre ordinateur » : le programme n'est pas signé par un éditeur connu de Microsoft. Cliquez sur Informations complémentaires, puis Exécuter quand même.</p>
+<h3>FFglitch</h3>
+<p>FFglitch est le moteur de certains effets de datamosh (vecteurs de mouvement, transfert de mouvement, scripts). Remanence propose de le télécharger au premier lancement, depuis ffglitch.org ; le fichier est vérifié avant d'être installé, dans le dossier <code>outils</code> à côté du programme. On peut aussi le faire plus tard : Aide &gt; Installer FFglitch. Sans lui, Remanence se sert de son propre moteur de datamosh, et les effets propres à FFglitch restent sans action.</p>
+<h3>L'accueil</h3>
+<p>Au lancement, l'accueil propose de créer un projet (format, résolution, cadence et timecode de départ, ou « D'après le média » pour reprendre ceux du premier plan posé), de rouvrir un projet récent, ou d'ouvrir une fiche de prise en main. On le retrouve dans Aide &gt; Accueil.</p></section>
+<section><h2 id="01-ecran">L&#x27;écran</h2>
+<p>L'écran se partage en espaces de travail, choisis dans la barre du bas (ou Maj+1 à Maj+4). Chacun dispose les mêmes panneaux autrement, selon ce qu'on y fait.</p>
+<h3>Média</h3>
+<figure><img alt="Espace Média" src="images/espace-media.png"></figure>
+<p>Le panneau Média range les plans importés, en chutiers. Double-cliquez un plan pour le voir dans le moniteur Source. À droite, les métadonnées du plan choisi (format, codec, cadence, timecode).</p>
+<h3>Montage</h3>
+<figure><img alt="Espace Montage" src="images/espace-montage.png"></figure>
+<p>Deux moniteurs côte à côte : la source à gauche, le programme (la séquence montée) à droite. La timeline est dessous, l'inspecteur à droite : il montre les réglages de ce qui est choisi (clip, piste ou séquence).</p>
+<h3>Effets</h3>
+<figure><img alt="Espace Effets" src="images/espace-effets.png"></figure>
+<p>La bibliothèque d'effets prend la gauche : glissez une tuile sur un clip. Le programme est plus grand, et l'inspecteur montre les effets du clip choisi. Fenêtre &gt; Compression ouvre l'analyse du codec d'un clip (images clés, poids des images, vecteurs de mouvement).</p>
+<h3>Export</h3>
+<figure><img alt="Espace Export" src="images/espace-export.png"></figure>
+<p>Les réglages d'export à gauche, la file des exports à droite.</p>
+<h3>Double écran</h3>
+<p>Affichage &gt; Double écran envoie des panneaux sur un second moniteur : Média, Métadonnées et Historique (comme dans DaVinci Resolve), ou toute la timeline. Ctrl+F montre le programme en plein écran.</p></section>
+<section><h2 id="aide-01-monter">Monter des clips</h2>
+<figure><img alt="Timeline avec deux clips" src="../aide/montage.png"></figure>
+<ol>
+<li><strong>Importer</strong> : Fichier &gt; Importer des médias (Ctrl+I), ou glissez des fichiers dans le panneau Média.</li>
+<li><strong>Poser</strong> : glissez un média du panneau Média sur la timeline. Le premier média posé règle la taille et la cadence de la séquence, sauf si vous les avez choisies dans Nouveau projet.</li>
+<li><strong>Choisir un passage</strong> : double-cliquez un média pour l'ouvrir dans le moniteur Source, placez un point d'entrée (E) et de sortie (S), puis F9 pour l'insérer à la tête de lecture ou F10 pour écraser.</li>
+<li><strong>Couper</strong> : S ou B coupe à la tête de lecture. L'outil de coupe (C) coupe là où vous cliquez ; Échap revient à la sélection.</li>
+<li><strong>Rogner et déplacer</strong> : tirez le bord d'un clip pour le raccourcir, glissez-le pour le déplacer. Maj déplace l'image sans son son.</li>
+</ol>
+<ol>
+<li><strong>Enchaîner</strong> : posez un clip sur la fin du précédent : ils se fondent l'un dans l'autre. Clic droit sur le clip qui entre, Transition du fondu, pour un volet, des blocs, un décalage RVB ou une coupure de signal à la place du mélange (aussi dans l'inspecteur, sous Fondu d'entrée).</li>
+<li><strong>Copier</strong> : Ctrl+C, puis Ctrl+V colle à la tête de lecture. Ctrl+D duplique juste après.</li>
+</ol>
+<ol>
+<li><strong>Scripts</strong> (Montage &gt; Scripts, ou clic droit sur un clip) : Scramble découpe les clips choisis en morceaux et mélange leur ordre ; Layer les recopie sur de nouvelles pistes, décalés et de plus en plus transparents, pour un écho. Une même graine redonne le même résultat ; Autre tirage en propose un nouveau.</li>
+</ol>
+<ol>
+<li><strong>Vitesse</strong> : dans l'inspecteur, Vitesse (50 % : ralenti, 200 % : accéléré) et À rebours. Le clip garde le même passage de sa source ; ce qui le suit sur la piste se décale.</li>
+<li><strong>Titre</strong> : Montage &gt; Ajouter un titre (T), à la tête de lecture. Texte, police IBM Plex, taille, position et couleur dans l'inspecteur ; les effets s'y posent comme sur un clip.</li>
+<li><strong>Imbriquer</strong> : Montage &gt; Imbriquer la sélection range les clips choisis dans une nouvelle séquence, qui devient un seul clip. Clic droit, Ouvrir la séquence, pour la retoucher ; la liste des séquences, dans la barre de la timeline, ramène à la principale.</li>
+<li><strong>Rendu sur place</strong> (Ctrl+Maj+R) : le clip choisi est calculé avec ses effets dans un fichier ProRes 4444, qui le remplace. Utile pour alléger la lecture ou figer un datamosh.</li>
+</ol>
+<p>Ctrl+Z annule, sans limite.</p></section>
+<section><h2 id="aide-02-pistes">Organiser les pistes</h2>
+<figure><img alt="En-têtes de pistes" src="../aide/pistes.png"></figure>
+<ul>
+<li><strong>Nouvelle piste en glissant</strong> : lâchez un média, ou glissez un clip, dans la bande juste au-dessus de la piste vidéo du haut. Une piste vidéo se crée et le clip y va.</li>
+<li><strong>Clic droit sur l'en-tête d'une piste</strong> : ajouter une piste au-dessus ou en dessous, choisir sa couleur, la renommer, la supprimer.</li>
+<li><strong>Clic droit dans le vide de la timeline</strong> : ajouter une piste vidéo ou audio.</li>
+<li><strong>Changer l'ordre</strong> : glissez l'en-tête d'une piste sur une autre piste du même type.</li>
+<li><strong>Renommer</strong> : double-cliquez sur le nom de la piste.</li>
+</ul>
+<p>La piste vidéo du haut passe devant les autres. L'œil masque une piste vidéo, le cadenas la verrouille ; M et S coupent le son ou isolent une piste audio.</p></section>
+<section><h2 id="aide-03-effet">Poser un effet</h2>
+<figure><img alt="Bibliothèque d'effets" src="../aide/bibliotheque.png"></figure>
+<ol>
+<li>Ouvrez l'onglet <strong>Effets</strong>, à côté de Média, ou passez dans l'espace <strong>Effets</strong> (Maj+3).</li>
+<li>Survolez une tuile pour voir l'effet en mouvement.</li>
+<li>Glissez la tuile sur un clip. Ou sélectionnez le clip et double-cliquez la tuile.</li>
+<li>Réglez l'effet dans l'<strong>inspecteur</strong>, à droite.</li>
+</ol>
+<p>Glissée sur l'en-tête d'une piste, la tuile pose l'effet sur toute la piste. Glissée dans le vide d'une piste vidéo, elle crée un clip d'effet de 5 secondes qui agit sur tout ce qui est dessous.</p>
+<p>Le bouton signet d'un effet l'enregistre comme préréglage personnel, dans Mes préréglages.</p></section>
+<section><h2 id="aide-04-images-cles">Animer un effet</h2>
+<figure><img alt="Effet dans l'inspecteur" src="../aide/inspecteur.png"></figure>
+<p>Un effet animé n'agit qu'entre sa première et sa dernière image clé. Avant et après, l'image d'origine reste intacte.</p>
+<ol>
+<li>Placez la tête de lecture au début du passage.</li>
+<li>Cliquez le losange devant un réglage : il se remplit, une image clé est posée.</li>
+<li>Avancez la tête de lecture à la fin du passage.</li>
+<li>Changez la valeur du réglage : une deuxième image clé se pose toute seule.</li>
+</ol>
+<figure><img alt="Losanges d'images clés sur un clip" src="../aide/images_cles.png"></figure>
+<p>Sur le clip, les losanges et le trait qui les relie montrent où l'effet agit. Cliquez un losange pour y aller, glissez-le pour le déplacer dans le temps. Clic droit sur le losange de l'inspecteur : passage linéaire ou en palier, ou supprimer l'animation.</p>
+<h3>Le panneau Courbes</h3>
+<figure><img alt="Panneau Courbes" src="../aide/courbes.png"></figure>
+<p>Le bouton Courbes de la barre d'outils de la timeline ouvre le panneau, en onglet à côté de la timeline. À gauche, les réglages du clip choisi ; à droite, la courbe du réglage choisi.</p>
+<ul>
+<li>Double-clic sur le graphe : une image clé de plus.</li>
+<li>Glisser un losange : le déplacer dans le temps et en valeur.</li>
+<li>Clic droit sur un losange : le passage jusqu'à l'image clé suivante, linéaire, palier, lissé ou Bézier.</li>
+<li>En Bézier, tirez les poignées du losange choisi. Alt les détache l'une de l'autre.</li>
+<li>Suppr retire le losange choisi.</li>
+</ul>
+<h3>Animer un masque</h3>
+<p>Devant chaque masque de l'inspecteur, le losange anime sa forme. Placez la tête de lecture, cliquez le losange, puis déplacez la tête et modifiez le masque sur l'image : une nouvelle image clé se pose. L'adoucissement et l'expansion s'animent de la même façon.</p>
+<h3>Faire suivre un sujet par un masque</h3>
+<ol>
+<li>Placez la tête de lecture sur une image où le sujet est bien visible, et dessinez le masque autour de lui.</li>
+<li>Cliquez la cible à droite du masque, dans l'inspecteur, puis Vers l'avant ou Vers l'arrière.</li>
+<li>Le suivi se calcule en arrière-plan, jusqu'au bout du clip. Chaque position devient une image clé de la forme du masque.</li>
+</ol>
+<p>Le suivi regarde l'image sans ses effets : un glitch ne le perd pas. Si le sujet sort de l'image ou se cache, le suivi s'arrête là et l'indique en bas de la fenêtre. Corrigez alors le masque à la main, puis relancez le suivi depuis cette image.</p>
+<h3>Les modulateurs</h3>
+<figure><img alt="Un oscillateur dans le panneau Courbes" src="../aide/modulateurs.png"></figure>
+<p>Un modulateur fait varier un réglage tout seul, en plus de ses images clés : une oscillation, un hasard qui ondule, des pulsations au tempo.</p>
+<ol>
+<li>Dans le panneau Courbes, clic droit sur un réglage, puis Moduler par et un nouveau modulateur : Oscillateur, Aléatoire lissé, Tempo ou Audio.</li>
+<li>Choisissez le modulateur dans la liste du bas : ses réglages s'affichent au-dessus du graphe.</li>
+</ol>
+<ul>
+<li><strong>Oscillateur</strong> : forme (sinus, triangle, carré, dents de scie), fréquence, phase.</li>
+<li><strong>Aléatoire lissé</strong> : vitesse ; « Autre tirage » change le hasard.</li>
+<li><strong>Tempo</strong> : battements par minute, division, déclin de chaque impulsion, décalage.</li>
+<li><strong>Audio</strong> : le niveau du son d'une piste (ou de toutes), en volume ou dans les graves, les médiums ou les aigus ; sensibilité, attaque (vitesse de montée), relâche (vitesse de retombée).</li>
+</ul>
+<ol>
+<li>La profondeur dit de combien le modulateur fait bouger le réglage, en % de sa plage. Négative, elle l'inverse.</li>
+</ol>
+<p>Un même modulateur peut piloter plusieurs réglages : clic droit sur un autre réglage, Moduler par, puis son nom. Sur la courbe d'un réglage modulé, le pointillé montre les images clés et le trait plein le résultat.</p>
+<p>Les modulateurs suivent le temps de la séquence. Le rendu est toujours le même : deux exports donnent les mêmes images.</p>
+<h3>Enregistrer un contrôleur MIDI</h3>
+<p>Avec un contrôleur MIDI branché, choisissez un réglage dans le panneau Courbes : la barre MIDI s'affiche au-dessus du graphe.</p>
+<ol>
+<li>Choisissez le contrôleur, puis cliquez Enregistrer.</li>
+<li>Bougez le bouton ou le curseur voulu : c'est lui qui est retenu (son numéro s'affiche, par exemple CC 21).</li>
+<li>Lancez la lecture et jouez : chaque mouvement pose une image clé à la tête de lecture.</li>
+<li>Cliquez de nouveau Enregistrer pour arrêter.</li>
+</ol>
+<p>Le geste devient une courbe ordinaire, à retoucher comme les autres : le rendu reste le même d'un export à l'autre.</p>
+<p>Automator (Montage &gt; Scripts) pose des images clés au hasard sur les réglages cochés d'un effet du clip choisi, à intervalle régulier. Elles se retouchent ensuite comme les autres.</p></section>
+<section><h2 id="aide-05-datamosh">Faire baver un plan dans le suivant</h2>
+<figure><img alt="Transition datamosh au raccord" src="../aide/transition.png"></figure>
+<p>C'est la <strong>transition datamosh</strong> : l'image du premier plan reste et se déforme avec le mouvement du second.</p>
+<ol>
+<li>Posez deux clips bout à bout sur la même piste vidéo, sans trou entre eux.</li>
+<li>Dans la bande <strong>Coupes</strong>, au-dessus des pistes, cliquez le petit rectangle juste au-dessus du raccord. Il devient mauve.</li>
+<li>Attendez que « Calcul… » disparaisse du clip, puis lisez le passage.</li>
+</ol>
+<p>La zone hachurée au début du second clip montre la durée de la bavure. Tirez son bord droit pour l'allonger. Dans l'inspecteur, la section Transition datamosh règle aussi la taille des blocs.</p>
+<p>Les autres rectangles de la bande Coupes marquent les changements de plan à l'intérieur d'une vidéo. Un clic fait baver le plan d'avant dans le suivant, au même endroit.</p></section>
+<section><h2 id="aide-06-codec">Effets codec et scripts FFglitch</h2>
+<figure><img alt="Script FFglitch dans l'inspecteur" src="../aide/codec.png"></figure>
+<p>Les effets marqués « moteur codec » abîment la vidéo compressée elle-même : bavure, fonte des pixels, vecteurs de mouvement déformés. Ils se calculent en arrière-plan ; le badge « Calcul… » reste sur le clip le temps du calcul.</p>
+<ul>
+<li><strong>Vecteurs de mouvement</strong> : amplifier, inverser (valeur négative), figer un axe (0 %), décaler, lisser, bruiter le mouvement.</li>
+<li><strong>Écho de mouvement, Zoom de mouvement, Saccades</strong> : le mouvement répété, aspiré vers un centre, ou inversé par à-coups.</li>
+<li><strong>Transfert de mouvement</strong> : le clip prend le mouvement du clip posé sur la piste juste au-dessus. Masquez cette piste avec l'œil, son mouvement sert quand même.</li>
+<li><strong>Script FFglitch</strong> (famille Scripts) : un script de la bibliothèque. Les nombres déclarés en haut du script deviennent des réglages. « Modifier… » ouvre le script pour le changer.</li>
+</ul>
+<p>Vos propres scripts, par exemple ceux de dd_GlitchAssist : Fichier &gt; Importer des scripts FFglitch, puis choisissez leur dossier.</p></section>
+<section><h2 id="aide-07-compression">Lire la compression d&#x27;un clip</h2>
+<figure><img alt="Panneau Compression" src="../aide/compression.png"></figure>
+<p>Dans l'espace Effets, Fenêtre &gt; Compression ouvre ce panneau sous le programme. Sélectionnez un clip vidéo : chaque barre est une image, haute comme son poids.</p>
+<ul>
+<li><strong>Barre mauve</strong> : une image clé, image complète.</li>
+<li><strong>Barre grise</strong> : une image qui ne contient que le mouvement depuis la précédente.</li>
+<li><strong>Contour mauve</strong> : une image clé supprimée, là où le plan bave.</li>
+</ul>
+<p>Cliquez une barre pour y aller. Double-cliquez une image clé pour la supprimer ou la rétablir. Le bouton à droite dessine sur le programme le mouvement que le datamosh va réutiliser.</p></section>
+<section><h2 id="aide-08-exporter">Exporter</h2>
+<figure><img alt="Formulaire d'export" src="../aide/export.png"></figure>
+<ol>
+<li>Passez dans l'espace <strong>Export</strong> (Maj+4 ou Ctrl+E).</li>
+<li>Choisissez le format. ProRes 422 HQ garde la qualité pour la suite du montage.</li>
+<li>Choisissez le dossier, puis le nom : un modèle où {plan} devient le nom du média, {version} le premier numéro libre (01, 02…), {date} la date du jour. Le nom obtenu s'affiche dessous.</li>
+<li>Cliquez Exporter. L'export rejoint la file d'export, à droite, et se calcule en arrière-plan.</li>
+</ol>
+<p><strong>Un fichier par plan</strong> : chaque clip de la piste vidéo du bas devient un fichier, nommé d'après son média.</p>
+<p>Les images sans effet sont recopiées telles quelles depuis la source. Après l'export, le rapport vérifie la durée, la cadence, la taille et le timecode.</p>
+<h3>Échanger avec le monteur</h3>
+<ul>
+<li><strong>Fichier &gt; Importer un montage</strong> : une EDL ou un FCP XML devient une séquence. Chaque plan est retrouvé parmi les médias importés par son nom et posé avec son timecode ; un plan sans média devient un marqueur.</li>
+<li><strong>Fichier &gt; Exporter une liste de remplacement</strong> : les plans exportés pendant la séance, en EDL ou FCP XML, à leur place dans le montage. Le monteur l'importe pour relier les nouveaux plans.</li>
+<li><strong>Fichier &gt; Exporter l'image</strong> (Ctrl+Maj+E) : l'image à la tête de lecture, en PNG 16 bits ou en EXR.</li>
+</ul></section>
+<section><h2 id="aide-09-comparer">Comparer avant et après</h2>
+<p>Le badge <strong>Après</strong>, en haut du moniteur Programme (ou Affichage &gt; Avant / après), change ce que montre le programme :</p>
+<ul>
+<li><strong>Avant</strong> : la séquence sans aucun effet, ni datamosh, ni transition glitch. Alt+A bascule entre avant et après.</li>
+<li><strong>Volet</strong> : l'avant à gauche du trait, l'après à droite. Tirez le trait dans l'image.</li>
+<li><strong>Côte à côte</strong> : l'avant à gauche, l'après à droite.</li>
+</ul>
+<h3>LUT d'affichage</h3>
+<p>Affichage &gt; LUT d'affichage &gt; Charger un fichier .cube : les deux moniteurs passent par la LUT, pratique pour regarder des rushs en log. Le rendu et l'export ne la voient jamais. Le badge LUT, à côté, la retire ou en choisit une autre ; Remanence la retrouve au lancement suivant.</p></section>
+<section><h2 id="20-courbes">Courbes, modulateurs et suivi</h2>
+<h3>Courbes</h3>
+<p>Le panneau Courbes (bouton en forme de courbe dans la barre de la timeline, ou Fenêtre &gt; Courbes) montre les réglages animés du clip choisi. Double-cliquez pour ajouter une image clé, glissez-la pour la déplacer, clic droit pour changer le passage (linéaire, palier, lissé, Bézier) ; Suppr la retire. En Bézier, les poignées règlent la forme de la courbe ; Alt les sépare.</p>
+<h3>Modulateurs</h3>
+<p>Un modulateur anime un réglage tout seul, sans images clés. Clic droit sur un réglage dans le panneau Courbes, puis Moduler par :</p>
+<ul>
+<li><strong>Oscillateur</strong> : sinus, triangle, carré ou dents de scie, à la fréquence voulue ;</li>
+<li><strong>Aléatoire lissé</strong> : des valeurs au hasard qui s'enchaînent en douceur ; Autre tirage en propose d'autres ;</li>
+<li><strong>Tempo</strong> : une impulsion à chaque temps, au tempo du morceau ;</li>
+<li><strong>Audio</strong> : le niveau du son d'une piste, dans les graves, les médiums ou les aigus.</li>
+</ul>
+<p>La profondeur dit combien le modulateur agit sur le réglage. Le rendu reste le même d'un export à l'autre.</p>
+<h3>Contrôleur MIDI</h3>
+<p>Branchez un contrôleur MIDI, ouvrez le panneau Courbes sur un réglage, choisissez le contrôleur dans la barre MIDI et cliquez Enregistrer. Bougez un bouton : c'est lui qui est retenu. Lancez la lecture et jouez : chaque mouvement devient une image clé.</p>
+<h3>Suivi d'un masque</h3>
+<p>Un masque peut suivre un objet qui bouge. Placez la tête de lecture où l'objet est bien visible, entourez-le avec le masque, puis cliquez le bouton Suivre du masque (en forme de cible) dans l'inspecteur : vers l'avant ou vers l'arrière. Le suivi s'arrête s'il perd l'objet ; le message dit où.</p></section>
+<section><h2 id="catalogue">Catalogue des effets</h2>
+<p>Chaque effet se règle dans l'inspecteur ; ses préréglages sont dans la bibliothèque d'effets. « Temps réel » : calculé à l'image, à la lecture. « Calculé à part » : calculé en arrière-plan, gardé en cache.</p>
+<h3>Datamosh</h3>
+<div class="effets">
+<div class="effet"><img alt="Bavure par flux optique" src="images/effets/bavure_flux.png"><h4>Bavure par flux optique</h4><p class="moteur">Calculé à part</p><p>Réglages : Image de référence, Force, Lissage, Rafraîchissement.</p><p>Préréglages : Matière qui glisse, Bavure qui se dissipe, Coulée violente.</p></div>
+<div class="effet"><img alt="Bloom" src="images/effets/bloom.png"><h4>Bloom</h4><p class="moteur">Calculé à part</p><p>Réglages : Instant, Durée, Blocs.</p><p>Préréglages : Fonte courte, Fonte lente, Fonte dès le début.</p></div>
+<div class="effet"><img alt="Inversion par saccades" src="images/effets/inversion_saccades.png"><h4>Inversion par saccades</h4><p class="moteur">Calculé à part</p><p>Réglages : Fréquence, Durée, Intensité, Blocs.</p><p>Préréglages : Saccades rares, Longues saccades, Saccades fréquentes.</p></div>
+<div class="effet"><img alt="Persistance" src="images/effets/persistance.png"><h4>Persistance</h4><p class="moteur">Calculé à part</p><p>Réglages : Persistance, Force, Lissage, Éclaircir.</p><p>Préréglages : Traînées, Fantômes lumineux, Écho court.</p></div>
+<div class="effet"><img alt="Suppression d&#x27;images clés" src="images/effets/suppression_cles.png"><h4>Suppression d&#x27;images clés</h4><p class="moteur">Calculé à part</p><p>Réglages : Début, Fin, Blocs.</p><p>Préréglages : Bavure aux coupes, Bavure grossière, Seconde moitié.</p></div>
+<div class="effet"><img alt="Transfert de mouvement" src="images/effets/transfert_mouvement.png"><h4>Transfert de mouvement</h4><p class="moteur">Calculé à part</p><p>Réglages : Force, Blocs.</p><p>Préréglages : Mouvement emprunté, Mouvement mêlé, Mouvement en blocs.</p></div>
+<div class="effet"><img alt="Vecteurs de mouvement" src="images/effets/vecteurs.png"><h4>Vecteurs de mouvement</h4><p class="moteur">Calculé à part</p><p>Réglages : Horizontal, Vertical, Décalage X, Décalage Y, Moyenne, Bruit, Blocs.</p><p>Préréglages : Mouvement amplifié, Mouvement inversé, Glissement horizontal, Traînée, Dérive, Grouillement.</p></div>
+<div class="effet"><img alt="Zoom de mouvement" src="images/effets/zoom_mouvement.png"><h4>Zoom de mouvement</h4><p class="moteur">Calculé à part</p><p>Réglages : Force, Centre X, Centre Y, Blocs.</p><p>Préréglages : Aspiration, Explosion, Zoom décentré.</p></div>
+<div class="effet"><img alt="Zoom par saccades" src="images/effets/zoom_saccades.png"><h4>Zoom par saccades</h4><p class="moteur">Calculé à part</p><p>Réglages : Fréquence, Durée, Intensité, Blocs.</p><p>Préréglages : Coups de zoom, Grands coups de zoom, Zoom nerveux.</p></div>
+<div class="effet"><img alt="Écho de mouvement" src="images/effets/echo_mouvement.png"><h4>Écho de mouvement</h4><p class="moteur">Calculé à part</p><p>Réglages : Retard, Retour, Blocs.</p><p>Préréglages : Écho, Échos qui s&#x27;accumulent, Écho lointain.</p></div>
+</div>
+<h3>Corruption</h3>
+<div class="effets">
+<div class="effet"><img alt="Blocs déplacés" src="images/effets/blocs_deplaces.png"><h4>Blocs déplacés</h4><p class="moteur">Temps réel</p><p>Réglages : Force.</p><p>Préréglages : Quelques éclats, Blocs en fuite, Mosaïque brisée.</p></div>
+<div class="effet"><img alt="Databending" src="images/effets/databending.png"><h4>Databending</h4><p class="moteur">Calculé à part</p><p>Réglages : Force, Blocs.</p><p>Préréglages : Grains de sel, Signal abîmé, Flux brisé.</p></div>
+<div class="effet"><img alt="JPEG extrême" src="images/effets/jpeg.png"><h4>JPEG extrême</h4><p class="moteur">Temps réel</p><p>Réglages : Force, Blocs, Couleur.</p><p>Préréglages : Image trop compressée, Envoyé dix fois, Gros carrés.</p></div>
+<div class="effet"><img alt="Macroblocs" src="images/effets/macroblocs.png"><h4>Macroblocs</h4><p class="moteur">Calculé à part</p><p>Réglages : Blocs.</p><p>Préréglages : Blocs visibles, Gros blocs, Mosaïque grossière.</p></div>
+</div>
+<h3>Couleur</h3>
+<div class="effets">
+<div class="effet"><img alt="Aberration radiale" src="images/effets/aberration_radiale.png"><h4>Aberration radiale</h4><p class="moteur">Temps réel</p><p>Réglages : Force, Étalement, Centre X, Centre Y.</p><p>Préréglages : Objectif bon marché, Bords irisés, Prisme.</p></div>
+<div class="effet"><img alt="Décalage RVB" src="images/effets/decalage_rvb.png"><h4>Décalage RVB</h4><p class="moteur">Temps réel</p><p>Réglages : Force.</p><p>Préréglages : Frange légère, Couleurs dédoublées, Anaglyphe.</p></div>
+<div class="effet"><img alt="Inversion par bandes" src="images/effets/inversion_bandes.png"><h4>Inversion par bandes</h4><p class="moteur">Temps réel</p><p>Réglages : Force, Bandes, Cadence, Vertical.</p><p>Préréglages : Quelques négatifs, Stroboscope, Code-barres.</p></div>
+<div class="effet"><img alt="Postérisation et tramage" src="images/effets/posterisation.png"><h4>Postérisation et tramage</h4><p class="moteur">Temps réel</p><p>Réglages : Force, Tramage, Trame.</p><p>Préréglages : Affiche, Console 8 bits, Journal.</p></div>
+</div>
+<h3>Pixels</h3>
+<div class="effets">
+<div class="effet"><img alt="Pixellisation" src="images/effets/pixellisation.png"><h4>Pixellisation</h4><p class="moteur">Temps réel</p><p>Réglages : Force, Proportion, Cadence.</p><p>Préréglages : Mosaïque fine, Censure, Pixels épars.</p></div>
+<div class="effet"><img alt="Slit-scan" src="images/effets/slit_scan.png"><h4>Slit-scan</h4><p class="moteur">Calculé à part</p><p>Réglages : Profondeur, Inverser, Vertical.</p><p>Préréglages : Temps qui coule, Rideau vertical, Grande torsion.</p></div>
+<div class="effet"><img alt="Tranches décalées" src="images/effets/tranches.png"><h4>Tranches décalées</h4><p class="moteur">Temps réel</p><p>Réglages : Force, Tranches, Proportion, Cadence, Vertical.</p><p>Préréglages : Légère cassure, Image en lamelles, Coupe franche.</p></div>
+<div class="effet"><img alt="Tri de pixels" src="images/effets/tri_pixels.png"><h4>Tri de pixels</h4><p class="moteur">Temps réel</p><p>Réglages : Force, Vertical.</p><p>Préréglages : Lumières étirées, Fonte des clairs, Coulure verticale.</p></div>
+</div>
+<h3>Signal</h3>
+<div class="effets">
+<div class="effet"><img alt="Cassette VHS" src="images/effets/vhs.png"><h4>Cassette VHS</h4><p class="moteur">Temps réel</p><p>Réglages : Force.</p><p>Préréglages : Cassette usée, Copie de copie, Bande massacrée.</p></div>
+<div class="effet"><img alt="Feedback" src="images/effets/feedback.png"><h4>Feedback</h4><p class="moteur">Calculé à part</p><p>Réglages : Retour, Zoom, Rotation, Décalage X, Décalage Y, Teinte, Éclaircir.</p><p>Préréglages : Tunnel, Spirale, Écho psychédélique.</p></div>
+<div class="effet"><img alt="Grain et bruit" src="images/effets/grain.png"><h4>Grain et bruit</h4><p class="moteur">Temps réel</p><p>Réglages : Force, Taille, Couleur.</p><p>Préréglages : Pellicule fine, Pellicule poussée, Capteur dans le noir.</p></div>
+<div class="effet"><img alt="Perte de synchro TV" src="images/effets/perte_synchro.png"><h4>Perte de synchro TV</h4><p class="moteur">Temps réel</p><p>Réglages : Force, Défilement, Déchirement.</p><p>Préréglages : Image qui flotte, Antenne mal réglée, Plus de signal.</p></div>
+<div class="effet"><img alt="Scanlines" src="images/effets/scanlines.png"><h4>Scanlines</h4><p class="moteur">Temps réel</p><p>Réglages : Force.</p><p>Préréglages : Écran discret, Tube cathodique, Image qui décroche.</p></div>
+<div class="effet"><img alt="Écran CRT" src="images/effets/crt.png"><h4>Écran CRT</h4><p class="moteur">Temps réel</p><p>Réglages : Force, Courbure, Luminophores.</p><p>Préréglages : Moniteur de contrôle, Téléviseur du salon, Borne d&#x27;arcade.</p></div>
+</div>
+<h3>Scripts</h3>
+<div class="effets">
+<div class="effet"><img alt="Script FFglitch" src="images/effets/script_ffglitch.png"><h4>Script FFglitch</h4><p class="moteur">Calculé à part</p><p>Réglages : les réglages du script.</p><p>Préréglages : Chute verticale, Glissement horizontal, Moyenne du mouvement, Panoramique.</p></div>
+</div></section>
+<section><h2 id="raccourcis">Raccourcis clavier</h2>
+<p>Ils sont aussi écrits dans les menus, à côté de chaque commande. Convention de Vegas Pro : les flèches avancent d'une image, la molette zoome la timeline.</p>
+<h3>Fichier</h3><table>
+<tr><td>Nouveau projet</td><td><kbd>Ctrl+N</kbd></td></tr>
+<tr><td>Ouvrir un projet…</td><td><kbd>Ctrl+O</kbd></td></tr>
+<tr><td>Enregistrer</td><td><kbd>Ctrl+S</kbd></td></tr>
+<tr><td>Enregistrer sous…</td><td><kbd>Ctrl+Maj+S</kbd></td></tr>
+<tr><td>Importer des médias…</td><td><kbd>Ctrl+I</kbd></td></tr>
+<tr><td>Exporter la séquence…</td><td><kbd>Ctrl+E</kbd></td></tr>
+<tr><td>Exporter l&#x27;image…</td><td><kbd>Ctrl+Maj+E</kbd></td></tr>
+<tr><td>Quitter</td><td><kbd>Ctrl+Q</kbd></td></tr>
+</table>
+<h3>Édition</h3><table>
+<tr><td>Annuler effet décalage rvb</td><td><kbd>Ctrl+Z</kbd></td></tr>
+<tr><td>Rétablir</td><td><kbd>Ctrl+Y</kbd></td></tr>
+<tr><td>Copier</td><td><kbd>Ctrl+C</kbd></td></tr>
+<tr><td>Coller</td><td><kbd>Ctrl+V</kbd></td></tr>
+<tr><td>Dupliquer</td><td><kbd>Ctrl+D</kbd></td></tr>
+<tr><td>Tout sélectionner</td><td><kbd>Ctrl+A</kbd></td></tr>
+</table>
+<h3>Montage</h3><table>
+<tr><td>Outil de sélection</td><td><kbd>V</kbd></td></tr>
+<tr><td>Outil de coupe</td><td><kbd>C</kbd></td></tr>
+<tr><td>Couper à la tête de lecture</td><td><kbd>S</kbd></td></tr>
+<tr><td>Supprimer les clips sélectionnés</td><td><kbd>Suppr</kbd></td></tr>
+<tr><td>Dissocier son et image</td><td><kbd>U</kbd></td></tr>
+<tr><td>Lier la sélection</td><td><kbd>G</kbd></td></tr>
+<tr><td>Ripple</td><td><kbd>Ctrl+L</kbd></td></tr>
+<tr><td>Aimantation</td><td><kbd>F8</kbd></td></tr>
+<tr><td>Insérer depuis la source</td><td><kbd>F9</kbd></td></tr>
+<tr><td>Écraser depuis la source</td><td><kbd>F10</kbd></td></tr>
+<tr><td>Ajouter un marqueur</td><td><kbd>M</kbd></td></tr>
+<tr><td>Ajouter un titre</td><td><kbd>T</kbd></td></tr>
+<tr><td>Rendu sur place</td><td><kbd>Ctrl+Maj+R</kbd></td></tr>
+</table>
+<h3>Lecture</h3><table>
+<tr><td>Lire / Pause</td><td><kbd>Space</kbd></td></tr>
+<tr><td>Lecture arrière</td><td><kbd>J</kbd></td></tr>
+<tr><td>Arrêt</td><td><kbd>K</kbd></td></tr>
+<tr><td>Lecture avant</td><td><kbd>L</kbd></td></tr>
+<tr><td>Lecture en boucle</td><td><kbd>Ctrl+B</kbd></td></tr>
+<tr><td>Image précédente</td><td><kbd>Left</kbd></td></tr>
+<tr><td>Image suivante</td><td><kbd>Right</kbd></td></tr>
+<tr><td>Une seconde en arrière</td><td><kbd>Maj+Left</kbd></td></tr>
+<tr><td>Une seconde en avant</td><td><kbd>Maj+Right</kbd></td></tr>
+<tr><td>Coupe précédente</td><td><kbd>Up</kbd></td></tr>
+<tr><td>Coupe suivante</td><td><kbd>Down</kbd></td></tr>
+<tr><td>Marqueur précédent</td><td><kbd>Ctrl+Left</kbd></td></tr>
+<tr><td>Marqueur suivant</td><td><kbd>Ctrl+Right</kbd></td></tr>
+<tr><td>Aller au début</td><td><kbd>Home</kbd></td></tr>
+<tr><td>Aller à la fin</td><td><kbd>End</kbd></td></tr>
+<tr><td>Basculer entre source et programme</td><td><kbd>Q</kbd></td></tr>
+<tr><td>Point d&#x27;entrée</td><td><kbd>I</kbd></td></tr>
+<tr><td>Point de sortie</td><td><kbd>O</kbd></td></tr>
+<tr><td>Effacer les points d&#x27;entrée et de sortie</td><td><kbd>Alt+X</kbd></td></tr>
+</table>
+<h3>Affichage</h3><table>
+<tr><td>Espace Média</td><td><kbd>Maj+1</kbd></td></tr>
+<tr><td>Espace Montage</td><td><kbd>Maj+2</kbd></td></tr>
+<tr><td>Espace Effets</td><td><kbd>Maj+3</kbd></td></tr>
+<tr><td>Espace Export</td><td><kbd>Maj+4</kbd></td></tr>
+<tr><td>Basculer avant / après</td><td><kbd>Alt+A</kbd></td></tr>
+<tr><td>Zoom avant</td><td><kbd>+</kbd></td></tr>
+<tr><td>Zoom arrière</td><td><kbd>-</kbd></td></tr>
+<tr><td>Tout voir</td><td><kbd>Ctrl+0</kbd></td></tr>
+<tr><td>Plein écran</td><td><kbd>F11</kbd></td></tr>
+<tr><td>Un seul moniteur</td><td><kbd>Ctrl+Maj+Q</kbd></td></tr>
+<tr><td>Programme en plein écran</td><td><kbd>Ctrl+F</kbd></td></tr>
+</table>
+<h3>Aide</h3><table>
+<tr><td>Prise en main…</td><td><kbd>F1</kbd></td></tr>
+<tr><td>Guide</td><td><kbd>Maj+F1</kbd></td></tr>
+</table></section>
+<section><h2 id="90-depannage">Dépannage</h2>
+<h3>Le journal</h3>
+<p>Remanence note dans un journal ce qu'il fait et chaque erreur, avec le détail technique. Aide &gt; Ouvrir le journal ouvre son dossier : envoyez le fichier <code>remanence.log</code> avec une phrase sur ce que vous faisiez. Un plantage brutal laisse aussi un fichier <code>plantage.log</code>.</p>
+<h3>Le diagnostic</h3>
+<p>Pour vérifier que le programme a tout ce qu'il lui faut, lancez <code>Remanence.exe --diagnostic</code> (depuis une invite de commandes, dans le dossier du programme). Il contrôle les effets, les ressources, les formats d'échange, FFmpeg, la carte graphique, l'interface, puis monte, enregistre et exporte un petit projet d'essai. Le résultat est écrit dans <code>diagnostic.txt</code>, dans le dossier du journal.</p>
+<h3>Pas d'effets à l'image</h3>
+<p>Les effets demandent une carte graphique compatible OpenGL 4.3. Sans elle (pilote ancien, bureau à distance), Remanence monte et exporte, mais sans effets. Mettez à jour le pilote de la carte graphique.</p>
+<h3>Un effet de datamosh ne fait rien</h3>
+<p>Les effets propres à FFglitch (vecteurs de mouvement, transfert de mouvement, scripts) en ont besoin : Aide &gt; Installer FFglitch. Les autres effets de datamosh se calculent en arrière-plan : le badge « Calcul… » reste sur le clip le temps du calcul.</p>
+<h3>L'export n'est pas conforme</h3>
+<p>Le rapport d'export compare le fichier à la séquence : durée en images, cadence, taille, timecode. Une ligne en défaut dit laquelle. Le format « Comme la source » donne le résultat le plus fidèle.</p></section>
+</main>
+</body>
+</html>
