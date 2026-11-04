@@ -65,7 +65,7 @@ class DelegueMedia(QStyledItemDelegate):
 
     def sizeHint(self, option, index):
         if self._grille():
-            l = self.panneau.taille_vignette
+            l = self.panneau.taille_affichee()
             return QSize(l + 12, round(l * 9 / 16) + 34)
         return QSize(option.rect.width(), 44)
 
@@ -394,6 +394,12 @@ class PanneauMedias(QWidget):
         self.taille_vignette = v
         self.vue.doItemsLayout()
 
+    def taille_affichee(self) -> int:
+        """Largeur des vignettes : celle du curseur, réduite dans un panneau étroit (espace
+        Montage) pour en tenir deux par ligne, sans descendre sous 96 px."""
+        par_tuile = (self.vue.viewport().width() - 8) // 2 - 12 - 2 * self.vue.spacing()
+        return max(96, min(self.taille_vignette, par_tuile))
+
     def signaler_analyses(self, n: int):
         self.en_cours.setVisible(n > 0)
         self.en_cours.setText(f"Analyse de {n} fichier{'s' if n > 1 else ''} en cours…")
@@ -597,6 +603,7 @@ class PanneauMedias(QWidget):
         super().resizeEvent(e)
         # Après la mise en page du séparateur, qui n'a sa taille réelle qu'ensuite.
         QTimer.singleShot(0, self._ajuster_arbre)
+        QTimer.singleShot(0, self.vue.doItemsLayout)  # taille des vignettes selon la largeur
 
     def keyPressEvent(self, e):
         if e.key() == Qt.Key_Delete and self.vue.hasFocus() and self.medias_choisis():

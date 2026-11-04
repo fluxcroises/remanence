@@ -148,6 +148,20 @@ class Volet(QWidget):
         poser_icone(self.titre, "chevron-down" if ouvert else "chevron-right", 16)
 
 
+def animations_windows() -> bool:
+    """Réglage de Windows « Afficher les animations » (Accessibilité > Effets visuels) : coupé,
+    le fond de l'accueil reste immobile. Hors de Windows, ou si on ne peut pas le lire : oui."""
+    try:
+        import ctypes
+        valeur = ctypes.c_int(1)
+        # SPI_GETCLIENTAREAANIMATION
+        if ctypes.windll.user32.SystemParametersInfoW(0x1042, 0, ctypes.byref(valeur), 0):
+            return bool(valeur.value)
+    except (AttributeError, OSError):
+        pass
+    return True
+
+
 class FondOndes(QWidget):
     """Fond de l'accueil : une nappe de points vue en perspective, qui ondule lentement."""
 
@@ -164,7 +178,8 @@ class FondOndes(QWidget):
         self._horloge.timeout.connect(self._avancer)
 
     def showEvent(self, e):
-        self._horloge.start()
+        if animations_windows():
+            self._horloge.start()
         super().showEvent(e)
 
     def hideEvent(self, e):
@@ -175,7 +190,7 @@ class FondOndes(QWidget):
         """Arrêtée pendant le glissement d'un volet : chaque pas redessinait toute la fenêtre."""
         if oui:
             self._horloge.stop()
-        elif self.isVisible():
+        elif self.isVisible() and animations_windows():
             self._horloge.start()
 
     def resizeEvent(self, e):

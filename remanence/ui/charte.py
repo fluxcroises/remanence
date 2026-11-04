@@ -304,6 +304,11 @@ QWidget {{ color: {ink}; background: transparent; }}
 QMainWindow, QMainWindow > QWidget {{ background: {bg_app}; }}
 QMainWindow::separator {{ background: {bg_app}; width: 3px; height: 3px; }}
 QMainWindow::separator:hover {{ background: {line}; }}
+QSplitter::handle {{ background: transparent; image: none; }}
+QSplitter::handle:vertical {{ height: 5px; border-top: 1px solid {line}; }}
+QSplitter::handle:horizontal {{ width: 5px; border-left: 1px solid {line}; }}
+QSplitter::handle:vertical:hover {{ border-top-color: {control_border}; }}
+QSplitter::handle:horizontal:hover {{ border-left-color: {control_border}; }}
 QDockWidget > QWidget, QDialog, QMessageBox {{ background: {surface}; }}
 QDockWidget {{ color: {ink}; }}
 QToolTip {{ background: {surface_raised}; color: {ink}; border: 1px solid {line};
@@ -496,8 +501,9 @@ QScrollBar::add-line, QScrollBar::sub-line, QScrollBar::add-page, QScrollBar::su
     width: 0; height: 0; background: transparent; }}
 
 QRadioButton, QCheckBox {{ spacing: {space_2}; border: 2px solid transparent; }}
-QRadioButton::indicator, QCheckBox::indicator {{ width: 12px; height: 12px;
-    border: 1px solid {control_border}; background: {surface_raised}; }}
+QRadioButton::indicator, QCheckBox::indicator {{ width: 13px; height: 13px;
+    border: 1px solid {ink_muted}; background: {surface_raised}; }}
+QRadioButton::indicator:hover, QCheckBox::indicator:hover {{ border-color: {ink}; }}
 QRadioButton::indicator {{ border-radius: 7px; }}
 QCheckBox::indicator {{ border-radius: {radius_xs}; }}
 QRadioButton::indicator:checked, QCheckBox::indicator:checked {{ background: {accent};

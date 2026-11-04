@@ -422,8 +422,9 @@ class Inspecteur(PanneauFiche):
                                taille=14)
             raz.clicked.connect(lambda: self.reglage.emit(c.id, "reinitialiser", None))
             section.ajouter_outil(raz)
+        # Au pour cent près, comme l'opacité des effets (« 100 % » partout).
         niveau = LigneParametre("Opacité" if video else "Volume", 0, 100, c.gain * 100, "%",
-                                100, 1)
+                                100)
         niveau.valeur_finale.connect(lambda v: self.reglage.emit(c.id, "gain", v / 100))
         self._cible.addWidget(niveau)
         if video:
