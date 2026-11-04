@@ -441,10 +441,12 @@ def copier(seq: Sequence, ids: set[str]) -> list[tuple[str, Clip]]:
     return [(p.id, copy.deepcopy(c)) for p, c in seq.tous_les_clips() if c.id in ids]
 
 
-def coller(seq: Sequence, copies: list[tuple[str, Clip]], debut: int) -> set[str]:
+def coller(seq: Sequence, copies: list[tuple[str, Clip]], debut: int,
+           inserer: bool = False) -> set[str]:
     """Pose les copies sur leurs pistes, la plus précoce à l'image `debut`, les autres à la même
-    distance qu'au moment de la copie. Elles écrasent ce qu'elles recouvrent. Chaque copie est
-    un nouveau clip (ses effets et ses liens aussi). Renvoie les identifiants posés."""
+    distance qu'au moment de la copie. Elles écrasent ce qu'elles recouvrent, ou, avec
+    `inserer`, poussent la suite de la séquence. Chaque copie est un nouveau clip (ses effets
+    et ses liens aussi). Renvoie les identifiants posés."""
     pistes = {p.id: p for p in seq.pistes}
     copies = [(pistes[i], c) for i, c in copies if i in pistes]
     if not copies:
@@ -452,6 +454,8 @@ def coller(seq: Sequence, copies: list[tuple[str, Clip]], debut: int) -> set[str
     if any(p.verrouillee for p, _ in copies):
         raise EditionImpossible("Une des pistes est verrouillée.")
     origine = min(c.debut for _, c in copies)
+    if inserer:
+        ouvrir_espace(seq, debut, max(c.fin for _, c in copies) - origine)
     liens: dict[str, str] = {}
     poses = set()
     for p, modele in copies:

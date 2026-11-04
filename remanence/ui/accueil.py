@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog, QFil
                                QVBoxLayout, QWidget)
 
 from remanence import EDITEUR, __version__
-from remanence.config import reglages_interface
+from remanence.config import dossier_fichiers, reglages_interface, retenir_dossier
 from remanence.ui import charte
 from remanence.ui.aide import FenetreAide, fiches
 from remanence.ui.composants import bouton_icone, etiquette, poser_icone
@@ -533,9 +533,11 @@ class Accueil(QDialog):
         self.accept()
 
     def _parcourir(self):
-        chemin, _ = QFileDialog.getOpenFileName(self, "Ouvrir un projet", "",
+        chemin, _ = QFileDialog.getOpenFileName(self, "Ouvrir un projet",
+                                                dossier_fichiers("projets"),
                                                 "Projet Remanence (*.remanence)")
         if chemin:
+            retenir_dossier("projets", chemin)
             self.resultat = ("ouvrir", chemin)
             self.accept()
 

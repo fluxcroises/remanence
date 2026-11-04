@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QHBoxLayout, QLineEdit,
                                QProgressBar, QPushButton, QRadioButton, QScrollArea, QVBoxLayout,
                                QWidget)
@@ -200,6 +202,16 @@ class FormulaireExport(QWidget):
         self._apercu()
 
 
+def montrer_dans_explorateur(chemin: Path):
+    """L'explorateur de Windows ouvert sur le dossier, le fichier choisi ; une séquence
+    d'images (pas de fichier unique) : le dossier seul."""
+    if chemin.is_file():
+        subprocess.Popen(["explorer", "/select,", str(chemin)])
+    else:
+        dossier = chemin if chemin.is_dir() else chemin.parent
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(dossier)))
+
+
 class LigneExport(QWidget):
     """Un rendu dans la file : nom, format, progression, puis résultat et rapport."""
 
@@ -242,6 +254,21 @@ class LigneExport(QWidget):
             self.etat.setProperty("role", "avertissement")
         self.etat.style().polish(self.etat)
         self._bouton("Voir le rapport", lambda: DialogueRapport(rapport, self).exec())
+        # Le fichier obtenu : son dossier (fichier choisi dans l'explorateur) et la lecture.
+        chemin = Path(rapport.chemin)
+        bas = QHBoxLayout()
+        bas.setSpacing(6)
+        dossier = QPushButton("Ouvrir le dossier")
+        dossier.setProperty("variante", "discret")
+        dossier.clicked.connect(lambda: montrer_dans_explorateur(chemin))
+        bas.addWidget(dossier)
+        if chemin.is_file():
+            lire = QPushButton("Lire")
+            lire.setProperty("variante", "discret")
+            lire.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(chemin))))
+            bas.addWidget(lire)
+        bas.addStretch(1)
+        self.layout().addLayout(bas)
 
     def echec(self, message: str):
         self.etat.setText(f"Erreur : {message}")

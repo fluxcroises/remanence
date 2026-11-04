@@ -41,3 +41,27 @@ def reglages_interface():
     """
     from PySide6.QtCore import QSettings
     return QSettings(QSettings.defaultFormat(), QSettings.UserScope, "Remanence", "Remanence")
+
+
+# Dossier proposé au départ par les fenêtres de fichiers, selon ce qu'on y cherche.
+DOSSIERS_DEPART = {"projets": "DocumentsLocation", "medias": "MoviesLocation",
+                   "montages": "DocumentsLocation", "luts": "DocumentsLocation",
+                   "images": "PicturesLocation", "scripts": "DocumentsLocation"}
+
+
+def dossier_fichiers(genre: str) -> str:
+    """Le dernier dossier utilisé pour ce genre de fichiers ; sinon Documents, Vidéos ou Images
+    (jamais le dossier du programme)."""
+    from PySide6.QtCore import QStandardPaths
+    retenu = reglages_interface().value(f"dossiers/{genre}", "") or ""
+    if retenu and Path(retenu).is_dir():
+        return retenu
+    emplacement = getattr(QStandardPaths, DOSSIERS_DEPART.get(genre, "DocumentsLocation"))
+    return QStandardPaths.writableLocation(emplacement) or str(Path.home())
+
+
+def retenir_dossier(genre: str, chemin: str):
+    """Après un choix dans une fenêtre de fichiers : son dossier sera proposé la fois suivante."""
+    if chemin:
+        d = Path(chemin)
+        reglages_interface().setValue(f"dossiers/{genre}", str(d if d.is_dir() else d.parent))

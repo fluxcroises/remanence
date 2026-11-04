@@ -9,6 +9,7 @@ disant venu de Tab).
 
 from __future__ import annotations
 
+import shiboken6
 from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtWidgets import QWidget
 
@@ -27,8 +28,10 @@ def marquer(widget: QWidget, oui: bool):
 
 
 def visible(widget: QWidget) -> bool:
-    """Le widget a le clavier, et on y est venu au clavier : le repère doit se voir."""
-    return widget.hasFocus() and bool(widget.property(PROPRIETE))
+    """Le widget a le clavier, et on y est venu au clavier : le repère doit se voir. Un widget
+    déjà détruit (bouton d'une boîte qu'on vient de fermer, lu après coup) ne l'est pas."""
+    return (shiboken6.isValid(widget) and widget.hasFocus()
+            and bool(widget.property(PROPRIETE)))
 
 
 class FocusClavier(QObject):

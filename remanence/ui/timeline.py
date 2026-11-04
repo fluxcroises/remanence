@@ -358,11 +358,17 @@ class VueTimeline(QWidget):
         if clip.transition is not None and edition.precedent(piste, clip) is not None:
             largeur = min(clip.transition.duree, clip.duree) * self.px_par_image
             zone = QRectF(r.left(), r.top() + BANDEAU, largeur, r.height() - BANDEAU)
-            p.fillRect(zone, QBrush(c.c("accent", 0.55), Qt.BDiagPattern))
+            # Vignettes assombries sous les hachures : sinon elles s'y perdaient.
+            p.fillRect(zone, c.c("bg-app", 0.6))
+            p.fillRect(zone, QBrush(c.c("accent"), Qt.BDiagPattern))
             p.fillRect(QRectF(zone.right() - 2, zone.top(), 2, zone.height()), c.c("accent"))
-        # Bandeau du nom, sur la couleur du clip : lisible même par-dessus les vignettes.
-        p.fillRect(QRectF(r.left(), r.top(), r.width(), BANDEAU), fond)
-        p.setPen(c.c("ink"))
+        # Bandeau du nom, sur la couleur du clip : lisible même par-dessus les vignettes. Clip
+        # choisi : bandeau mauve plein, visible de loin (le contour seul se perdait).
+        choisi = clip.id in self.selection
+        p.fillRect(QRectF(r.left(), r.top(), r.width(), BANDEAU),
+                   c.c("accent") if choisi else fond)
+        encre = c.c("on-accent" if choisi else "ink")
+        p.setPen(encre)
         p.setFont(c.police("label"))
         if clip.est_effet:
             noms = [EFFETS[e.type].nom for e in clip.effets if e.type in EFFETS]
@@ -396,7 +402,7 @@ class VueTimeline(QWidget):
             p.setPen(c.c("accent" if any(e.actif for e in clip.effets) else "ink-muted"))
             p.drawText(zone, Qt.AlignCenter, texte_badge)
             p.setFont(c.police("label"))
-            p.setPen(c.c("ink"))
+            p.setPen(encre)
         p.drawText(QRectF(r.left() + 8, r.top(), r.width() - 16 - badge, BANDEAU),
                    Qt.AlignVCenter | Qt.AlignLeft, nom)
         for gauche in (True, False):

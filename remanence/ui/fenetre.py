@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QDockWidg
                                QSizePolicy, QToolBar, QToolButton, QVBoxLayout, QWidget)
 
 from remanence import journal
-from remanence.config import reglages_interface
+from remanence.config import dossier_fichiers, reglages_interface, retenir_dossier
 from remanence.effets import (EFFETS, courbes, masque_a, modulateurs, poser_cle, retirer_cle,
                               valeur_a)
 from remanence.effets.masques import nouveau_masque
@@ -201,11 +201,15 @@ class FenetrePrincipale(QMainWindow):
         self.b_comparaison = QToolButton()
         self.b_comparaison.setProperty("variante", "badge")
         self.b_comparaison.setPopupMode(QToolButton.InstantPopup)
-        self.b_comparaison.setToolTip("Avant / après (Alt+A)")
+        self.b_comparaison.setToolTip("Avant / après (Maj+A)")
         self.b_comparaison.setAccessibleName("Avant / après")
         menu_comparaison = QMenu(self.b_comparaison)
+        self._coches_comparaison = {}  # le mode en cours est coché, ici et dans Affichage
         for cle, nom in COMPARAISONS.items():
-            menu_comparaison.addAction(nom, lambda cle=cle: self.comparer(cle))
+            act = menu_comparaison.addAction(nom, lambda cle=cle: self.comparer(cle))
+            act.setCheckable(True)
+            act.setChecked(cle == "apres")
+            self._coches_comparaison[cle] = act
         self.b_comparaison.setMenu(menu_comparaison)
         self.b_comparaison.setText(COMPARAISONS["apres"])
         self._entete_visionneuse.ajouter(self.b_comparaison)
@@ -439,9 +443,25 @@ class FenetrePrincipale(QMainWindow):
             self.onglets_droite.choisir(0)  # on y règle les effets : l'inspecteur
         self._espace = espace
         self._actualiser_datamosh()
+        QTimer.singleShot(0, self._verifier_hauteur)
         self.barre_espaces.activer(espace)
         if self._barre_espaces_2 is not None:
             self._barre_espaces_2.activer(espace)
+
+    def _verifier_hauteur(self):
+        """Des panneaux qui demandent plus de hauteur que l'écran n'en a écrasent la timeline
+        (vu au retour de l'espace Export, 4 novembre 2026) : la disposition par défaut de
+        l'espace est alors rétablie, et le journal note qui demandait trop."""
+        ecran = self.screen()
+        if ecran is None or not self.isVisible():
+            return
+        demande = self.minimumSizeHint().height()
+        if demande <= ecran.availableGeometry().height():
+            return
+        panneaux = ", ".join(f"{nom} {dock.minimumSizeHint().height()} px"
+                             for nom, dock in self._docks.items() if dock.isVisible())
+        journal.avertissement(f"Disposition trop haute ({demande} px) : {panneaux}")
+        self._disposition(self._espace)
 
     def _cle_disposition(self, espace: str) -> str:
         # La disposition façon Resolve n'a pas les mêmes panneaux : elle est retenue à part.
@@ -530,7 +550,7 @@ class FenetrePrincipale(QMainWindow):
         self.a_retablir = self._action(e, "Rétablir", self.retablir, ["Ctrl+Y", "Ctrl+Shift+Z"])
         e.addSeparator()
         self._action(e, "Copier", self.copier, "Ctrl+C")
-        self._action(e, "Coller", self.coller, "Ctrl+V")
+        self._action(e, "Coller", lambda: self.coller(), "Ctrl+V")
         self._action(e, "Dupliquer", self.dupliquer, "Ctrl+D")
         e.addSeparator()
         self._action(e, "Tout sélectionner", self.tout_selectionner, "Ctrl+A")
@@ -623,10 +643,13 @@ class FenetrePrincipale(QMainWindow):
             self._action(qualite, nom,
                          lambda _=False, cle=cle: self.visionneuse.choisir_qualite(cle))
         a.addSeparator()
-        for i, (cle, nom) in enumerate((("media", "Média"), ("montage", "Montage"),
-                                        ("effets", "Effets"), ("export", "Export")), 1):
+        # Sur un clavier AZERTY, Maj+1 arrive comme Maj+& : les deux sont acceptés.
+        for i, (cle, nom, azerty) in enumerate((("media", "Média", "&"),
+                                                ("montage", "Montage", "é"),
+                                                ("effets", "Effets", '"'),
+                                                ("export", "Export", "'")), 1):
             self._action(a, f"Espace {nom}", lambda _=False, cle=cle: self.choisir_espace(cle),
-                         f"Shift+{i}")
+                         [f"Shift+{i}", f"Shift+{azerty}"])
         a.addSeparator()
         self.a_barre_espaces = self._action(a, "Barre des espaces de travail",
                                             lambda v: self.barre_bas.setVisible(v))
@@ -641,7 +664,7 @@ class FenetrePrincipale(QMainWindow):
             self._actions_comparaison[cle] = act
         self._action(a, "Basculer avant / après",
                      lambda: self.comparer("apres" if self.lecture.comparaison == "avant"
-                                           else "avant"), "Alt+A")
+                                           else "avant"), "Shift+A")
         self.menu_lut = a.addMenu("LUT d'affichage")
         self.menu_lut.aboutToShow.connect(lambda: self._remplir_menu_lut(self.menu_lut))
         self.b_lut.setMenu(QMenu(self.b_lut))
@@ -702,7 +725,7 @@ class FenetrePrincipale(QMainWindow):
         fe.addSeparator()
         self._action(fe, "Revenir à la disposition par défaut", self.retablir_disposition)
 
-        ai = m.addMenu("&Aide")
+        ai = m.addMenu("A&ide")  # Alt+A : Affichage
         self._action(ai, "Accueil…", self.montrer_accueil)
         self._action(ai, "Prise en main…", lambda: FenetreAide.ouvrir(), "F1")
         self._action(ai, "Guide", self.ouvrir_guide, "Shift+F1")
@@ -895,6 +918,8 @@ class FenetrePrincipale(QMainWindow):
         vue.selection_changee.connect(self._selection)
         vue.media_depose.connect(self.poser_medias)
         self.inspecteur.reglage.connect(self._reglage_clip)
+        # Échap dans l'inspecteur : la sélection s'efface et le clavier revient à la timeline.
+        self.inspecteur.echap.connect(lambda: (vue._choisir(set()), vue.setFocus()))
         self.inspecteur.reglage_effet.connect(self.reglage_effet)
         self.inspecteur.ajout_effet.connect(self.ajouter_effet)
         self.inspecteur.enregistrer_prereglage.connect(self.enregistrer_prereglage)
@@ -1968,8 +1993,9 @@ class FenetrePrincipale(QMainWindow):
         self.b_comparaison.setProperty("actif", mode != "apres")
         self.b_comparaison.style().unpolish(self.b_comparaison)
         self.b_comparaison.style().polish(self.b_comparaison)
-        for cle, act in self._actions_comparaison.items():
-            act.setChecked(cle == mode)
+        for actions in (self._actions_comparaison, self._coches_comparaison):
+            for cle, act in actions.items():
+                act.setChecked(cle == mode)
 
     def _remplir_menu_lut(self, menu):
         menu.clear()
@@ -1993,8 +2019,10 @@ class FenetrePrincipale(QMainWindow):
         return [c for c in liste if isinstance(c, str) and Path(c).exists()]
 
     def _charger_lut(self):
-        chemin, _ = QFileDialog.getOpenFileName(self, "LUT d'affichage", "", "LUT 3D (*.cube)")
+        chemin, _ = QFileDialog.getOpenFileName(self, "LUT d'affichage",
+                                                dossier_fichiers("luts"), "LUT 3D (*.cube)")
         if chemin:
+            retenir_dossier("luts", chemin)
             self.choisir_lut(chemin)
 
     def choisir_lut(self, chemin: str | None):
@@ -2071,9 +2099,11 @@ class FenetrePrincipale(QMainWindow):
 
     def importer_montage(self):
         chemin, _ = QFileDialog.getOpenFileName(
-            self, "Importer un montage", "", "Montage (*.edl *.xml);;EDL (*.edl);;FCP XML (*.xml)")
+            self, "Importer un montage", dossier_fichiers("montages"),
+            "Montage (*.edl *.xml);;EDL (*.edl);;FCP XML (*.xml)")
         if not chemin:
             return
+        retenir_dossier("montages", chemin)
         try:
             seq, manquants = echanges.importer_montage(self.projet, Path(chemin))
         except Exception as e:  # fichier illisible : le message d'OpenTimelineIO suffit
@@ -2095,7 +2125,7 @@ class FenetrePrincipale(QMainWindow):
             return
         f = min(self.lecture.position, seq.duree() - 1)
         tc = images_vers_tc(seq.tc_debut + f, seq.fraction_cadence, seq.tc_drop)
-        dossier = Path(self.formulaire_export.dossier.text() or Path.home())
+        dossier = Path(self.formulaire_export.dossier.text() or dossier_fichiers("images"))
         nom = dossier / f"{seq.nom}_{tc.replace(':', '').replace(';', '')}.png"
         chemin, _ = QFileDialog.getSaveFileName(self, "Exporter l'image", str(nom),
                                                 "PNG 16 bits (*.png);;EXR demi-flottant (*.exr)")
@@ -2247,29 +2277,27 @@ class FenetrePrincipale(QMainWindow):
         if sel:
             self._presse_papiers = edition.copier(self.projet.sequence, sel)
 
-    def coller(self, debut: int | None = None):
+    def coller(self, debut: int | None = None, presse_papiers=None, libelle="Collage",
+               inserer=False):
         """Les clips copiés, à la tête de lecture, sur leurs pistes."""
-        if not self._presse_papiers:
+        copies = presse_papiers or self._presse_papiers
+        if not copies:
             return
         poses: set[str] = set()
-        self._tenter("Collage", lambda: poses.update(edition.coller(
-            self.projet.sequence, self._presse_papiers,
-            self.lecture.position if debut is None else debut)))
+        self._tenter(libelle, lambda: poses.update(edition.coller(
+            self.projet.sequence, copies,
+            self.lecture.position if debut is None else debut, inserer)))
         if poses:
             self.timeline.vue._choisir(poses)
 
     def dupliquer(self):
-        """Une copie de la sélection, juste après elle."""
+        """Une copie de la sélection, juste après elle : la suite de la séquence se pousse."""
         seq = self.projet.sequence
         sel = edition.avec_lies(seq, set(self.timeline.vue.selection))
         if not sel:
             return
         fin = max(c.fin for _, c in seq.tous_les_clips() if c.id in sel)
-        copies, self._presse_papiers = self._presse_papiers, edition.copier(seq, sel)
-        try:
-            self.coller(fin)
-        finally:
-            self._presse_papiers = copies
+        self.coller(fin, edition.copier(seq, sel), "Duplication", inserer=True)
 
     def tout_selectionner(self):
         if self.medias.vue.hasFocus():
@@ -2505,7 +2533,9 @@ class FenetrePrincipale(QMainWindow):
         """Les scripts .js d'un dossier (dd_GlitchAssist, ffglitch-scripts…) dans la
         bibliothèque d'effets, famille Scripts."""
         if not dossier:
-            dossier = QFileDialog.getExistingDirectory(self, "Importer des scripts FFglitch")
+            dossier = QFileDialog.getExistingDirectory(self, "Importer des scripts FFglitch",
+                                                       dossier_fichiers("scripts"))
+            retenir_dossier("scripts", dossier)
         if not dossier:
             return
         try:
@@ -2518,8 +2548,10 @@ class FenetrePrincipale(QMainWindow):
 
     def importer(self):
         chemins, _ = QFileDialog.getOpenFileNames(
-            self, "Importer des médias", "", f"Médias ({EXTENSIONS_MEDIAS});;Tous les fichiers (*)")
+            self, "Importer des médias", dossier_fichiers("medias"),
+            f"Médias ({EXTENSIONS_MEDIAS});;Tous les fichiers (*)")
         if chemins:
+            retenir_dossier("medias", chemins[0])
             self.importer_chemins(chemins)
 
     def importer_chemins(self, chemins: list[str]):
@@ -2712,8 +2744,10 @@ class FenetrePrincipale(QMainWindow):
         if not self._confirmer_abandon():
             return
         if not chemin:
-            chemin, _ = QFileDialog.getOpenFileName(self, "Ouvrir un projet", "",
+            chemin, _ = QFileDialog.getOpenFileName(self, "Ouvrir un projet",
+                                                    dossier_fichiers("projets"),
                                                     "Projet Remanence (*.remanence)")
+            retenir_dossier("projets", chemin)
         if not chemin:
             return
         chemin = Path(chemin)
@@ -2767,11 +2801,12 @@ class FenetrePrincipale(QMainWindow):
         return True
 
     def enregistrer_sous(self) -> bool:
-        chemin, _ = QFileDialog.getSaveFileName(self, "Enregistrer le projet",
-                                                str(self.chemin or Path.home() / "projet.remanence"),
+        depart = self.chemin or Path(dossier_fichiers("projets")) / "projet.remanence"
+        chemin, _ = QFileDialog.getSaveFileName(self, "Enregistrer le projet", str(depart),
                                                 "Projet Remanence (*.remanence)")
         if not chemin:
             return False
+        retenir_dossier("projets", chemin)
         self.chemin = Path(chemin).with_suffix(serialisation.EXTENSION)
         prerendu.definir_projet(self.chemin)
         return self.enregistrer()
@@ -2803,3 +2838,8 @@ class FenetrePrincipale(QMainWindow):
         self.lecture_source.fermer()
         self.taches.attendre(3000)
         e.accept()
+        # Fermer la fenêtre principale ferme les autres (aide, boîte restée ouverte) : Qt ne
+        # quitte qu'à la fermeture de la dernière.
+        for autre in QApplication.topLevelWidgets():
+            if autre is not self and autre.isVisible():
+                autre.close()

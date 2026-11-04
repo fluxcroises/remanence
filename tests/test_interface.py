@@ -1110,7 +1110,8 @@ def test_ergonomie_presse_papiers_zoom_et_reperes(fenetre, medias):
         "le son suit, avec un lien neuf"
     w.timeline.vue._choisir({clip.id})
     w.dupliquer()
-    assert [c.debut for c in seq.pistes_video[0].clips][:2] == [0, duree], "copie juste après"
+    assert [c.debut for c in seq.pistes_video[0].clips] == [0, duree, 2 * duree + 10], \
+        "copie juste après, la suite poussée et non écrasée"
     w.tout_selectionner()
     assert w.timeline.vue.selection == {c.id for _, c in seq.tous_les_clips()}
     avant = w.timeline.vue.px_par_image
@@ -1126,7 +1127,8 @@ def test_ergonomie_presse_papiers_zoom_et_reperes(fenetre, medias):
     from PySide6.QtTest import QTest
     QTest.keyClick(w.timeline.vue, Qt.Key_Shift)  # une touche : la navigation est au clavier
     w.timeline.vue.setFocus(Qt.TabFocusReason)
-    assert _attendre(lambda: w.timeline.barre_outils.property("clavier") is True, 2),         "au clavier (Tab), le filet sous la barre de la timeline"
+    assert _attendre(lambda: w.timeline.barre_outils.property("clavier") is True, 2), \
+        "au clavier (Tab), le filet sous la barre de la timeline"
     w.choisir_espace("effets")
     assert w.onglets_droite.currentIndex() == 0, "l'inspecteur dans l'espace Effets"
 
@@ -1331,3 +1333,36 @@ def test_repere_du_clavier_seulement_au_clavier(fenetre):
     w.timeline.vue.setFocus(Qt.MouseFocusReason)
     assert _attendre(lambda: not bouton.property(focus.PROPRIETE), 2), "s'efface en partant"
 
+
+
+def test_corrections_du_test_en_main(fenetre, medias, tmp_path):
+    """Corrections du test du 4 novembre 2026 : widget détruit, coches, raccourcis AZERTY,
+    Échap dans l'inspecteur, dossiers retenus."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeySequence
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QPushButton
+    from remanence import config
+    from remanence.ui import focus
+    w = fenetre
+    bouton = QPushButton()
+    bouton.deleteLater()
+    QCoreApplication.sendPostedEvents(None, 0)
+    assert not focus.visible(bouton), "un widget détruit n'a pas de repère (et pas d'erreur)"
+    w.comparer("volet")
+    assert w._coches_comparaison["volet"].isChecked()
+    assert not w._coches_comparaison["apres"].isChecked()
+    w.comparer("apres")
+    raccourcis = {s.toString() for a in w.findChildren(type(w.a_annuler)) for s in a.shortcuts()}
+    assert {"Shift+1", "Shift+&", "Shift+É", "Shift+A"} <= raccourcis
+    assert "Alt+A" not in raccourcis
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    w.timeline.vue._choisir({clip.id})
+    QTest.keyClick(w.inspecteur, Qt.Key_Escape)
+    assert not w.timeline.vue.selection, "Échap dans l'inspecteur désélectionne"
+    config.retenir_dossier("medias", str(tmp_path / "x.mov"))
+    assert config.dossier_fichiers("medias") == str(tmp_path)
+    assert config.dossier_fichiers("projets"), "Documents par défaut"

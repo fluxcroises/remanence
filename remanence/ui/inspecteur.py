@@ -221,6 +221,14 @@ class Inspecteur(PanneauFiche):
     enregistrer_prereglage = Signal(object)
     # Texte du badge de l'en-tête (« Clip vidéo », « Clip audio »), vide sans sélection.
     badge = Signal(str)
+    # Échap, que le réglage qui avait le clavier n'a pas pris : comme dans la timeline.
+    echap = Signal()
+
+    def keyPressEvent(self, e):
+        if e.key() == Qt.Key_Escape:
+            self.echap.emit()
+            return
+        super().keyPressEvent(e)
 
     def __init__(self, parent=None):
         super().__init__(parent)
