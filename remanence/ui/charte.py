@@ -380,7 +380,7 @@ QScrollArea[fond="transparent"], QScrollArea[fond="transparent"] > QWidget > QWi
     background: transparent; border: 0; }}
 QToolButton[variante="fiche"]:hover {{ color: {ink}; border-color: {accent};
     background: {surface_hover}; }}
-QToolButton[variante="fiche"]:focus {{ border-color: {focus}; }}
+QToolButton[variante="fiche"][focus_clavier="true"] {{ border-color: {focus}; }}
 QTreeWidget[role="liste-plate"] {{ background: {surface}; border: 0; }}
 QTreeWidget[fond="transparent"] {{ background: transparent; }}
 QTreeWidget[fond="transparent"] > QWidget {{ background: transparent; }}
@@ -442,9 +442,20 @@ QPushButton[variante="onglet"]:checked, QToolButton[variante="onglet"]:checked {
     color: {ink}; font-weight: 600; border-bottom: 2px solid {accent}; }}
 QPushButton[variante="onglet"]:hover, QToolButton[variante="onglet"]:hover {{ color: {ink}; }}
 
-QPushButton:focus, QToolButton:focus, QComboBox:focus, QLineEdit:focus, QSpinBox:focus,
-QDoubleSpinBox:focus, QListWidget:focus, QTableWidget:focus, QTextBrowser:focus,
-QRadioButton:focus, QCheckBox:focus, QSlider:focus {{ border: 2px solid {focus}; }}
+/* Repère du clavier : seulement après Tab (propriété focus_clavier, ui/focus.py), en couleur
+   de bordure, sans changer la taille. Un champ où l'on tape s'éclaircit, sans turquoise. */
+QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {{ border-color: {ink_muted}; }}
+QPushButton[focus_clavier="true"], QToolButton[focus_clavier="true"],
+QComboBox[focus_clavier="true"], QLineEdit[focus_clavier="true"],
+QSpinBox[focus_clavier="true"], QDoubleSpinBox[focus_clavier="true"] {{
+    border: 1px solid {focus}; }}
+QListWidget[focus_clavier="true"], QListView[focus_clavier="true"],
+QTreeWidget[focus_clavier="true"], QTableWidget[focus_clavier="true"],
+QTextBrowser[focus_clavier="true"] {{ border: 1px solid {focus}; }}
+QRadioButton[focus_clavier="true"]::indicator,
+QCheckBox[focus_clavier="true"]::indicator {{ border-color: {focus}; }}
+QRadioButton[focus_clavier="true"], QCheckBox[focus_clavier="true"] {{ color: {focus}; }}
+QSlider[focus_clavier="true"]::handle:horizontal {{ background: {focus}; }}
 
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
     background: {surface_raised}; color: {ink}; border: 1px solid {control_border};
@@ -462,7 +473,7 @@ QSlider::groove:horizontal {{ height: 4px; background: {line}; border-radius: 2p
 QSlider::sub-page:horizontal {{ height: 4px; background: {ink_muted}; border-radius: 2px; }}
 QSlider::handle:horizontal {{ background: {ink}; width: 10px; height: 10px; margin: -3px 0;
     border-radius: 5px; }}
-QSlider {{ min-height: 16px; border: 2px solid transparent; }}
+QSlider {{ min-height: 16px; }}
 
 QListWidget, QTableWidget, QTextBrowser, QScrollArea {{
     background: {surface}; color: {ink}; border: 0; outline: 0; }}

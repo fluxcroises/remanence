@@ -48,7 +48,7 @@ from remanence.ui.menu_effets import remplir_menu_effets
 from remanence.ui.panneau_export import FileExport, FormulaireExport
 from remanence.ui.taches import GestionnaireTaches, Tache
 from remanence.ui.timeline import Timeline
-from remanence.ui import accueil, dialogue_scripts
+from remanence.ui import accueil, dialogue_scripts, focus
 from remanence.ui.aide import FenetreAide
 from remanence.ui.midi import EnregistreurMidi
 from remanence.ui.panneau_courbes import PanneauCourbes
@@ -937,6 +937,7 @@ class FenetrePrincipale(QMainWindow):
         self.source.zone.glisser_depart.connect(self._glisser_source)
         self.timeline.vue.installEventFilter(self)
         self._entete_clavier = None
+        focus.installer(QApplication.instance())
         QApplication.instance().focusChanged.connect(self._clavier_change)
 
     def eventFilter(self, objet, e):
@@ -947,17 +948,24 @@ class FenetrePrincipale(QMainWindow):
 
     def _clavier_change(self, _ancien, nouveau):
         """Repère du panneau qui reçoit le clavier (Suppr, flèches…) : un filet turquoise sous
-        son en-tête, ou sous la barre d'outils de la timeline."""
+        son en-tête, ou sous la barre d'outils de la timeline, seulement quand on y est venu
+        au clavier (Tab). Lu après coup : la façon d'arriver n'est connue qu'à la réception du
+        clavier, après ce signal."""
         if nouveau is None:
             return  # Remanence a perdu le clavier : le repère reste sur le dernier panneau
-        dock = nouveau
-        while dock is not None and not isinstance(dock, QDockWidget):
-            dock = dock.parentWidget()
+        QTimer.singleShot(0, lambda: self._repere_clavier(nouveau))
+
+    def _repere_clavier(self, nouveau):
         entete = None
-        if dock is self._docks.get("timeline"):
-            entete = self.timeline.barre_outils
-        elif dock is not None and dock.titleBarWidget() is not None                 and dock.titleBarWidget().property("role") == "entete":
-            entete = dock.titleBarWidget()
+        if focus.visible(nouveau):
+            dock = nouveau
+            while dock is not None and not isinstance(dock, QDockWidget):
+                dock = dock.parentWidget()
+            barre = dock.titleBarWidget() if dock is not None else None
+            if dock is self._docks.get("timeline"):
+                entete = self.timeline.barre_outils
+            elif barre is not None and barre.property("role") == "entete":
+                entete = barre
         if entete is self._entete_clavier:
             return
         for widget, valeur in ((self._entete_clavier, False), (entete, True)):

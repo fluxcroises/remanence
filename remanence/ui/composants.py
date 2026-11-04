@@ -15,7 +15,7 @@ from shiboken6 import isValid
 
 from remanence.config import reglages_interface
 from remanence.media.timecode import images_vers_tc, tc_vers_images
-from remanence.ui import charte
+from remanence.ui import charte, focus
 
 _boutons_icones: dict[int, tuple[QToolButton, str, int]] = {}
 
@@ -278,7 +278,7 @@ class BoutonCle(QAbstractButton):
         p.setPen(QPen(couleur, 1.4))
         p.setBrush(couleur if self.etat == "cle" else Qt.NoBrush)
         p.drawPolygon(forme)
-        if self.hasFocus():
+        if focus.visible(self):
             p.setPen(QPen(c.c("focus"), 1))
             p.setBrush(Qt.NoBrush)
             p.drawRect(self.rect().adjusted(0, 0, -1, -1))

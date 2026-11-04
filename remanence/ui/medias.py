@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (QHeaderView, QAbstractItemView, QHBoxLayout, QLin
 
 from remanence.media.timecode import images_vers_tc
 from remanence.projet.modele import Chutier, Media, Projet, nouvel_id
-from remanence.ui import charte
+from remanence.ui import charte, focus
 from remanence.ui.composants import bouton_icone, etiquette
 
 MIME_MEDIA = "application/x-remanence-media"
@@ -128,7 +128,7 @@ class DelegueMedia(QStyledItemDelegate):
             p.setFont(c.police("caption"))
             p.setPen(c.c("danger"))
             p.drawText(r.adjusted(8, 6, -8, -6), Qt.AlignTop | Qt.AlignLeft, "Hors ligne")
-        if option.state & QStyle.State_HasFocus:
+        if option.state & QStyle.State_HasFocus and focus.visible(self.panneau.vue):
             p.setPen(QPen(c.c("focus"), 2))
             p.drawRect(r.adjusted(1, 1, -1, -1))
         elif selectionne:

@@ -1118,8 +1118,15 @@ def test_ergonomie_presse_papiers_zoom_et_reperes(fenetre, medias):
     assert w.timeline.vue.px_par_image < avant
     w._remplir_recents()
     assert w._menu_recents.actions()
-    w.timeline.vue.setFocus()
-    assert _attendre(lambda: w.timeline.barre_outils.property("clavier") is True, 2)
+    from PySide6.QtCore import Qt
+    w.timeline.vue.setFocus(Qt.MouseFocusReason)
+    _attendre(lambda: False, 0.2)
+    assert not w.timeline.barre_outils.property("clavier"), "au clic, pas de repère"
+    w.timeline.vue.clearFocus()
+    from PySide6.QtTest import QTest
+    QTest.keyClick(w.timeline.vue, Qt.Key_Shift)  # une touche : la navigation est au clavier
+    w.timeline.vue.setFocus(Qt.TabFocusReason)
+    assert _attendre(lambda: w.timeline.barre_outils.property("clavier") is True, 2),         "au clavier (Tab), le filet sous la barre de la timeline"
     w.choisir_espace("effets")
     assert w.onglets_droite.currentIndex() == 0, "l'inspecteur dans l'espace Effets"
 
@@ -1298,3 +1305,29 @@ def test_moniteur_avant_apres_et_lut(fenetre, medias, tmp_path):
     assert np.allclose(zone.image_affichee(), 1 - np.clip(f(zone._image), 0, 1), atol=1e-3)
     w.choisir_lut(None)
     assert zone.lut is None and not w.b_lut.isVisibleTo(w)
+
+
+def test_repere_du_clavier_seulement_au_clavier(fenetre):
+    """Un clic ne montre pas de cadre turquoise ; Tab le montre ; en partant, il s'efface."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QLineEdit
+    from remanence.ui import focus
+    w = fenetre
+    bouton = w.formulaire_export.modele  # le bouton Exporter est grisé sans timeline
+    w.choisir_espace("export")
+    w.activateWindow()  # sans fenêtre active, Qt ne donne pas le clavier
+    _attendre(lambda: w.isActiveWindow(), 2)
+    bouton.setFocus(Qt.MouseFocusReason)
+    assert not bouton.property(focus.PROPRIETE)
+    bouton.setFocus(Qt.TabFocusReason)
+    _attendre(lambda: False, 0.1)
+    assert not bouton.property(focus.PROPRIETE), "sans touche, pas de repère (ouverture)"
+    bouton.clearFocus()
+    from PySide6.QtTest import QTest
+    QTest.keyClick(w.timeline.vue, Qt.Key_Shift)
+    bouton.setFocus(Qt.TabFocusReason)
+    assert _attendre(lambda: bool(bouton.property(focus.PROPRIETE)), 2)
+    assert isinstance(bouton, QLineEdit)
+    w.timeline.vue.setFocus(Qt.MouseFocusReason)
+    assert _attendre(lambda: not bouton.property(focus.PROPRIETE), 2), "s'efface en partant"
+
