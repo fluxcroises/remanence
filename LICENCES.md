@@ -1,6 +1,6 @@
 # Licences
 
-Remanence est édité par l'association Flux Croisés, sans but commercial. Il est distribué en code source et en programme Windows (`Remanence.exe`, construit par `Construire.bat`). Ce fichier liste tout ce que le programme embarque, sa version et sa licence ; il est mis à jour à chaque ajout de dépendance. Les textes des licences sont dans le dossier `licences` livré à côté de `Remanence.exe`.
+Remanence est édité par l'association Flux Croisés, sans but commercial. C'est un logiciel libre sous licence **GNU GPL version 3** (texte dans `LICENSE`, et `licences/gpl-3.0.txt` à côté du programme) : chacun peut l'utiliser, l'étudier, le modifier et le redistribuer, à condition de redistribuer aussi le code source sous la même licence. Il est distribué en code source et en programme Windows (`Remanence.exe`, construit par `Construire.bat`). Ce fichier liste tout ce que le programme embarque, sa version et sa licence ; il est mis à jour à chaque ajout de dépendance. Les textes des licences sont dans le dossier `licences` livré à côté de `Remanence.exe`.
 
 ## Embarqué dans Remanence.exe
 
@@ -60,7 +60,7 @@ Remanence est édité par l'association Flux Croisés, sans but commercial. Il e
 ## Obligations de la distribution
 
 - **LGPL (Qt, FFmpeg, LAME, libiconv)** : ces bibliothèques restent des fichiers séparés (DLL) dans le dossier `_internal` ; on peut les remplacer par une autre version compatible. Leurs sources : Qt sur https://download.qt.io (version 6.12.0), FFmpeg sur https://ffmpeg.org/releases (version 9.0.2), et la façon dont PyAV les compile sur https://github.com/PyAV-Org/pyav-ffmpeg.
-- **GPL 2 (x264, x265)** : leurs sources sont sur https://code.videolan.org/videolan/x264 et https://bitbucket.org/multicoreware/x265_git (versions indiquées plus haut). Flux Croisés fournit sur demande, pendant trois ans après la diffusion de cette version de Remanence, une copie des sources des composants sous GPL et LGPL qu'elle livre.
+- **GPL 2 (x264, x265)** : leurs sources sont sur https://code.videolan.org/videolan/x264 et https://bitbucket.org/multicoreware/x265_git (versions indiquées plus haut). Flux Croisés fournit sur demande, pendant trois ans après la diffusion de cette version de Remanence, une copie du code source de Remanence et des sources des composants sous GPL et LGPL qu'elle livre.
 - Les textes complets des licences (GPL 2 et 3, LGPL 2.1 et 3, et les licences de chaque paquet) sont copiés dans le dossier `licences` du programme livré.
 
 ## Code repris

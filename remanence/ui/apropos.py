@@ -10,7 +10,7 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QTextBrowser,
                                QVBoxLayout)
 
-from remanence import EDITEUR, __version__
+from remanence import EDITEUR, LICENCE, __version__
 from remanence.ui import charte
 from remanence.ui.charte import RACINE
 from remanence.ui.composants import etiquette
@@ -44,7 +44,7 @@ class APropos(QDialog):
         titres.addWidget(etiquette(f"Version {__version__} · Montage et datamosh", "secondaire"))
         haut.addLayout(titres, 1)
         lay.addLayout(haut)
-        texte = etiquette(f"Édité par {EDITEUR}. Logiciel libre.", "")
+        texte = etiquette(f"Édité par {EDITEUR}. Logiciel libre, licence {LICENCE}.", "")
         texte.setWordWrap(True)
         lay.addWidget(texte)
         licences = QTextBrowser()
