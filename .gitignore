@@ -6,3 +6,5 @@ tests/medias/
 *.partiel.*
 .python/
 outils/
+build/
+dist/

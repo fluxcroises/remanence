@@ -892,3 +892,23 @@ def test_journal(tmp_path, monkeypatch):
     import faulthandler
     faulthandler.disable()
     assert isinstance(logging.getLogger("remanence"), logging.Logger)
+
+
+def test_ffglitch_dans_le_programme_construit(tmp_path, monkeypatch):
+    """Remanence.exe cherche et installe FFglitch à côté du programme, sinon dans
+    %LOCALAPPDATA%, dossier Remanence, si ce dossier est protégé."""
+    import sys
+    from remanence.moteurs.codec import ffglitch, installation
+    monkeypatch.delenv("REMANENCE_FFGLITCH", raising=False)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "Remanence" / "Remanence.exe"))
+    monkeypatch.setenv("REMANENCE_CACHE", str(tmp_path / "local"))
+    dossiers = ffglitch.dossiers_outils()
+    assert dossiers[0] == tmp_path / "Remanence" / "outils" / "ffglitch"
+    assert dossiers[1] == tmp_path / "local" / "Remanence" / "outils" / "ffglitch"
+    assert installation._dossier_inscriptible() == dossiers[0]
+    outils = dossiers[1] / "ffglitch-0.10.2-windows-x86_64"
+    outils.mkdir(parents=True)
+    for nom in ("ffgac.exe", "ffedit.exe"):
+        (outils / nom).write_bytes(b"")
+    assert ffglitch.dossier() == outils, "trouvé aussi dans le second dossier"

@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import threading
 from fractions import Fraction
@@ -26,6 +27,17 @@ import numpy as np
 
 RACINE = Path(__file__).resolve().parents[3]
 DOSSIER_OUTILS = RACINE / "outils" / "ffglitch"
+
+
+def dossiers_outils() -> list[Path]:
+    """Où chercher et installer FFglitch : dans le projet ; dans Remanence construit
+    (Remanence.exe), à côté du programme, ou dans %LOCALAPPDATA%\\Remanence si ce dossier est
+    protégé en écriture."""
+    if getattr(sys, "frozen", False):
+        from remanence.config import dossier_cache
+        return [Path(sys.executable).parent / "outils" / "ffglitch",
+                dossier_cache().parent / "outils" / "ffglitch"]
+    return [DOSSIER_OUTILS]
 
 # Les tests forcent l'absence de FFglitch (moteur de secours) en posant cette variable à "".
 VARIABLE = "REMANENCE_FFGLITCH"
@@ -39,7 +51,8 @@ def dossier() -> Path | None:
     if force is not None:
         candidats = [Path(force)] if force else []
     else:
-        candidats = sorted(DOSSIER_OUTILS.glob("ffglitch-*"), reverse=True)
+        candidats = [d for o in dossiers_outils() for d in sorted(o.glob("ffglitch-*"),
+                                                                    reverse=True)]
     for d in candidats:
         if (d / "ffgac.exe").exists() and (d / "ffedit.exe").exists():
             return d

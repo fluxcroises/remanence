@@ -27,6 +27,9 @@ def principal() -> int:
     from remanence import __version__, journal
     import PySide6
     journal.demarrer({"Remanence": __version__, "Qt": PySide6.__version__})
+    if "--diagnostic" in sys.argv:
+        from remanence import diagnostic
+        return diagnostic.lancer()
 
     from remanence.ui import charte
     charte.charger_polices()
@@ -65,14 +68,18 @@ def principal() -> int:
     fenetre.showMaximized()
     QTimer.singleShot(0, fenetre.focus_initial)
     ecran.close()
+    # Puis, une fois l'accueil ou le projet ouvert, FFglitch s'il manque (premier lancement).
     if len(sys.argv) > 1 and sys.argv[1].endswith(".remanence"):
         # Après l'écran de démarrage : une question (sauvegarde automatique plus récente) ne
         # doit pas rester cachée derrière lui.
-        QTimer.singleShot(0, lambda: fenetre.ouvrir(sys.argv[1]))
+        QTimer.singleShot(0, lambda: (fenetre.ouvrir(sys.argv[1]), fenetre.proposer_ffglitch()))
     else:
         from remanence.ui import accueil
         if accueil.au_demarrage():
-            QTimer.singleShot(0, fenetre.montrer_accueil)
+            QTimer.singleShot(0, lambda: (fenetre.montrer_accueil(),
+                                          fenetre.proposer_ffglitch()))
+        else:
+            QTimer.singleShot(0, fenetre.proposer_ffglitch)
     code = app.exec()
     journal.info(f"Séance fermée (code {code})")
     return code

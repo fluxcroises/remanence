@@ -20,7 +20,7 @@ from remanence.effets import (EFFETS, courbes, masque_a, modulateurs, poser_cle,
                               valeur_a)
 from remanence.effets.masques import nouveau_masque
 from remanence.moteurs import suivi
-from remanence.moteurs.codec import analyse, bavure, prerendu, scripts
+from remanence.moteurs.codec import analyse, bavure, ffglitch, prerendu, scripts
 from remanence.effets import prereglages
 from remanence.media import intermediaire
 from remanence.media.lecteur import LecteurVideo, generer_cache_audio
@@ -706,6 +706,8 @@ class FenetrePrincipale(QMainWindow):
         self._action(ai, "Accueil…", self.montrer_accueil)
         self._action(ai, "Prise en main…", lambda: FenetreAide.ouvrir(), "F1")
         self._action(ai, "Ouvrir le journal", self.ouvrir_journal)
+        self.a_ffglitch = self._action(ai, "Installer FFglitch…", self.installer_ffglitch)
+        self.a_ffglitch.setVisible(not ffglitch.disponible())
         ai.addSeparator()
         self._action(ai, "À propos de Remanence", lambda: APropos(self).exec())
 
@@ -2004,6 +2006,39 @@ class FenetrePrincipale(QMainWindow):
             reglages.setValue("affichage/luts", json.dumps(recentes[:6]))
         self.b_lut.setText(f"LUT {lut.nom}" if lut else "LUT")
         self.b_lut.setVisible(lut is not None)
+
+    def proposer_ffglitch(self):
+        """Au lancement, une fois : FFglitch manque (programme construit, ou Installer.bat pas
+        lancé). « Ne plus demander » est retenu ; Aide > Installer FFglitch reste là."""
+        reglages = reglages_interface()
+        if ffglitch.disponible() or reglages.value("ffglitch/proposer", "oui") == "non":
+            return
+        boite = QMessageBox(QMessageBox.Question, "FFglitch", "FFglitch n'est pas installé.",
+                            parent=self)
+        boite.setInformativeText("Moteur de datamosh, téléchargé depuis ffglitch.org.")
+        oui = boite.addButton("Télécharger", QMessageBox.AcceptRole)
+        boite.addButton("Plus tard", QMessageBox.RejectRole)
+        jamais = boite.addButton("Ne plus demander", QMessageBox.DestructiveRole)
+        boite.setDefaultButton(oui)
+        elargir_boutons(boite)
+        boite.exec()
+        if boite.clickedButton() is jamais:
+            reglages.setValue("ffglitch/proposer", "non")
+        elif boite.clickedButton() is oui:
+            self.installer_ffglitch()
+
+    def installer_ffglitch(self):
+        from remanence.moteurs.codec import installation
+
+        def fini(ok):
+            self.a_ffglitch.setVisible(not ffglitch.disponible())
+            self.message("FFglitch installé" if ok else "FFglitch indisponible", 6000)
+
+        self.taches.lancer(Tache("Téléchargement de FFglitch",
+                                 lambda progression, annule: installation.installer(
+                                     progression, annule)), fini,
+                           lambda message, detail: afficher_erreur(
+                               self, "Téléchargement impossible", message, detail))
 
     def ouvrir_journal(self):
         """Le dossier du journal dans l'explorateur, pour l'envoyer avec une description."""

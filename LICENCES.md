@@ -25,6 +25,7 @@ Remanence est distribué en code source, sans but commercial. Ce fichier liste c
 | OpenTimelineIO | 0.18.1 | Lecture des montages EDL et FCP XML, écriture de la liste de remplacement (étape 5) | Apache 2.0 |
 | otio-cmx3600-adapter | 1.0.0 | Format EDL CMX 3600 pour OpenTimelineIO | Apache 2.0 |
 | otio-fcp-adapter | 1.0.0 | Format FCP XML (Final Cut Pro 7) pour OpenTimelineIO | Apache 2.0 |
+| PyInstaller (construction seulement) | 6.22.3 | Fabrique Remanence.exe ; son chargeur, inclus dans le programme, peut être distribué sous toute licence (exception du chargeur) | GPL 2 avec exception |
 | pytest | 9.2.0 | Tests automatiques (développement seulement) | MIT |
 | uv | 0.13.6 | Installation de l'environnement (outil, non embarqué) | MIT ou Apache 2.0 |
 
