@@ -65,6 +65,20 @@ def lignes() -> list[tuple[str, bool, str]]:
         finally:
             g.fermer()
 
+    def interface():
+        # La fenêtre est construite sans être montrée ni fermée, avec des réglages dans un
+        # dossier temporaire : les dispositions de l'utilisateur ne bougent pas.
+        import tempfile
+        from PySide6.QtCore import QSettings
+        QSettings.setDefaultFormat(QSettings.IniFormat)
+        QSettings.setPath(QSettings.IniFormat, QSettings.UserScope, tempfile.mkdtemp())
+        from remanence.ui.fenetre import FenetrePrincipale
+        f = FenetrePrincipale()
+        menus = len(f.barre_titre.menus.actions())
+        f.lecture.fermer()
+        f.deleteLater()
+        return f"fenêtre principale, {menus} menus"
+
     def ffglitch_():
         from remanence.moteurs.codec import ffglitch
         d = ffglitch.dossier()
@@ -73,7 +87,7 @@ def lignes() -> list[tuple[str, bool, str]]:
     for nom, fonction in (("Effets", effets), ("Ressources", ressources),
                           ("Échanges", echanges), ("Traductions", traductions),
                           ("FFmpeg", ffmpeg), ("Carte graphique", carte),
-                          ("FFglitch", ffglitch_)):
+                          ("Interface", interface), ("FFglitch", ffglitch_)):
         verifier(nom, fonction)
     return resultats
 

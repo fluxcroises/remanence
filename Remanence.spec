@@ -6,6 +6,7 @@
 # est proposé au premier lancement et s'installe dans dist\Remanence\outils.
 
 import os
+import sys
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 from PyInstaller.utils.win32.versioninfo import (FixedFileInfo, StringFileInfo, StringStruct,
@@ -59,6 +60,26 @@ a = Analysis(  # noqa: F821
     excludes=excludes,
     noarchive=False,
 )
+
+
+# Ce que Remanence n'utilise pas, retiré du dossier livré : Qt Quick, QML, PDF et clavier virtuel
+# (entraînés par des greffons de PySide6), les variantes de PortAudio pour d'autres machines et
+# pour ASIO (le SDK ASIO a sa propre licence).
+RETIRES = ("Qt6Pdf", "Qt6Qml", "Qt6Quick", "Qt6VirtualKeyboard", "qtvirtualkeyboard",
+           "platforminputcontexts", "qpdf", "qmltooling", os.sep + "qml" + os.sep)
+
+
+def garde(entree):
+    nom = entree[0]
+    if any(r in nom for r in RETIRES):
+        return False
+    if "_sounddevice_data" in nom and nom.endswith((".dll", ".dylib")):
+        return nom.endswith("libportaudio64bit.dll")
+    return True
+
+
+a.binaries = [e for e in a.binaries if garde(e)]
+a.datas = [e for e in a.datas if garde(e)]
 pyz = PYZ(a.pure)  # noqa: F821
 
 infos = VSVersionInfo(
@@ -85,3 +106,42 @@ exe = EXE(  # noqa: F821
     upx=False,
 )
 coll = COLLECT(exe, a.binaries, a.datas, name="Remanence", upx=False)  # noqa: F821
+
+
+# Licences à côté de Remanence.exe : LICENCES.md, les textes GNU du projet, et les fichiers de
+# licence de chaque paquet livré (tels que les paquets les fournissent).
+def copier_licences():
+    import importlib.metadata as md
+    import shutil
+    livre = os.path.join(DISTPATH, "Remanence")  # noqa: F821
+    dossier = os.path.join(livre, "licences")
+    shutil.rmtree(dossier, ignore_errors=True)
+    os.makedirs(dossier)
+    shutil.copy(chemin("LICENCES.md"), livre)
+    ressources = chemin("remanence", "ressources")
+    for source in (os.path.join(ressources, "licences"),):
+        for nom in os.listdir(source):
+            shutil.copy(os.path.join(source, nom), dossier)
+    for nom in ("OFL-IBM-Plex.txt",):
+        shutil.copy(os.path.join(ressources, "polices", nom), dossier)
+    shutil.copy(os.path.join(ressources, "icones", "LICENCE-Lucide.txt"), dossier)
+    licence_python = os.path.join(sys.base_prefix, "LICENSE.txt")
+    if os.path.exists(licence_python):  # Python et ce qu'il embarque (OpenSSL, libffi…)
+        os.makedirs(os.path.join(dossier, "python"), exist_ok=True)
+        shutil.copy(licence_python, os.path.join(dossier, "python", "LICENSE.txt"))
+    paquets = ("av", "numpy", "moderngl", "glcontext", "sounddevice", "cffi", "pycparser",
+               "opencv-contrib-python-headless", "mido", "python-rtmidi", "OpenTimelineIO",
+               "otio-cmx3600-adapter", "otio-fcp-adapter", "setuptools", "packaging",
+               "pyinstaller", "PySide6", "shiboken6")
+    for paquet in paquets:
+        distribution = md.distribution(paquet)
+        for f in distribution.files or []:
+            texte = str(f).upper()
+            if (any(k in texte for k in ("LICEN", "COPYING", "NOTICE"))
+                    and not texte.endswith((".PY", ".PYC")) and "_VENDOR" not in texte):
+                cible = os.path.join(dossier, paquet, os.path.basename(str(f)))
+                os.makedirs(os.path.dirname(cible), exist_ok=True)
+                shutil.copy(f.locate(), cible)
+
+
+copier_licences()

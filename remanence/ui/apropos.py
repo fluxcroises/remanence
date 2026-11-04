@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QTextBrowser,
                                QVBoxLayout)
 
@@ -9,6 +14,16 @@ from remanence import EDITEUR, __version__
 from remanence.ui import charte
 from remanence.ui.charte import RACINE
 from remanence.ui.composants import etiquette
+
+
+def dossier_licences() -> Path:
+    """Les textes des licences : à côté de Remanence.exe dans le programme construit, sinon
+    ceux du projet (GPL, LGPL ; les autres sont dans les paquets installés)."""
+    if getattr(sys, "frozen", False):
+        livre = Path(sys.executable).parent / "licences"
+        if livre.is_dir():
+            return livre
+    return RACINE / "remanence" / "ressources" / "licences"
 
 
 class APropos(QDialog):
@@ -41,5 +56,8 @@ class APropos(QDialog):
         boutons = QDialogButtonBox(QDialogButtonBox.Close)
         boutons.button(QDialogButtonBox.Close).setText("Fermer")
         boutons.rejected.connect(self.accept)
+        textes = boutons.addButton("Textes des licences", QDialogButtonBox.ActionRole)
+        textes.clicked.connect(lambda: QDesktopServices.openUrl(
+            QUrl.fromLocalFile(str(dossier_licences()))))
         lay.addWidget(boutons)
         self.resize(720, 520)

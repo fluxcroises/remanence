@@ -1,33 +1,67 @@
-# Licences des dépendances
+# Licences
 
-Remanence est distribué en code source, sans but commercial. Ce fichier liste chaque bibliothèque utilisée, sa version et sa licence. Il est mis à jour à chaque ajout de dépendance.
+Remanence est édité par l'association Flux Croisés, sans but commercial. Il est distribué en code source et en programme Windows (`Remanence.exe`, construit par `Construire.bat`). Ce fichier liste tout ce que le programme embarque, sa version et sa licence ; il est mis à jour à chaque ajout de dépendance. Les textes des licences sont dans le dossier `licences` livré à côté de `Remanence.exe`.
 
-| Bibliothèque | Version | Rôle | Licence |
+## Embarqué dans Remanence.exe
+
+| Composant | Version | Rôle | Licence |
 | --- | --- | --- | --- |
 | Python | 3.12.16 | Langage | PSF |
-| PySide6 et shiboken6 (Qt 6) | 6.12.0 | Interface | LGPL 3 (ou GPL 2 / GPL 3) |
+| Bibliothèques livrées avec Python : OpenSSL, libffi, bzip2, xz, expat, mpdecimal, zlib | OpenSSL 3.5.9 | Réseau (téléchargement de FFglitch), types C, archives | Apache 2.0 (OpenSSL), MIT (libffi, expat), BSD (bzip2, mpdecimal), 0BSD (xz), zlib |
+| Runtime Visual C++ (VCRUNTIME140, MSVCP140) | fourni par Python et Qt | Bibliothèques système de Microsoft | Licence de redistribution de Microsoft Visual C++ |
+| PySide6 et shiboken6 (Qt 6 : Core, Gui, Widgets, OpenGL, Svg, Network) | 6.12.0 | Interface | LGPL 3 |
+| Composants tiers de Qt (FreeType, HarfBuzz, libpng, libjpeg, PCRE2, double-conversion, md4c…) | fournis par Qt 6.12.0 | Polices, images, texte | Licences libres listées par Qt : https://doc.qt.io/qt-6/licenses-used-in-qt.html |
+| Mesa llvmpipe (`opengl32sw.dll`) | fourni par Qt | OpenGL sans carte graphique | MIT |
 | PyAV | 19.0.2 | Lecture et écriture des médias | BSD 3 clauses |
-| FFmpeg (embarqué dans PyAV) | libavcodec 63.1 | Décodeurs, encodeurs, conteneurs | LGPL 3 ou ultérieure |
-| x264 et x265 (embarqués dans PyAV) | fournis par PyAV | Encodage H.264 et HEVC | GPL 2 ou ultérieure |
-| SVT-AV1 (embarqué dans PyAV) | fourni par PyAV | Encodage AV1 | BSD 3 clauses (avec licence de brevets AOM) |
-| libvpx (embarqué dans PyAV) | fourni par PyAV | Encodage VP9 (WebM) | BSD 3 clauses |
-| Opus (embarqué dans PyAV) | fourni par PyAV | Son des fichiers WebM | BSD 3 clauses |
+| FFmpeg (embarqué dans PyAV : avcodec, avformat, avfilter, avutil, avdevice, swscale, swresample) | 9.0.2 | Décodeurs, encodeurs, conteneurs | LGPL 3 ou ultérieure (compilé sans `--enable-gpl`) |
+| x264 (embarqué dans PyAV, `libx264-165.dll`) | build 165 | Encodage H.264 | GPL 2 ou ultérieure |
+| x265 (embarqué dans PyAV) | 4.3 | Encodage HEVC | GPL 2 ou ultérieure |
+| LAME (dans avcodec) | fourni par PyAV | MP3 | LGPL 2 ou ultérieure |
+| libiconv (embarqué dans PyAV) | fourni par PyAV | Conversion de texte | LGPL 2.1 ou ultérieure |
+| dav1d | 1.5.4 | Décodage AV1 | BSD 2 clauses |
+| SVT-AV1 | fourni par PyAV | Encodage AV1 | BSD 3 clauses Clear, avec licence de brevets AOM |
+| libvpx | 1.17.0 | Encodage VP9 (WebM) | BSD 3 clauses, avec licence de brevets |
+| Opus | 1.6.1 | Son des fichiers WebM | BSD 3 clauses |
+| libwebp, sharpyuv | fournis par PyAV | Images WebP | BSD 3 clauses |
+| libvmaf | fourni par PyAV | Mesure de qualité (dépendance d'FFmpeg) | BSD 2 clauses avec brevets |
+| libvpl | fourni par PyAV | Encodage matériel Intel | MIT |
+| zlib | 1.3.2 | Compression | zlib |
+| Runtime GCC (libgcc_s, libstdc++), winpthreads | fournis par PyAV | Bibliothèques de compilation des DLL d'FFmpeg | GPL 3 avec exception de la bibliothèque d'exécution GCC ; MIT et ZPL 2.1 (winpthreads) |
 | NumPy | 2.5.4 | Tampons d'images et de son | BSD 3 clauses (et 0BSD, MIT, Zlib, CC0 pour des parties) |
-| moderngl et glcontext | 5.13.0 et 3.1.0 | Affichage OpenGL de la visionneuse | MIT |
-| sounddevice (et PortAudio) | 0.5.6 | Lecture du son | MIT |
-| cffi | 2.1.1 | Dépendance de sounddevice | MIT-0 |
-| IBM Plex Sans et IBM Plex Mono | 1.1.0 et 2.5.0 | Polices de l'interface, embarquées dans `remanence/ressources/polices` | SIL Open Font License 1.1 (texte joint : `OFL-IBM-Plex.txt`) |
-| Lucide (lucide-static) | 1.66.0 | Icônes de l'interface, dans `remanence/ressources/icones` | ISC (texte joint : `LICENCE-Lucide.txt`) |
-| FFglitch (ffgac, ffedit), avec Xvid, QuickJS, zlib-ng, SDL2, RtMidi, ZeroMQ | 0.10.2 | Moteur codec : encodage MPEG-4 sans macroblocs intra, réécriture des vecteurs de mouvement. Programme externe, téléchargé par `Installer.bat` dans `outils/` (empreinte SHA-256 vérifiée), non modifié | GPL 2 ou ultérieure |
-| OpenCV (opencv-contrib-python-headless) | 5.0.0.93 | Flux optique DIS du moteur flux optique, suivi des masques (étape 4). Version sans interface : la version complète embarque son propre Qt | Apache 2.0 |
-| mido | 1.3.3 | Messages MIDI des contrôleurs (modulateurs, étape 4) | MIT |
-| python-rtmidi (et RtMidi) | 1.5.8 | Accès aux ports MIDI de Windows pour mido | MIT |
-| OpenTimelineIO | 0.18.1 | Lecture des montages EDL et FCP XML, écriture de la liste de remplacement (étape 5) | Apache 2.0 |
-| otio-cmx3600-adapter | 1.0.0 | Format EDL CMX 3600 pour OpenTimelineIO | Apache 2.0 |
-| otio-fcp-adapter | 1.0.0 | Format FCP XML (Final Cut Pro 7) pour OpenTimelineIO | Apache 2.0 |
-| PyInstaller (construction seulement) | 6.22.3 | Fabrique Remanence.exe ; son chargeur, inclus dans le programme, peut être distribué sous toute licence (exception du chargeur) | GPL 2 avec exception |
-| pytest | 9.2.0 | Tests automatiques (développement seulement) | MIT |
-| uv | 0.13.6 | Installation de l'environnement (outil, non embarqué) | MIT ou Apache 2.0 |
+| OpenBLAS (embarqué dans NumPy) | fourni par NumPy | Calcul matriciel | BSD 3 clauses |
+| moderngl et glcontext | 5.13.0 et 3.1.0 | Affichage OpenGL et composition | MIT |
+| sounddevice et PortAudio | 0.5.6 et 19.7.0 | Lecture du son | MIT |
+| cffi, pycparser | 2.1.1 et 3.12 | Dépendances de sounddevice | MIT-0, BSD 3 clauses |
+| OpenCV (opencv-contrib-python-headless) | 5.0.0.93 | Flux optique, suivi des masques | Apache 2.0 |
+| FFmpeg d'OpenCV (`opencv_videoio_ffmpeg500_64.dll`) | fourni par OpenCV | Lecture vidéo d'OpenCV (non utilisée par Remanence, livrée avec le paquet) | LGPL 2.1 ou ultérieure |
+| mido | 1.3.3 | Messages MIDI | MIT |
+| python-rtmidi et RtMidi | 1.5.8 | Ports MIDI de Windows | MIT |
+| OpenTimelineIO | 0.18.1 | Montages EDL et FCP XML, liste de remplacement | Apache 2.0 |
+| otio-cmx3600-adapter, otio-fcp-adapter | 1.0.0 | Formats EDL CMX 3600 et FCP XML | Apache 2.0 |
+| setuptools, packaging | 84.2.1 et 26.3 | Découverte des formats d'OpenTimelineIO | MIT ; Apache 2.0 ou BSD 2 clauses |
+| Chargeur de PyInstaller | 6.22.3 | Lance `Remanence.exe` | GPL 2 avec exception (distribuable sous toute licence) |
+| IBM Plex Sans et IBM Plex Mono | 1.1.0 et 2.5.0 | Polices de l'interface | SIL Open Font License 1.1 (`OFL-IBM-Plex.txt`) |
+| Lucide (lucide-static) | 1.66.0 | Icônes de l'interface | ISC (`LICENCE-Lucide.txt`) |
+
+## Téléchargé à la demande
+
+| Composant | Version | Rôle | Licence |
+| --- | --- | --- | --- |
+| FFglitch (ffgac, ffedit), avec Xvid, QuickJS, zlib-ng, SDL2, RtMidi, ZeroMQ | 0.10.2 | Moteur codec : encodage MPEG-4 sans macroblocs intra, réécriture des vecteurs de mouvement. Programme externe, non modifié, téléchargé depuis ffglitch.org au premier lancement ou par `Installer.bat` (empreinte SHA-256 vérifiée) ; il n'est pas dans `Remanence.exe` | GPL 2 ou ultérieure |
+
+## Outils de développement (non livrés)
+
+| Outil | Version | Rôle | Licence |
+| --- | --- | --- | --- |
+| PyInstaller et pyinstaller-hooks-contrib | 6.22.3 et 2026.9 | Construction de `Remanence.exe` | GPL 2 avec exception ; GPL 2 et Apache 2.0 |
+| pytest | 9.2.0 | Tests automatiques | MIT |
+| uv | 0.13.6 | Installation de l'environnement | MIT ou Apache 2.0 |
+
+## Obligations de la distribution
+
+- **LGPL (Qt, FFmpeg, LAME, libiconv)** : ces bibliothèques restent des fichiers séparés (DLL) dans le dossier `_internal` ; on peut les remplacer par une autre version compatible. Leurs sources : Qt sur https://download.qt.io (version 6.12.0), FFmpeg sur https://ffmpeg.org/releases (version 9.0.2), et la façon dont PyAV les compile sur https://github.com/PyAV-Org/pyav-ffmpeg.
+- **GPL 2 (x264, x265)** : leurs sources sont sur https://code.videolan.org/videolan/x264 et https://bitbucket.org/multicoreware/x265_git (versions indiquées plus haut). Flux Croisés fournit sur demande, pendant trois ans après la diffusion de cette version de Remanence, une copie des sources des composants sous GPL et LGPL qu'elle livre.
+- Les textes complets des licences (GPL 2 et 3, LGPL 2.1 et 3, et les licences de chaque paquet) sont copiés dans le dossier `licences` du programme livré.
 
 ## Code repris
 
