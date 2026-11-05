@@ -35,7 +35,7 @@ def son(lire, valeurs, graine, frequence):
 
 
 DESCRIPTION = DescriptionEffet(
-    cle="gel", nom="Gel", famille="Son", moteur="audio", son=son,
+    cle="gel", nom="Gel", famille="Son", moteur="audio", neutre=lambda v: v.get("probabilite", 100) <= 0, son=son,
     prereglages={"Note tenue": {"intervalle": 3, "duree": 800, "grain": 60},
                  "Glace fine": {"intervalle": 1, "duree": 300, "grain": 20},
                  "Bourdon": {"intervalle": 4, "duree": 2500, "grain": 120}},

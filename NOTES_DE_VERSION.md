@@ -23,6 +23,7 @@ Novembre 2026. Première version publique, éditée par Flux Croisés, sous lice
 - Modulateurs : oscillateur, aléatoire, tempo, son ; enregistrement d'un contrôleur MIDI en courbe.
 - Transitions glitch : volet, blocs, décalage RVB, coupure de signal.
 - Scripts de montage : Scramble, Layer, Automator.
+- Six effets audio glitch : bégaiement, bitcrusher, arrêt de bande, inversion par fragments, gel, databending audio ; le son peut baver avec l'image pendant un datamosh.
 
 ### Export
 

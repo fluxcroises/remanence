@@ -66,6 +66,9 @@ class DescriptionEffet:
     # Moteur audio : son(lire, valeurs, graine, fréquence) rend un lecteur du son traité (voir
     # rendu/son.py). Sur les clips et les pistes audio seulement.
     son: object = None
+    # Effet audio : neutre(valeurs) vrai quand ces réglages laissent le son intact (il est
+    # alors sauté, et l'export peut recopier le son d'origine).
+    neutre: object = None
 
     @property
     def audio(self) -> bool:

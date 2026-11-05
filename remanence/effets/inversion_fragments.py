@@ -21,7 +21,7 @@ def son(lire, valeurs, graine, frequence):
 
 
 DESCRIPTION = DescriptionEffet(
-    cle="inversion_fragments", nom="Inversion par fragments", famille="Son", moteur="audio",
+    cle="inversion_fragments", nom="Inversion par fragments", famille="Son", moteur="audio", neutre=lambda v: v.get("probabilite", 50) <= 0,
     son=son,
     prereglages={"Envers aléatoire": {"fragment": 150, "probabilite": 50},
                  "Bribes à rebours": {"fragment": 60, "probabilite": 70},

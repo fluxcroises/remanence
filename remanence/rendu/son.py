@@ -44,7 +44,7 @@ def chaine(lire: Lecteur, effets_a: Callable[[int], list], par_image: float) -> 
         courant = lire
         for e in effets_a(f):
             d = EFFETS.get(e.type)
-            if d is None or not d.audio or not e.actif:
+            if d is None or not d.audio or not e.actif or (d.neutre and d.neutre(e.params)):
                 continue
             courant = _avec_melange(courant, d.son(courant, e.params, e.graine, FREQUENCE),
                                     e.opacite)
@@ -109,6 +109,18 @@ def echantillons(ms: float) -> int:
 
 GRAIN_BAVE_MS = 60
 BAVE_MAX_MS = 2000
+
+
+def intact(effet, seq) -> bool:
+    """L'effet audio laisse-t-il le son intact sur toute sa durée ? Coupé, mélange nul ou
+    réglages neutres, sans image clé ni modulateur qui puisse les changer."""
+    from remanence.effets import modulateurs
+    d = EFFETS.get(effet.type)
+    if d is None or not d.audio or not effet.actif:
+        return True
+    if effet.cles or modulateurs.cibles_de(seq, effet.id):
+        return False
+    return effet.opacite <= 0 or bool(d.neutre and d.neutre(effet.params))
 
 
 def bave(lire: Lecteur, plages: list[tuple[int, int]]) -> Lecteur:

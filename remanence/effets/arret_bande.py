@@ -35,7 +35,7 @@ def son(lire, valeurs, graine, frequence):
 
 
 DESCRIPTION = DescriptionEffet(
-    cle="arret_bande", nom="Arrêt de bande", famille="Son", moteur="audio", son=son,
+    cle="arret_bande", nom="Arrêt de bande", famille="Son", moteur="audio", neutre=lambda v: v.get("probabilite", 100) <= 0, son=son,
     prereglages={"Cassette freinée": {"intervalle": 2, "duree": 600, "courbe": 1},
                  "Platine débranchée": {"intervalle": 4, "duree": 1500, "courbe": 2},
                  "Ralenti nerveux": {"intervalle": 0.8, "duree": 250, "courbe": 0.6,

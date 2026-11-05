@@ -2,9 +2,12 @@
 radios numériques et des Video CD), des octets des paquets sont abîmés, puis il est décodé :
 craquements, trous, bouts de son répétés ou métalliques.
 
-Le travail se fait par tranches d'une seconde comptées depuis le début du clip ; chaque tranche
+Le travail se fait par tranches de deux trames MP2 (48 ms) comptées depuis le début du clip,
+encodées avec une trame d'avance pour que le codec enchaîne sans claquer ; chaque tranche
 dépend de son seul contenu, du débit, de la corruption et de la graine (même son à chaque
-lecture). Les tranches calculées sont gardées en mémoire, la lecture les redemande souvent."""
+lecture). Des tranches courtes : la lecture, par blocs de 1024 échantillons, ne fait calculer
+qu'un peu plus que son bloc aux effets placés avant (des tranches d'une seconde faisaient
+dépasser le temps réel à trois effets). Les tranches calculées sont gardées en mémoire."""
 
 from __future__ import annotations
 
@@ -17,12 +20,13 @@ import numpy as np
 
 from remanence.effets import DescriptionEffet, Parametre
 
-TRANCHE = 48000
 TRAME = 1152          # échantillons d'une trame MP2
+TRANCHE = 2 * TRAME
+AVANCE = TRAME        # encodée avant la tranche, puis retirée
 RETARD = 481          # retard du codeur et du décodeur MP2 de FFmpeg, mesuré
 ENTETE = 4            # octets d'en-tête de trame, laissés intacts (la trame reste lisible)
 _cache: OrderedDict = OrderedDict()
-CACHE_MAX = 64
+CACHE_MAX = 512
 
 
 def _encoder(pcm: np.ndarray, debit: int) -> list[bytes]:
@@ -62,8 +66,9 @@ def _decoder(paquets: list[bytes]) -> np.ndarray:
 def _abimer(paquets: list[bytes], corruption: float, graine: int, tranche: int) -> list[bytes]:
     hasard = np.random.default_rng([graine & 0xFFFFFFFF, tranche & 0xFFFFFFFF, 7])
     abimes = []
-    for octets in paquets:
-        if len(octets) > ENTETE + 1 and hasard.random() < corruption:
+    for j, octets in enumerate(paquets):
+        # La trame d'avance reste intacte : elle ne sert qu'à mettre le codec en route.
+        if j > 0 and len(octets) > ENTETE + 1 and hasard.random() < corruption:
             b = bytearray(octets)
             for _ in range(1 + int(hasard.integers(0, 8))):
                 i = int(hasard.integers(ENTETE, len(b)))
@@ -74,7 +79,7 @@ def _abimer(paquets: list[bytes], corruption: float, graine: int, tranche: int) 
 
 
 def _tranche(lire, k: int, debit: int, corruption: float, graine: int) -> np.ndarray:
-    entree = lire(k * TRANCHE, TRANCHE + RETARD + TRAME)
+    entree = lire(k * TRANCHE - AVANCE, AVANCE + TRANCHE + RETARD + TRAME)
     empreinte = hashlib.sha1(entree.tobytes()).hexdigest()
     cle = (empreinte, debit, round(corruption, 4), graine, k)
     if cle in _cache:
@@ -82,7 +87,7 @@ def _tranche(lire, k: int, debit: int, corruption: float, graine: int) -> np.nda
         return _cache[cle]
     pcm = (np.clip(entree, -1, 1) * 32767).astype(np.int16)
     sortie = _decoder(_abimer(_encoder(pcm, debit), corruption, graine, k))
-    sortie = sortie[RETARD:RETARD + TRANCHE]
+    sortie = sortie[AVANCE + RETARD:AVANCE + RETARD + TRANCHE]
     if len(sortie) < TRANCHE:
         sortie = np.pad(sortie, ((0, TRANCHE - len(sortie)), (0, 0)))
     _cache[cle] = sortie

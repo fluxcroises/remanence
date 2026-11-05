@@ -29,7 +29,7 @@ DESCRIPTION = DescriptionEffet(
     cle="bitcrusher",
     nom="Bitcrusher",
     famille="Son",
-    moteur="audio",
+    moteur="audio", neutre=lambda v: v.get("bits", 16) >= 16 and v.get("reduction", 1) <= 1,
     son=son,
     prereglages={"Console 8 bits": {"bits": 8, "reduction": 4},
                  "Téléphone cassé": {"bits": 4, "reduction": 12},

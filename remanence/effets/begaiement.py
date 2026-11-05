@@ -26,7 +26,7 @@ def son(lire, valeurs, graine, frequence):
 
 
 DESCRIPTION = DescriptionEffet(
-    cle="begaiement", nom="Bégaiement", famille="Son", moteur="audio", son=son,
+    cle="begaiement", nom="Bégaiement", famille="Son", moteur="audio", neutre=lambda v: v.get("probabilite", 100) <= 0 or v.get("repetitions", 4) <= 1, son=son,
     prereglages={"Disque rayé": {"fragment": 60, "repetitions": 6, "probabilite": 100},
                  "Sampler nerveux": {"fragment": 30, "repetitions": 8, "probabilite": 50},
                  "Hoquet": {"fragment": 200, "repetitions": 2, "probabilite": 70}},

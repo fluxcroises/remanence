@@ -88,7 +88,7 @@ def test_export_avec_effet_audio(medias, tmp_path):
     seq = projet.sequence
     r1 = exporter(projet, seq, tmp_path / "a.mov")
     r2 = exporter(projet, seq, tmp_path / "b.mov")
-    assert r1.audio != "copie"
+    assert r1.audio != "recopié sans réencodage"
 
     def pcm(chemin):
         with av.open(str(chemin)) as c:
@@ -149,3 +149,67 @@ def test_le_son_bave_avec_l_image(medias):
     blocs = [777, 9001, 333]
     blocs.append(len(bave) - sum(blocs))
     assert np.array_equal(_son(projet, blocs=blocs), bave)
+
+
+NEUTRES = {"bitcrusher": {"bits": 16, "reduction": 1}, "begaiement": {"probabilite": 0},
+           "inversion_fragments": {"probabilite": 0}, "gel": {"probabilite": 0},
+           "arret_bande": {"probabilite": 0}}
+
+
+def _paquets_audio(chemin):
+    with av.open(str(chemin)) as c:
+        return [bytes(p) for p in c.demux(audio=0) if p.size]
+
+
+@pytest.mark.parametrize("cle", AUDIO)
+def test_effet_audio_a_zero_son_recopie(medias, tmp_path, cle):
+    """Validation de l'étape 12 : réglé à zéro (ou mélange nul), un effet audio laisse le son
+    intact, et l'export recopie le son d'origine, au bit près."""
+    projet, clip = _projet(medias)
+    e = nouvel_effet(cle)
+    if cle in NEUTRES:
+        e.params.update(NEUTRES[cle])
+    else:
+        e.opacite = 0.0  # le databending repasse toujours par le codec : mélange nul
+    clip.effets.append(e)
+    seq = projet.sequence
+    r = exporter(projet, seq, tmp_path / "zero.mov")
+    assert r.audio == "recopié sans réencodage"
+    assert _paquets_audio(tmp_path / "zero.mov") == _paquets_audio(medias["prores_hq"])
+
+
+def test_six_effets_exportes_deux_fois(medias, tmp_path):
+    """Validation : les six effets empilés (graines, hasard, codec) donnent deux exports au
+    son identique."""
+    projet, clip = _projet(medias)
+    for cle in AUDIO:
+        e = nouvel_effet(cle)
+        if cle in ("gel", "arret_bande"):
+            e.params["intervalle"] = 0.5
+        clip.effets.append(e)
+    seq = projet.sequence
+    exporter(projet, seq, tmp_path / "a.mov")
+    exporter(projet, seq, tmp_path / "b.mov")
+    a, b = _paquets_audio(tmp_path / "a.mov"), _paquets_audio(tmp_path / "b.mov")
+    assert a == b and a != _paquets_audio(medias["prores_hq"])
+
+
+def test_lecture_fluide_avec_trois_effets(medias):
+    """Validation : trois effets audio calculés par blocs de 1024 échantillons (ceux de la
+    lecture), bien plus vite que le temps réel."""
+    import time
+    projet, clip = _projet(medias)
+    for cle in ("begaiement", "gel", "databending_audio"):
+        clip.effets.append(nouvel_effet(cle))
+    seq = projet.sequence
+    n = int(seq.duree() * 48000 / float(seq.fraction_cadence))
+    c = Compositeur(projet)
+    try:
+        c.audio(seq, 0, 1024)
+        t = time.perf_counter()
+        for debut in range(0, n, 1024):
+            c.audio(seq, debut, 1024)
+        duree = time.perf_counter() - t
+    finally:
+        c.fermer()
+    assert duree < 0.5 * n / 48000, f"{duree:.3f} s pour {n / 48000:.2f} s de son"

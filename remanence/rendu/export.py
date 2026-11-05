@@ -22,6 +22,7 @@ from remanence.media.lecteur import FREQUENCE_MIXAGE, LecteurPaquets
 from remanence.media.sonde import Couleur, InfosVideo, analyser
 from remanence.projet.modele import Media, Projet, Sequence
 from remanence.rendu.composition import Compositeur, couches, identite
+from remanence.rendu import son
 from remanence.rendu.conformite import Verification, verifier
 from remanence.rendu.couleur import depuis_rvba
 
@@ -196,7 +197,7 @@ def _plan_audio(projet: Projet, seq: Sequence, debut: int, fin: int):
     if not clips:
         return None, None
     bave = {c.lien for _, c in seq.tous_les_clips() if c.son_bave and c.lien}
-    if len(clips) == 1 and clips[0][0].niveau == 1.0 and not clips[0][0].effets             and not clips[0][1].effets and clips[0][1].lien not in bave:
+    if len(clips) == 1 and clips[0][0].niveau == 1.0             and all(son.intact(e, seq) for e in clips[0][0].effets + clips[0][1].effets)             and clips[0][1].lien not in bave:
         # Un effet audio sur le clip ou sa piste : le son est recalculé.
         c = clips[0][1]
         m = projet.medias.get(c.media_id)
