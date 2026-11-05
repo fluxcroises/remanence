@@ -522,6 +522,10 @@ class PanneauMedias(QWidget):
             return
         self.media_selectionne.emit(self.projet.medias.get(item.data(ROLE_ID)))
 
+    def medias_affiches(self) -> list[str]:
+        """Les médias montrés, dans l'ordre du panneau (chutier, filtre et recherche)."""
+        return [self.vue.item(i).data(ROLE_ID) for i in range(self.vue.count())]
+
     def medias_choisis(self) -> list[str]:
         return [i.data(ROLE_ID) for i in self.vue.selectedItems()]
 

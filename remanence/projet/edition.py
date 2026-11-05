@@ -54,9 +54,10 @@ def _piste_type(seq: Sequence, type_: str, apres: Piste | None = None) -> Piste:
 
 def ajouter_media(projet: Projet, seq: Sequence, media: Media, debut: int,
                   piste: Piste | None = None, entree: int = 0,
-                  duree: int | None = None) -> list[Clip]:
+                  duree: int | None = None, piste_audio: Piste | None = None) -> list[Clip]:
     """Pose un média (ou la partie [entree, entree+duree)) sur la timeline, en écrasant ce
-    qu'il recouvre. Image et son arrivent liés."""
+    qu'il recouvre. Image et son arrivent liés. piste_audio : la piste du son, si elle n'est
+    pas celle par défaut."""
     if media.hors_ligne:
         raise EditionImpossible(f"Le média « {media.nom} » est hors ligne.")
     if not seq.reglee and media.infos.video and seq.duree() == 0:
@@ -72,7 +73,8 @@ def ajouter_media(projet: Projet, seq: Sequence, media: Media, debut: int,
         pv = piste if piste is not None and piste.type == "video" else _piste_type(seq, "video")
         crees.append((pv, Clip(nouvel_id(), media.id, max(0, debut), entree, duree, lien)))
     if media.infos.audio:
-        pa = piste if piste is not None and piste.type == "audio" else _piste_type(seq, "audio")
+        pa = piste if piste is not None and piste.type == "audio" else \
+            piste_audio if piste_audio is not None else _piste_type(seq, "audio")
         crees.append((pa, Clip(nouvel_id(), media.id, max(0, debut), entree, duree, lien)))
     for p, c in crees:
         if p.verrouillee:
@@ -107,6 +109,77 @@ def inserer_media(projet: Projet, seq: Sequence, media: Media, debut: int,
     duree = longueur - entree if duree is None else duree
     ouvrir_espace(seq, debut, duree)
     return ajouter_media(projet, seq, media, debut, piste, entree, duree)
+
+
+# Poses rapides de l'espace Cut
+
+def raccord_proche(seq: Sequence, f: int) -> int:
+    """Le raccord (début ou fin de clip, ou le début de la séquence) le plus proche de f :
+    là où l'insertion intelligente pose un plan, sans couper un plan en deux."""
+    return min([0] + coupes(seq), key=lambda r: (abs(r - f), r))
+
+
+def clip_sous(seq: Sequence, f: int, piste: Piste | None = None) -> Clip | None:
+    """Le clip de la piste (V1 par défaut) sous l'image f."""
+    piste = piste or _piste_type(seq, "video")
+    return next((c for c in piste.clips if c.debut <= f < c.fin), None)
+
+
+def _refermer(seq: Sequence, debut: int, fin: int):
+    """Retire [debut, fin) de toutes les pistes non verrouillées et rapproche la suite."""
+    duree = fin - debut
+    for p in seq.pistes:
+        if p.verrouillee:
+            continue
+        liberer(p, debut, fin, set())
+        for c in p.clips:
+            if c.debut >= fin:
+                c.debut -= duree
+    for m in seq.marqueurs:
+        if m.position >= fin:
+            m.position -= duree
+        elif m.position > debut:
+            m.position = debut
+
+
+def remplacer_plan(projet: Projet, seq: Sequence, clip_id: str, media: Media, entree: int,
+                   duree: int) -> list[Clip]:
+    """Le plan prend la place du clip (et de ses liés) ; la suite de la séquence, sur toutes
+    les pistes, se décale de la différence de durée."""
+    piste, c = seq.trouver(clip_id)
+    if c is None:
+        raise EditionImpossible("Aucun plan à remplacer.")
+    debut, fin = c.debut, c.fin
+    ids = avec_lies(seq, {c.id})
+    for p in seq.pistes:
+        p.clips = [x for x in p.clips if x.id not in ids]
+    longueur = media.nb_images(seq.fraction_cadence)
+    duree = max(1, min(duree, longueur - entree))
+    if duree > fin - debut:
+        ouvrir_espace(seq, fin, duree - (fin - debut))
+    elif duree < fin - debut:
+        _refermer(seq, debut + duree, fin)
+    return ajouter_media(projet, seq, media, debut, piste, entree, duree)
+
+
+def placer_au_dessus(projet: Projet, seq: Sequence, media: Media, debut: int, entree: int,
+                     duree: int) -> list[Clip]:
+    """Le plan sur la première piste vidéo libre au-dessus de V1 (une nouvelle en haut s'il
+    n'y en a pas), son son sur une piste audio libre : rien n'est écrasé."""
+    longueur = media.nb_images(seq.fraction_cadence)
+    duree = max(1, min(duree, longueur - entree))
+    fin = debut + duree
+
+    def libre(p: Piste) -> bool:
+        return not p.verrouillee and all(c.fin <= debut or c.debut >= fin for c in p.clips)
+    videos = seq.pistes_video
+    v1 = _piste_type(seq, "video")
+    dessus = [p for p in reversed(videos[:videos.index(v1)])] if v1 in videos else []
+    pv = next((p for p in dessus if libre(p)), None) or ajouter_piste(seq, "video")
+    pa = None
+    if media.infos.audio:
+        pa = next((p for p in seq.pistes_audio if libre(p)), None) or ajouter_piste(seq, "audio")
+    return ajouter_media(projet, seq, media, debut, pv, entree, duree, piste_audio=pa)
 
 
 def liberer(piste: Piste, debut: int, fin: int, exclure: set[str]):

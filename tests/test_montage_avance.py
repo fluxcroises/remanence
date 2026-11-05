@@ -102,3 +102,32 @@ def test_sequence_imbriquee(medias):
     assert couches(projet, seq, 0)[0].image_source == sous.duree() - 1
     relu = Projet.depuis_dict(projet.vers_dict())
     assert relu.sequence.pistes_video[0].clips[0].sequence_id == sous.id
+
+
+def test_poses_rapides_gardent_les_pistes_synchrones(medias):
+    """Étape 11, lot 2 : remplacer décale la suite sur toutes les pistes (son et pistes du
+    dessus compris) ; l'insertion intelligente vise un raccord ; placer au-dessus n'écrase rien."""
+    from remanence.media.sonde import analyser
+    from remanence.projet import edition
+    from remanence.projet.modele import Media, Projet, nouvel_id
+    p = Projet.nouveau()
+    infos, _ = analyser(str(medias["prores_hq"]))
+    m = Media(nouvel_id(), str(medias["prores_hq"]), infos)
+    p.medias[m.id] = m
+    seq = p.sequence
+    edition.ajouter_media(p, seq, m, 0, duree=10)
+    edition.ajouter_media(p, seq, m, 10, duree=10)
+    haut = edition.placer_au_dessus(p, seq, m, 12, 0, 5)
+    assert len(seq.pistes_video) == 2 and haut[0].debut == 12
+    assert [c.debut for c in seq.pistes_video[-1].clips] == [0, 10], "rien d'écrasé"
+    assert edition.raccord_proche(seq, 4) == 0 and edition.raccord_proche(seq, 8) == 10
+    premier = seq.pistes_video[-1].clips[0]
+    edition.remplacer_plan(p, seq, premier.id, m, 0, 4)
+    v1 = seq.pistes_video[-1].clips
+    assert [(c.debut, c.duree) for c in v1] == [(0, 4), (4, 10)]
+    assert seq.pistes_video[0].clips[0].debut == 6, "la piste du dessus recule aussi"
+    a1 = sorted((c.debut, c.duree) for c in seq.pistes_audio[0].clips)
+    assert a1[:2] == [(0, 4), (4, 10)], "le son suit l'image"
+    edition.remplacer_plan(p, seq, v1[0].id, m, 0, 9)
+    assert [(c.debut, c.duree) for c in seq.pistes_video[-1].clips] == [(0, 9), (9, 10)]
+    assert seq.pistes_video[0].clips[0].debut == 11

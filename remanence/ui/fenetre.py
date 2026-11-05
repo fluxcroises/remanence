@@ -11,8 +11,9 @@ import numpy as np
 from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QGuiApplication, QImage, QKeySequence
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QDockWidget,
-                               QFileDialog, QInputDialog, QMainWindow, QMenu, QMessageBox,
-                               QSizePolicy, QToolBar, QToolButton, QVBoxLayout, QWidget)
+                               QFileDialog, QHBoxLayout, QInputDialog, QMainWindow, QMenu,
+                               QMessageBox, QPushButton, QSizePolicy, QToolBar, QToolButton,
+                               QVBoxLayout, QWidget)
 
 from remanence import journal
 from remanence.config import dossier_fichiers, reglages_interface, retenir_dossier
@@ -72,7 +73,7 @@ HAUTEUR_HABILLAGE_MONITEUR = 118
 PANNEAUX_ESPACE = {
     "media": {"medias", "source", "droite"},
     # Montage rapide, façon page Cut de Resolve : médias, un grand moniteur, la timeline.
-    "cut": {"medias", "visionneuse", "timeline"},
+    "cut": {"medias", "source", "visionneuse", "timeline"},
     "montage": {"medias", "source", "visionneuse", "droite", "timeline", "courbes"},
     # Compression : facultatif, ouvert depuis le menu Fenêtre.
     "effets": {"medias", "visionneuse", "droite", "timeline", "analyse", "courbes"},
@@ -148,6 +149,8 @@ class FenetrePrincipale(QMainWindow):
         self._masques_effet = ""
         # Clip dont la transformation se règle sur l'image (poignées du programme).
         self._transformation_clip = ""
+        # Bande source de l'espace Cut : [(média, début dans la bande, longueur)], ou None.
+        self._bande: list | None = None
         self._transformation_copiee = None  # Copier la transformation (menu du clip)
         # Pré-rendus codec en cours : empreinte -> clip.
         self._prerendus: dict[str, str] = {}
@@ -229,6 +232,7 @@ class FenetrePrincipale(QMainWindow):
         self._entete_visionneuse.ajouter(self.visionneuse.qualite)
         self.duree_source = etiquette("", "info-valeur")
         self._entete_source.ajouter(self.duree_source)
+        self._construire_poses()
         self.duree_programme = etiquette("", "info-valeur")
         self._entete_visionneuse.ajouter(self.duree_programme)
         d, _ = panneau("Timeline", self.timeline, "timeline", self, titre_visible=False)
@@ -361,6 +365,7 @@ class FenetrePrincipale(QMainWindow):
                              Qt.Horizontal)
             self.resizeDocks([d["visionneuse"], d["analyse"]], [400, 120], Qt.Vertical)
         elif espace == "cut":
+            # Un seul grand moniteur : la source et le programme en onglets (Q bascule).
             self.addDockWidget(Qt.BottomDockWidgetArea, d["timeline"])
             if self._est_externe("medias"):
                 self.addDockWidget(Qt.LeftDockWidgetArea, d["visionneuse"])
@@ -368,6 +373,7 @@ class FenetrePrincipale(QMainWindow):
                 self.addDockWidget(Qt.LeftDockWidgetArea, d["medias"])
                 self.splitDockWidget(d["medias"], d["visionneuse"], Qt.Horizontal)
                 self.resizeDocks([d["medias"], d["visionneuse"]], [420, 1200], Qt.Horizontal)
+            self.tabifyDockWidget(d["visionneuse"], d["source"])
         elif espace == "media" and self._est_externe("medias"):
             self.addDockWidget(Qt.LeftDockWidgetArea, d["source"])
             self.splitDockWidget(d["source"], d["droite"], Qt.Horizontal)
@@ -456,8 +462,13 @@ class FenetrePrincipale(QMainWindow):
         self.onglets_gauche.choisir(garde)
         self.onglets_gauche.masquer_onglet(cache, not self._est_externe("medias"))
         if espace == "effets":
-            self.onglets_droite.choisir(0)  # on y règle les effets : l'inspecteur
+            self.onglets_droite.choisir(0)  # on y règle les effets : l'inspecteur
+        self._barre_poses.setVisible(espace == "cut")
+        if espace != "cut" and self._bande is not None:
+            self.b_bande.setChecked(False)
         self._espace = espace
+        if espace == "cut":
+            self.activer_moniteur("source" if self.media_source is not None else "programme")
         self._actualiser_datamosh()
         QTimer.singleShot(0, self._verifier_hauteur)
         self.barre_espaces.activer(espace)
@@ -598,6 +609,8 @@ class FenetrePrincipale(QMainWindow):
                                      b.setChecked(a.isChecked()))
             bouton.toggled.connect(action.setChecked)
         mo.addSeparator()
+        for mode, _, nom, touche in self.POSES:
+            self._action(mo, nom, lambda _=False, mode=mode: self.poser_cut(mode), touche)
         self._action(mo, "Insérer depuis la source", lambda: self.monter_source(True), "F9",
                      "")
         self._action(mo, "Écraser depuis la source", lambda: self.monter_source(False), "F10",
@@ -1159,6 +1172,17 @@ class FenetrePrincipale(QMainWindow):
         self._suivre_datamosh(f)
 
     def _position_source(self, f: int):
+        if self._bande:
+            # Bande source : le média sous la tête devient celui de la source (points, poses).
+            m, d, _ = self._segment_bande(f)
+            if m is not self.media_source:
+                self.media_source = m
+                self._entete_source.precision.setText(f"Bande · {m.nom}")
+            seq = self.projet.sequence
+            pe, ps = self._points("source")
+            self.source.afficher_position(f, self._duree("source"), 0, seq.fraction_cadence,
+                                          False, pe, ps)
+            return
         m = self.media_source
         if m is None:
             return
@@ -1868,6 +1892,14 @@ class FenetrePrincipale(QMainWindow):
 
     def charger_source(self, media: Media):
         """Affiche le média dans le moniteur source, avec ses points d'entrée et de sortie."""
+        if self._bande:
+            # Bande source : la tête va au début du média (à son point d'entrée).
+            debut = next((d for m, d, _ in self._bande if m.id == media.id), None)
+            if debut is not None:
+                self.aller("source", debut + (media.point_entree or 0))
+                self.activer_moniteur("source")
+                return
+            self.b_bande.setChecked(False)
         if self.media_source is not None and self.media_source.id == media.id:
             return
         mini = Projet.nouveau()
@@ -1902,6 +1934,8 @@ class FenetrePrincipale(QMainWindow):
         if self._un_seul and self._espace == "montage":
             self._docks["source"].setVisible(nom == "source")
             self._docks["visionneuse"].setVisible(nom == "programme")
+        if self._espace == "cut":
+            self._docks["source" if nom == "source" else "visionneuse"].raise_()
 
     def basculer_moniteur(self):
         self.activer_moniteur("source" if self._actif == "programme" else "programme")
@@ -1910,6 +1944,8 @@ class FenetrePrincipale(QMainWindow):
         return self.lecture_source if (nom or self._actif) == "source" else self.lecture
 
     def _duree(self, nom: str) -> int:
+        if nom == "source" and self._bande:
+            return sum(longueur for _, _, longueur in self._bande)
         if nom == "source":
             m = self.media_source
             return m.nb_images(self.projet.sequence.fraction_cadence) if m else 0
@@ -1918,7 +1954,10 @@ class FenetrePrincipale(QMainWindow):
     def _points(self, nom: str) -> tuple[int | None, int | None]:
         if nom == "source":
             m = self.media_source
-            return (m.point_entree, m.point_sortie) if m else (None, None)
+            if m is None:
+                return None, None
+            d = self._debut_dans_bande()
+            return tuple(None if p is None else p + d for p in (m.point_entree, m.point_sortie))
         return self.projet.sequence.point_entree, self.projet.sequence.point_sortie
 
     def aller(self, nom: str, f: int):
@@ -2007,6 +2046,8 @@ class FenetrePrincipale(QMainWindow):
     def point_entree(self, nom: str | None = None):
         nom = nom or self._actif
         f = self._moteur(nom).position
+        if nom == "source":
+            f -= self._debut_dans_bande()
         if nom == "source" and self.media_source is not None:
             self.media_source.point_entree = f
             if self.media_source.point_sortie is not None and self.media_source.point_sortie <= f:
@@ -2019,6 +2060,8 @@ class FenetrePrincipale(QMainWindow):
     def point_sortie(self, nom: str | None = None):
         nom = nom or self._actif
         f = self._moteur(nom).position + 1
+        if nom == "source":
+            f -= self._debut_dans_bande()
         if nom == "source" and self.media_source is not None:
             self.media_source.point_sortie = f
             if (self.media_source.point_entree or 0) >= f:
@@ -2035,6 +2078,137 @@ class FenetrePrincipale(QMainWindow):
         else:
             self.projet.sequence.point_entree = self.projet.sequence.point_sortie = None
             self.valider("Points effacés")
+
+    # Espace Cut : bande source et poses rapides
+
+    POSES = [("intelligente", "Insérer", "Insertion intelligente", "Shift+F9"),
+             ("fin", "À la fin", "Ajouter à la fin", "Shift+F12"),
+             ("remplacer", "Remplacer", "Remplacer le plan", "Shift+F10"),
+             ("dessus", "Au-dessus", "Placer au-dessus", "F12")]
+
+    def _construire_poses(self):
+        """Rangée sous le moniteur source, visible dans l'espace Cut : la bande source et les
+        quatre poses rapides."""
+        barre = QWidget()
+        barre.setProperty("role", "pied")
+        barre.setAttribute(Qt.WA_StyledBackground, True)
+        lay = QHBoxLayout(barre)
+        lay.setContentsMargins(10, 4, 10, 8)
+        lay.setSpacing(6)
+        self.b_bande = QPushButton("Bande source")
+        self.b_bande.setCheckable(True)
+        self.b_bande.setToolTip("Bande source")
+        self.b_bande.toggled.connect(self.basculer_bande)
+        lay.addWidget(self.b_bande)
+        lay.addStretch(1)
+        self.boutons_poses = {}
+        for mode, texte, nom, touche in self.POSES:
+            b = QPushButton(texte)
+            b.setToolTip(f"{nom} ({touche.replace('Shift', 'Maj')})")
+            b.setAccessibleName(nom)
+            b.clicked.connect(lambda _=False, mode=mode: self.poser_cut(mode))
+            lay.addWidget(b)
+            self.boutons_poses[mode] = b
+        barre.hide()
+        self._barre_poses = barre
+        self.source.ajouter_ligne(barre)
+
+    def _segment_bande(self, f: int):
+        """(média, début dans la bande, longueur) de l'image f de la bande."""
+        for m, d, longueur in self._bande:
+            if f < d + longueur:
+                return m, d, longueur
+        return self._bande[-1]
+
+    def _debut_dans_bande(self) -> int:
+        if not self._bande or self.media_source is None:
+            return 0
+        return next((d for m, d, _ in self._bande if m is self.media_source), 0)
+
+    def basculer_bande(self, actif: bool):
+        """Bande source : les vidéos du panneau Média enchaînées dans le moniteur source."""
+        if not actif:
+            if self._bande is None:
+                return
+            m = self.media_source
+            self._bande = None
+            self.media_source = None
+            if m is not None:
+                self.charger_source(m)
+            return
+        medias = [self.projet.medias[i] for i in self.medias.medias_affiches()
+                  if i in self.projet.medias and self.projet.medias[i].infos.video
+                  and not self.projet.medias[i].hors_ligne]
+        if not medias:
+            self.message("Aucune vidéo dans le chutier")
+            self.b_bande.blockSignals(True)
+            self.b_bande.setChecked(False)
+            self.b_bande.blockSignals(False)
+            return
+        seq = self.projet.sequence
+        mini = Projet.nouveau()
+        bande = mini.sequence
+        if seq.reglee or seq.duree():
+            bande.largeur, bande.hauteur, bande.cadence = seq.largeur, seq.hauteur, seq.cadence
+        else:
+            edition.regler_sequence_sur_media(bande, medias[0])
+        bande.reglee = True
+        bande.tc_debut = 0
+        segments, position = [], 0
+        for m in medias:
+            mini.medias[m.id] = m
+            longueur = m.nb_images(bande.fraction_cadence)
+            edition.ajouter_media(mini, bande, m, position)
+            segments.append((m, position, longueur))
+            position += longueur
+        courant = self.media_source
+        depart = next((d + (m.point_entree or 0) for m, d, _ in segments
+                       if courant is not None and m.id == courant.id), 0)
+        self._bande = segments
+        self.media_source = None
+        self.lecture_source.pause()
+        self.lecture_source.definir_projet(mini)
+        self.source.zone.taille_reference = (bande.largeur, bande.hauteur)
+        self.duree_source.setText(images_vers_tc(position, bande.fraction_cadence))
+        self.lecture_source.aller_a(depart)
+        self._position_source(depart)
+        self.activer_moniteur("source")
+
+    def poser_cut(self, mode: str):
+        """Les poses rapides de l'espace Cut, avec la partie choisie de la source (le plan
+        entier sans points) : insertion au raccord le plus proche, à la fin, à la place du
+        plan sous la tête (la suite se décale), ou au-dessus sans rien écraser."""
+        m = self.media_source
+        if m is None:
+            self.message("Aucun média dans le moniteur source")
+            return
+        seq = self.projet.sequence
+        entree, sortie = m.plage_source(seq.fraction_cadence)
+        duree = sortie - entree
+        f = self.lecture.position
+        clips = []
+        vierge = not seq.reglee
+        libelle = next(nom for cle, _, nom, _ in self.POSES if cle == mode)
+
+        def faire():
+            if mode == "intelligente":
+                r = edition.raccord_proche(seq, f)
+                clips.extend(edition.inserer_media(self.projet, seq, m, r, None, entree, duree))
+            elif mode == "fin":
+                clips.extend(edition.ajouter_media(self.projet, seq, m, seq.duree(), None,
+                                                   entree, duree))
+            elif mode == "remplacer":
+                c = edition.clip_sous(seq, f)
+                if c is None:
+                    raise edition.EditionImpossible("Aucun plan sous la tête de lecture")
+                clips.extend(edition.remplacer_plan(self.projet, seq, c.id, m, entree, duree))
+            else:
+                clips.extend(edition.placer_au_dessus(self.projet, seq, m, f, entree, duree))
+        self._tenter(libelle, faire)
+        if clips:
+            if vierge and seq.reglee:
+                self._timecode_nouvelle_sequence(libelle)
+            self.aller_a(max(c.fin for c in clips))
 
     # Monter depuis la source
 

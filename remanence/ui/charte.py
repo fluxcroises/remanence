@@ -408,6 +408,8 @@ QPushButton, QToolButton {{
 QPushButton:hover, QToolButton:hover {{ background: {surface_hover}; }}
 QPushButton:pressed, QToolButton:pressed {{ background: {surface_hover}; }}
 QPushButton:disabled, QToolButton:disabled {{ color: {ink_faint}; border-color: {line}; }}
+/* Bouton enclenché (Bande source, Sur l'image) : comme les petits boutons enclenchés. */
+QPushButton:checked {{ background: {accent_soft}; color: {accent}; border-color: {accent}; }}
 QPushButton[variante="principal"] {{ background: {accent}; color: {on_accent};
     border: 1px solid {accent}; font-weight: 600; padding: 0 14px; }}
 QPushButton[variante="principal"]:hover {{ background: {accent}; }}

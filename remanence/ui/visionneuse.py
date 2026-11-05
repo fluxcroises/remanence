@@ -857,6 +857,10 @@ class Moniteur(QWidget):
         for w in (self.zone, self.defilement, barre):
             w.installEventFilter(self)
 
+    def ajouter_ligne(self, widget: QWidget):
+        """Une rangée sous le transport (les poses rapides de l'espace Cut)."""
+        self.layout().addWidget(widget)
+
     def eventFilter(self, objet, e):
         # Tout clic dans le moniteur le rend actif pour les raccourcis de lecture.
         if e.type() == e.Type.MouseButtonPress:

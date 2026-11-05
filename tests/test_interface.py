@@ -1545,7 +1545,57 @@ def test_espace_cut(fenetre, medias):
     assert _attendre(lambda: w.barre_espaces.boutons["cut"].isChecked(), 2)
     visibles = {nom for nom, d in w._docks.items() if d.isVisible()}
     assert {"medias", "visionneuse", "timeline"} <= visibles
-    assert not visibles & {"droite", "source", "export"}
+    assert not visibles & {"droite", "export"}
+    # Source et programme : deux onglets d'un seul moniteur.
+    assert w._docks["source"] in w.tabifiedDockWidgets(w._docks["visionneuse"])
     assert w.onglets_gauche.currentIndex() == 0  # l'onglet Média
     w.choisir_espace("montage")
     assert _attendre(lambda: w._docks["droite"].isVisible(), 2)
+
+
+
+def test_bande_source_et_poses_rapides(fenetre, medias):
+    """Étape 11, lot 2 : bande source (les vidéos du panneau enchaînées), le média sous la
+    tête devient la source ; quatre poses depuis l'espace Cut."""
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"]), str(medias["sans_audio_2997"])])
+    assert _attendre(lambda: len(w.projet.medias) == 2)
+    w.choisir_espace("cut")
+    assert w._barre_poses.isVisible()
+    w.b_bande.setChecked(True)
+    assert w._bande is not None and len(w._bande) == 2
+    (a, da, la), (b, db, lb) = w._bande
+    assert db == la
+    w.aller("source", db + 3)
+    assert _attendre(lambda: w.media_source is b, 2)
+    assert w.source.timecode is not None and w._duree("source") == la + lb
+    # Ajouter à la fin, deux fois : le plan entier sous la tête de la source.
+    w.poser_cut("fin")
+    assert _attendre(lambda: w.projet.sequence.duree() == lb, 2)
+    w.aller("source", da)
+    assert _attendre(lambda: w.media_source is a, 2)
+    w.poser_cut("fin")
+    seq = lambda: w.projet.sequence
+    v1 = lambda: [(c.media_id, c.debut, c.duree) for c in seq().pistes_video[-1].clips]
+    assert _attendre(lambda: v1() == [(b.id, 0, lb), (a.id, lb, la)], 2)
+    # Insertion intelligente : au raccord le plus proche de la tête, jamais au milieu.
+    w.aller_a(lb - 2)
+    w.poser_cut("intelligente")
+    assert _attendre(lambda: v1() == [(b.id, 0, lb), (a.id, lb, la), (a.id, lb + la, la)], 2)
+    # Remplacer le plan sous la tête (b, au début) par a : la suite recule.
+    w.aller_a(1)
+    w.poser_cut("remplacer")
+    assert _attendre(lambda: v1()[0] == (a.id, 0, la) and v1()[1][1] == la, 2)
+    # Au-dessus : une nouvelle piste vidéo, rien d'écrasé dessous.
+    avant = v1()
+    w.aller_a(4)
+    w.poser_cut("dessus")
+    assert _attendre(lambda: len(seq().pistes_video) == 2, 2)
+    assert v1() == avant and seq().pistes_video[0].clips[0].debut == 4
+    # Points de la source sur la bande : en images du média.
+    w.aller("source", db + 5)
+    assert _attendre(lambda: w.media_source is b, 2)
+    w.point_entree("source")
+    assert _attendre(lambda: b.point_entree == 5, 2)
+    w.choisir_espace("montage")
+    assert w._bande is None and not w._barre_poses.isVisible()
