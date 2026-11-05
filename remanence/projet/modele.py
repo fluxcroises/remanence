@@ -173,7 +173,7 @@ class Clip:
     titre: dict | None = None
     sequence_id: str | None = None
     # Position, taille, rotation, recadrage (effet interne « transformation », voir
-    # effets/transformation.py) ; None : l'image telle qu'elle tient dans la séquence.
+    # effets/transformation.py) ; None : l'image telle qu'elle tient dans la séquence.
     transformation: Effet | None = None
 
     @property

@@ -1,9 +1,9 @@
 """Mesures des critères de la section 8 du cahier des charges.
 
-Fabrique une vidéo UHD ProRes 422 HQ de 10 s (et son proxy) dans tests/medias, puis mesure :
+Fabrique une vidéo UHD ProRes 422 HQ de 10 s (et son proxy) dans tests/medias, puis mesure :
 l'aperçu en proxy 1/2 avec trois effets en temps réel, l'export ProRes 422 HQ avec un datamosh
 codec et deux effets, le temps entre un réglage modifié et l'image à jour, et le dessin d'une
-timeline de 10 pistes et 200 clips. Les réglages et le cache sont dans un dossier temporaire.
+timeline de 10 pistes et 200 clips. Les réglages et le cache sont dans un dossier temporaire.
 
     .venv\\Scripts\\python.exe scripts\\mesures.py [aperçu export réactivité timeline superposition]
 """
@@ -106,8 +106,8 @@ def mesurer_apercu():
     finally:
         c.fermer()
     d = np.array(durees)
-    print(f"Aperçu UHD, proxy 1/2, 3 effets : {1 / d.mean():.1f} images/s "
-          f"(moyenne {d.mean() * 1000:.0f} ms, pire {d.max() * 1000:.0f} ms) ; seuil 24 images/s")
+    print(f"Aperçu UHD, proxy 1/2, 3 effets : {1 / d.mean():.1f} images/s "
+          f"(moyenne {d.mean() * 1000:.0f} ms, pire {d.max() * 1000:.0f} ms) ; seuil 24 images/s")
 
 
 def mesurer_export():
@@ -119,14 +119,14 @@ def mesurer_export():
     t = time.perf_counter()
     rapport = exporter(projet, projet.sequence, sortie, "prores_hq")
     duree = time.perf_counter() - t
-    print(f"Export UHD 10 s ProRes 422 HQ, datamosh et 2 effets : {duree:.0f} s "
-          f"(conforme : {rapport.conforme}) ; seuil 180 s")
+    print(f"Export UHD 10 s ProRes 422 HQ, datamosh et 2 effets : {duree:.0f} s "
+          f"(conforme : {rapport.conforme}) ; seuil 180 s")
 
 
 def mesurer_reactivite():
     from PySide6.QtWidgets import QApplication
     from remanence.ui.lecture import MoteurLecture
-    # QApplication (et non QCoreApplication) : la mesure de la timeline suit dans le même
+    # QApplication (et non QCoreApplication) : la mesure de la timeline suit dans le même
     # processus et en a besoin.
     app = QApplication.instance() or QApplication([])
     projet, m = projet_uhd(TEMPS_REEL)
@@ -141,7 +141,7 @@ def mesurer_reactivite():
             evenement.clear()
 
         def wait(self, delai):
-            # Le signal passe par la boucle d'événements de Qt : on la fait tourner.
+            # Le signal passe par la boucle d'événements de Qt : on la fait tourner.
             fin = time.perf_counter() + delai
             while not evenement.is_set() and time.perf_counter() < fin:
                 app.processEvents()
@@ -164,8 +164,8 @@ def mesurer_reactivite():
     finally:
         moteur.fermer()
     d = np.array(durees)
-    print(f"Réglage modifié, image à jour (UHD, 1/2) : moyenne {d.mean() * 1000:.0f} ms, "
-          f"pire {d.max() * 1000:.0f} ms ; seuil 100 ms")
+    print(f"Réglage modifié, image à jour (UHD, 1/2) : moyenne {d.mean() * 1000:.0f} ms, "
+          f"pire {d.max() * 1000:.0f} ms ; seuil 100 ms")
 
 
 def mesurer_timeline():
@@ -229,8 +229,8 @@ def mesurer_timeline():
     zoom = serie(lambda i: tl.zoomer(1.05 if i < 30 else 1 / 1.05))
     for nom, d in (("tout voir", tout), ("défilement", defil), ("zoom", zoom)):
         print(f"Timeline {len(seq.pistes_video) + len(seq.pistes_audio)} pistes, {nb} clips, "
-              f"{nom} : dessin moyen {d.mean() * 1000:.1f} ms, pire {d.max() * 1000:.1f} ms "
-              f"(fluide sous 16 ms)")
+              f"{nom} : dessin moyen {d.mean() * 1000:.1f} ms, pire {d.max() * 1000:.1f} ms "
+              f"(fluide sous 16 ms)")
     w.modifie = False
     w.close()
     from remanence.rendu.composition import Compositeur
@@ -247,12 +247,12 @@ def mesurer_timeline():
     finally:
         c.fermer()
     d = np.array(durees)
-    print(f"Lecture de cette séquence (UHD, proxy 1/2, six pistes vidéo) : "
-          f"{1 / d.mean():.1f} images/s (pire {d.max() * 1000:.0f} ms) ; il faut 25 images/s")
+    print(f"Lecture de cette séquence (UHD, proxy 1/2, six pistes vidéo) : "
+          f"{1 / d.mean():.1f} images/s (pire {d.max() * 1000:.0f} ms) ; il faut 25 images/s")
 
 
 def mesurer_superposition():
-    """Pire cas de lecture : six pistes UHD semi-transparentes, toutes à composer."""
+    """Pire cas de lecture : six pistes UHD semi-transparentes, toutes à composer."""
     from remanence.rendu.composition import Compositeur
     projet, m = projet_uhd([])
     seq = projet.sequence
@@ -275,8 +275,8 @@ def mesurer_superposition():
     finally:
         c.fermer()
     d = np.array(durees)
-    print(f"Six pistes UHD semi-transparentes, proxy 1/2 : {1 / d.mean():.1f} images/s "
-          f"(pire {d.max() * 1000:.0f} ms) ; il faut 25 images/s")
+    print(f"Six pistes UHD semi-transparentes, proxy 1/2 : {1 / d.mean():.1f} images/s "
+          f"(pire {d.max() * 1000:.0f} ms) ; il faut 25 images/s")
 
 
 MESURES = {"aperçu": mesurer_apercu, "export": mesurer_export,

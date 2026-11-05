@@ -605,7 +605,7 @@ def porteurs_effets(seq: Sequence):
 
 
 def trouver_effet(seq: Sequence, effet_id: str, creer: bool = False):
-    """(porteur, effet) ; la transformation d'un clip compte (porteur : le clip). creer : la
+    """(porteur, effet) ; la transformation d'un clip compte (porteur : le clip). creer : la
     transformation visée par son identifiant (`transformation.id_pour`) est créée si elle
     manque encore."""
     for porteur in porteurs_effets(seq):

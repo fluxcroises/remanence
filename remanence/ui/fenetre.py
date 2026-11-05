@@ -16,8 +16,8 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QDockWidg
 
 from remanence import journal
 from remanence.config import dossier_fichiers, reglages_interface, retenir_dossier
-from remanence.effets import (EFFETS, courbes, masque_a, modulateurs, poser_cle, retirer_cle,
-                              valeur_a)
+from remanence.effets import (EFFETS, courbes, instantane, masque_a, modulateurs, poser_cle,
+                              retirer_cle, transformation, valeur_a)
 from remanence.effets.masques import nouveau_masque
 from remanence.moteurs import suivi
 from remanence.moteurs.codec import analyse, bavure, ffglitch, prerendu, scripts
@@ -54,7 +54,8 @@ from remanence.ui.midi import EnregistreurMidi
 from remanence.ui.panneau_courbes import PanneauCourbes
 from remanence.ui.panneau_datamosh import CalqueVecteurs, PanneauDatamosh
 from remanence.ui.timeline import NOUVELLE_PISTE
-from remanence.ui.visionneuse import (LIBELLES_QUALITE, CalqueMasques, Moniteur, ZoneImage,
+from remanence.ui.visionneuse import (LIBELLES_QUALITE, CalqueMasques, CalqueTransformation,
+                                       carte_normalisee, Moniteur, ZoneImage,
                                       glisser_source, peindre_cadre_actif)
 
 INTERVALLE_AUTO_MS = 2 * 60 * 1000
@@ -143,6 +144,8 @@ class FenetrePrincipale(QMainWindow):
         self._piste_choisie: str | None = None
         # Effet dont les masques se modifient sur l'image du programme.
         self._masques_effet = ""
+        # Clip dont la transformation se règle sur l'image (poignées du programme).
+        self._transformation_clip = ""
         # Pré-rendus codec en cours : empreinte -> clip.
         self._prerendus: dict[str, str] = {}
         # Médias dont les coupes s'analysent.
@@ -925,8 +928,13 @@ class FenetrePrincipale(QMainWindow):
         self.inspecteur.enregistrer_prereglage.connect(self.enregistrer_prereglage)
         self.inspecteur.reglage_masque.connect(self.reglage_masque)
         self.inspecteur.edition_masques.connect(self.modifier_masques)
+        self.inspecteur.edition_transformation.connect(self.modifier_transformation)
         self.visionneuse.zone.calque = CalqueMasques(self.visionneuse.zone)
         self.visionneuse.zone.vecteurs = CalqueVecteurs(self.visionneuse.zone)
+        self.visionneuse.zone.transformation = CalqueTransformation(self.visionneuse.zone)
+        self.visionneuse.zone.transformation.glisse.connect(
+            lambda v: self.transformer_sur_image(v, valider=False))
+        self.visionneuse.zone.transformation.relache.connect(self.transformer_sur_image)
         self.panneau_datamosh.image_cliquee.connect(self._image_datamosh)
         self.panneau_datamosh.cle_basculee.connect(self._cle_datamosh)
         self.panneau_datamosh.vecteurs_bascules.connect(
@@ -1130,7 +1138,9 @@ class FenetrePrincipale(QMainWindow):
         self.inspecteur.actualiser_temps(f)
         if hasattr(self, "panneau_courbes"):
             self.panneau_courbes.suivre(f)
-        if self._masques_effet and not self.visionneuse.zone.calque.en_prise():
+        zone = self.visionneuse.zone
+        if (self._masques_effet or self._transformation_clip) and \
+                not zone.calque.en_prise() and not zone.transformation.en_prise():
             self._actualiser_calque()
         self._suivre_datamosh(f)
 
@@ -1656,6 +1666,12 @@ class FenetrePrincipale(QMainWindow):
         for media in projet.medias.values():
             media.hors_ligne = self.projet.medias[media.id].hors_ligne
         copie_seq = next(s for s in projet.sequences if s.id == seq.id)
+        if isinstance(porteur, Clip) and e in porteur.effets:
+            # Les masques d'un effet de clip sont posés sur l'image du clip avant sa
+            # transformation : le suivi la regarde sans elle.
+            _, copie_clip = copie_seq.trouver(porteur.id)
+            if copie_clip is not None:
+                copie_clip.transformation = None
         effet_id, masque_id = e.id, m.id
 
         def travail(progression, annule, projet=projet, s=copie_seq, depart=depart):
@@ -1687,11 +1703,78 @@ class FenetrePrincipale(QMainWindow):
         self._masques_effet = effet_id
         self.inspecteur.masques_edites = effet_id
         if effet_id:
+            # Un seul réglage sur l'image à la fois.
+            self._transformation_clip = ""
+            self.inspecteur.transformation_editee = ""
             self.activer_moniteur("programme")
         self._actualiser_calque()
 
+    def modifier_transformation(self, clip_id: str):
+        """Poignées de la transformation du clip sur le programme ("" : les cacher)."""
+        self._transformation_clip = clip_id
+        self.inspecteur.transformation_editee = clip_id
+        if clip_id:
+            self._masques_effet = ""
+            self.inspecteur.masques_edites = ""
+            self.activer_moniteur("programme")
+        self._actualiser_calque()
+
+    def transformer_sur_image(self, valeurs: dict, valider: bool = True):
+        """Réglages venus des poignées : pendant le geste, l'aperçu seul ; au lâcher, une
+        action de l'historique. Un réglage animé reçoit une image clé à la tête de lecture."""
+        seq = self.projet.sequence
+        _, c = seq.trouver(self._transformation_clip)
+        if c is None:
+            return
+        if c.transformation is None:
+            c.transformation = transformation.nouvelle(c.id)
+        e = c.transformation
+        t = self._temps_effet(c)
+        for cle, v in valeurs.items():
+            if e.cles.get(cle):
+                poser_cle(e, cle, t, v)
+            else:
+                e.params[cle] = v
+        if valider:
+            self.valider("Transformation")
+        else:
+            self.lecture.definir_projet(self.projet)
+
+    def _transformation_a(self, c, f: int) -> dict:
+        """Réglages de la transformation du clip à l'image f de la séquence, cadre compris
+        (neutres s'il n'en a pas)."""
+        seq = self.projet.sequence
+        media = self.projet.medias.get(c.media_id)
+        base = c.transformation or transformation.nouvelle(c.id)
+        v = media.infos.video if media is not None else None
+        cadre = transformation.cadre(v.largeur, v.hauteur, seq.largeur, seq.hauteur) if v             else {"cadre_x": 0.0, "cadre_y": 0.0, "cadre_l": 1.0, "cadre_h": 1.0}
+        decalages = modulateurs.decalages(seq, f, self.projet)
+        e = instantane(base, max(0, min(f - c.debut, c.duree - 1)), decalages)
+        return {**transformation.DEFAUTS, **e.params,
+                **{k: cadre[k] for k in transformation.CADRE}}
+
     def _actualiser_calque(self):
-        """Le calque du programme montre les masques de l'effet modifié, s'il existe encore."""
+        """Le calque du programme montre les masques de l'effet modifié, s'il existe encore,
+        ou les poignées de la transformation du clip choisi."""
+        seq = self.projet.sequence
+        zone = self.visionneuse.zone
+        if self._transformation_clip:
+            # Les poignées suivent le clip choisi.
+            choix = self.timeline.vue.selection
+            if len(choix) == 1 and next(iter(choix)) != self._transformation_clip:
+                piste, autre = seq.trouver(next(iter(choix)))
+                if autre is not None and piste.type == "video" and not autre.est_effet:
+                    self._transformation_clip = autre.id
+                    self.inspecteur.transformation_editee = autre.id
+        piste, c = seq.trouver(self._transformation_clip) if self._transformation_clip \
+            else (None, None)
+        if c is None or piste.type != "video":
+            self._transformation_clip = ""
+            self.inspecteur.transformation_editee = ""
+            zone.transformation.montrer(None)
+        else:
+            zone.transformation.montrer(self._transformation_a(c, self.lecture.position),
+                                        seq.largeur, seq.hauteur)
         _, e = edition.trouver_effet(self.projet.sequence, self._masques_effet) \
             if self._masques_effet else (None, None)
         if e is None or not e.masques:
@@ -1703,7 +1786,13 @@ class FenetrePrincipale(QMainWindow):
         # Les masques tels qu'ils sont à la tête de lecture (animés ou non).
         porteur, _ = edition.trouver_effet(self.projet.sequence, self._masques_effet)
         t = self._temps_effet(porteur)
-        self.visionneuse.zone.calque.montrer_masques([masque_a(m, t) for m in e.masques])
+        carte = None
+        if isinstance(porteur, Clip) and e in porteur.effets and porteur.transformation:
+            # Masque d'un effet de clip : il suit l'image transformée.
+            v = self._transformation_a(porteur, self.lecture.position)
+            carte = carte_normalisee(transformation.matrice(v, seq.largeur, seq.hauteur),
+                                     seq.largeur, seq.hauteur)
+        self.visionneuse.zone.calque.montrer_masques([masque_a(m, t) for m in e.masques], carte)
 
     def _media_choisi(self, media):
         if media is not None:

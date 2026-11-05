@@ -716,7 +716,7 @@ def test_effets_ffglitch_dans_l_inspecteur(fenetre, medias, monkeypatch):
     textes = lambda: [l.text() for l in w.inspecteur.findChildren(QLabel)
                       if l.isVisibleTo(w.inspecteur)]
     assert _attendre(lambda: "aucun clip au-dessus" in textes(), 2)
-    # Vecteurs : 7 réglages et l'opacité ; transfert : 2 réglages et l'opacité ; et les 12
+    # Vecteurs : 7 réglages et l'opacité ; transfert : 2 réglages et l'opacité ; et les 12
     # réglages de la transformation du clip.
     assert _attendre(lambda: len([b for b in w.inspecteur.findChildren(BoutonCle)
                                   if b.isVisibleTo(w.inspecteur)]) == 23, 2)
@@ -1381,7 +1381,7 @@ def test_file_export_nom_long(app):
     f.close()
 
 def test_transformation_depuis_l_inspecteur(fenetre, medias):
-    """Étape 8, lot 2 : section Transformation, images clés, courbes, modulateur, remise à zéro."""
+    """Étape 8, lot 2 : section Transformation, images clés, courbes, modulateur, remise à zéro."""
     from remanence.effets import transformation
     from remanence.ui.composants import LigneParametre, SectionRepliable
     from remanence.ui.panneau_courbes import courbes_de
@@ -1420,6 +1420,73 @@ def test_transformation_depuis_l_inspecteur(fenetre, medias):
     # Un modulateur peut viser la position.
     w.reglage_modulateur("", "ajouter", ["oscillateur", [cible, "x"]])
     assert _attendre(lambda: w.projet.sequence.modulateurs, 2)
-    # Réinitialiser : plus de transformation, l'image redevient la source.
+    # Réinitialiser : plus de transformation, l'image redevient la source.
     w.reglage_effet(cible, "reinitialiser", None)
     assert _attendre(lambda: clip().transformation is None, 2)
+
+
+def _souris(widget, genre, pos, bouton=None, modificateurs=None):
+    from PySide6.QtCore import QEvent, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+    bouton = bouton if bouton is not None else Qt.LeftButton
+    boutons = Qt.NoButton if genre == QEvent.MouseButtonRelease else bouton
+    e = QMouseEvent(genre, QPointF(pos), widget.mapToGlobal(QPointF(pos)),
+                    bouton if genre != QEvent.MouseMove else Qt.NoButton, boutons,
+                    modificateurs if modificateurs is not None else Qt.NoModifier)
+    QApplication.sendEvent(widget, e)
+
+
+def test_transformation_sur_l_image(fenetre, medias):
+    """Étape 8, lot 3 : poignées sur le programme ; les masques suivent l'image."""
+    from PySide6.QtCore import QEvent, QPointF
+    from remanence.effets import nouvel_effet
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+
+    def clip():
+        return w.projet.sequence.pistes_video[0].clips[0]
+    w.timeline.vue._choisir({clip().id})
+    zone = w.visionneuse.zone
+    assert _attendre(lambda: zone._image is not None, 5)
+    w.inspecteur.edition_transformation.emit(clip().id)
+    calque = zone.transformation
+    assert _attendre(lambda: calque.isVisible(), 2)
+    coins, centre, _, rotation = calque._points(calque.valeurs)
+    r = zone._rect_image(zone.width(), zone.height())
+    # Glisser dedans : la position.
+    _souris(calque, QEvent.MouseButtonPress, centre)
+    _souris(calque, QEvent.MouseMove, centre + QPointF(r.width() / 4, 0))
+    _souris(calque, QEvent.MouseButtonRelease, centre + QPointF(r.width() / 4, 0))
+    assert _attendre(lambda: clip().transformation is not None
+                     and abs(clip().transformation.params["x"] - 25) < 0.5, 2)
+    # Un coin : la taille, autour du centre de l'image.
+    coins, centre, _, rotation = calque._points(calque.valeurs)
+    milieu = (coins[2] + centre) / 2
+    _souris(calque, QEvent.MouseButtonPress, coins[2])
+    _souris(calque, QEvent.MouseMove, milieu)
+    _souris(calque, QEvent.MouseButtonRelease, milieu)
+    assert _attendre(lambda: abs(clip().transformation.params["taille"] - 50) < 1, 2)
+    # La poignée ronde : la rotation (un quart de tour dans le sens inverse des aiguilles).
+    coins, centre, _, rotation = calque._points(calque.valeurs)
+    rayon = rotation - centre
+    vers = centre + QPointF(rayon.y(), -rayon.x())
+    _souris(calque, QEvent.MouseButtonPress, rotation)
+    _souris(calque, QEvent.MouseMove, vers)
+    _souris(calque, QEvent.MouseButtonRelease, vers)
+    assert _attendre(lambda: abs(clip().transformation.params["rotation"] - 90) < 1, 2)
+    w.annuler()
+    assert _attendre(lambda: abs(clip().transformation.params["rotation"]) < 1e-6, 2)
+
+    # Masque d'un effet du clip : il suit l'image transformée.
+    w.ajouter_effet("clip", clip().id, [nouvel_effet("scanlines")])
+    effet_id = clip().effets[0].id
+    w.reglage_masque(effet_id, "", "ajouter", "rectangle")
+    assert _attendre(lambda: clip().effets[0].masques, 2)
+    w.modifier_masques(effet_id)
+    assert _attendre(lambda: zone.calque.isVisible() and not calque.isVisible(), 2)
+    carte = zone.calque.carte
+    q = carte.map(QPointF(0.5, 0.5))
+    assert abs(q.x() - 0.75) < 0.01 and abs(q.y() - 0.5) < 0.01
+    assert abs(carte.map(QPointF(1.0, 0.5)).x() - 1.0) < 0.01  # réduite de moitié

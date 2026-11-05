@@ -9,7 +9,7 @@ from fractions import Fraction
 
 import numpy as np
 from PySide6.QtCore import QMimeData, QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QDrag, QImage, QPainter, QPainterPath, QPen, QPolygonF
+from PySide6.QtGui import QDrag, QImage, QPainter, QPainterPath, QPen, QPolygonF, QTransform
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QMenu, QSizePolicy, QToolButton,
                                QVBoxLayout, QWidget)
@@ -109,6 +109,8 @@ class ZoneImage(QOpenGLWidget):
         self.calque: CalqueMasques | None = None
         # Calque des vecteurs de mouvement (espace Datamosh).
         self.vecteurs = None
+        # Cadre et poignées de la transformation du clip choisi.
+        self.transformation = None
         self.setMinimumSize(160, 90)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
@@ -130,7 +132,8 @@ class ZoneImage(QOpenGLWidget):
                 calque.update()
 
     def _calques(self) -> list:
-        return [c for c in (self.calque, self.vecteurs) if c is not None]
+        return [c for c in (self.calque, self.vecteurs, self.transformation)
+                if c is not None]
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
@@ -346,6 +349,9 @@ class CalqueMasques(QWidget):
         self.zone = zone
         self.masques: list = []
         self._prise = None
+        # Masques d'un effet de clip transformé : de l'image du clip (en fraction) vers celle
+        # de la séquence. Les masques suivent l'image déplacée, tournée, réduite.
+        self.carte = QTransform()
         self.setMouseTracking(True)
         self.montrer_masques(None)
 
@@ -353,8 +359,10 @@ class CalqueMasques(QWidget):
         """Vrai pendant qu'un masque est tiré à la souris."""
         return self._prise is not None
 
-    def montrer_masques(self, masques: list | None):
-        """masques : ceux de l'effet modifié (copiés), None pour cacher le calque."""
+    def montrer_masques(self, masques: list | None, carte: QTransform | None = None):
+        """masques : ceux de l'effet modifié (copiés), None pour cacher le calque ; carte : la
+        transformation du clip (voir `carte_normalisee`)."""
+        self.carte = carte if carte is not None else QTransform()
         self.masques = copy.deepcopy(masques) if masques else []
         actif = masques is not None
         self.setAttribute(Qt.WA_TransparentForMouseEvents, not actif)
@@ -367,11 +375,15 @@ class CalqueMasques(QWidget):
             return None
         return self.zone._rect_image(self.zone.width(), self.zone.height())
 
+    def _total(self, r: QRectF) -> QTransform:
+        return self.carte * QTransform(r.width(), 0, 0, r.height(), r.x(), r.y())
+
     def _ecran(self, r: QRectF, pt) -> QPointF:
-        return QPointF(r.x() + pt[0] * r.width(), r.y() + pt[1] * r.height())
+        return self._total(r).map(QPointF(pt[0], pt[1]))
 
     def _image(self, r: QRectF, pos: QPointF) -> list[float]:
-        return [(pos.x() - r.x()) / r.width(), (pos.y() - r.y()) / r.height()]
+        q = self._total(r).inverted()[0].map(pos)
+        return [q.x(), q.y()]
 
     @staticmethod
     def _poignees(m) -> list:
@@ -381,18 +393,19 @@ class CalqueMasques(QWidget):
         return [[ax, ay], [bx, ay], [bx, by], [ax, by]]
 
     def _chemin(self, r: QRectF, m) -> QPainterPath:
+        # Tracé dans l'image du clip, puis porté à l'écran (rotation comprise).
         chemin = QPainterPath()
         if m.forme == "courbe":
             sommets = contour(m.points)
-            chemin.addPolygon(QPolygonF([self._ecran(r, s) for s in sommets]))
+            chemin.addPolygon(QPolygonF([QPointF(x, y) for x, y in sommets]))
             chemin.closeSubpath()
         else:
-            zone = QRectF(self._ecran(r, m.points[0]), self._ecran(r, m.points[1])).normalized()
+            zone = QRectF(QPointF(*m.points[0]), QPointF(*m.points[1])).normalized()
             if m.forme == "ellipse":
                 chemin.addEllipse(zone)
             else:
                 chemin.addRect(zone)
-        return chemin
+        return self._total(r).map(chemin)
 
     def paintEvent(self, _e):
         r = self._rect()
@@ -436,8 +449,8 @@ class CalqueMasques(QWidget):
             return
         m, i, depart, points = self._prise
         r = self._rect()
-        dx = (pos.x() - depart.x()) / r.width()
-        dy = (pos.y() - depart.y()) / r.height()
+        a, b = self._image(r, depart), self._image(r, pos)
+        dx, dy = b[0] - a[0], b[1] - a[1]
         if i < 0:
             m.points = [[x + dx, y + dy] for x, y in points]
         elif m.forme == "courbe":
@@ -497,6 +510,189 @@ class CalqueMasques(QWidget):
             m.points.insert(rang, pos)
             self.modifie.emit(m.id, m.points)
             return
+
+
+def carte_normalisee(matrice, largeur: int, hauteur: int) -> QTransform:
+    """Une matrice de `transformation.matrice` (pixels de la séquence) en QTransform, de
+    l'image du clip vers celle de la séquence, en fractions de l'image."""
+    n = np.diag([1 / largeur, 1 / hauteur, 1.0]) @ matrice @ np.diag([largeur, hauteur, 1.0])
+    return QTransform(n[0, 0], n[1, 0], n[0, 1], n[1, 1], n[0, 2], n[1, 2])
+
+
+class CalqueTransformation(QWidget):
+    """Cadre de l'image du clip transformé, posé sur le programme. Glisser dedans : la
+    position ; un coin : la taille (Maj : largeur et hauteur séparées) ; la poignée ronde
+    au-dessus : la rotation (Maj : par pas de 15°). `glisse` donne les réglages pendant le
+    geste (aperçu), `relache` à la fin (une action de l'historique)."""
+    glisse = Signal(dict)
+    relache = Signal(dict)
+
+    RAYON = 7
+    ECART_ROTATION = 26
+
+    def __init__(self, zone: "ZoneImage"):
+        super().__init__(zone)
+        self.zone = zone
+        self.valeurs: dict | None = None
+        self.taille = (1, 1)
+        self._prise = None
+        self.setMouseTracking(True)
+        self.montrer(None)
+
+    def en_prise(self) -> bool:
+        return self._prise is not None
+
+    def montrer(self, valeurs: dict | None, largeur: int = 1, hauteur: int = 1):
+        """valeurs : réglages de la transformation à la tête de lecture, cadre compris ;
+        None cache le calque. largeur, hauteur : la séquence."""
+        if self._prise is not None and valeurs is not None:
+            return  # pendant un geste, le calque garde ses propres valeurs
+        self.valeurs = dict(valeurs) if valeurs is not None else None
+        self.taille = (max(1, largeur), max(1, hauteur))
+        actif = valeurs is not None
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, not actif)
+        self.setVisible(actif)
+        self.setGeometry(self.zone.rect())
+        self.update()
+
+    def _ecran_seq(self) -> QTransform | None:
+        """Des pixels de la séquence vers l'écran."""
+        if self.zone._image is None:
+            return None
+        r = self.zone._rect_image(self.zone.width(), self.zone.height())
+        l, h = self.taille
+        return QTransform(r.width() / l, 0, 0, r.height() / h, r.x(), r.y())
+
+    def _points(self, valeurs: dict):
+        """Coins à l'écran, centre de l'image transformée, milieu du bord haut et poignée de
+        rotation."""
+        from remanence.effets import transformation
+        e = self._ecran_seq()
+        if e is None:
+            return None
+        l, h = self.taille
+        m = transformation.matrice(valeurs, l, h)
+
+        def vers(x, y):
+            q = m @ [x, y, 1.0]
+            return e.map(QPointF(q[0], q[1]))
+        coins = [vers(x, y) for x, y in transformation.coins(valeurs, l, h)]
+        centre = vers(l / 2, h / 2)
+        haut = (coins[0] + coins[1]) / 2
+        bas = (coins[3] + coins[2]) / 2
+        # La poignée de rotation, au-dessus du bord haut, quel que soit l'angle.
+        dx, dy = haut.x() - bas.x(), haut.y() - bas.y()
+        n = math.hypot(dx, dy) or 1.0
+        rotation = QPointF(haut.x() + dx / n * self.ECART_ROTATION,
+                           haut.y() + dy / n * self.ECART_ROTATION)
+        return coins, centre, haut, rotation
+
+    def paintEvent(self, _e):
+        if self.valeurs is None:
+            return
+        pts = self._points(self.valeurs)
+        if pts is None:
+            return
+        coins, centre, haut, rotation = pts
+        c = charte.actuelle()
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setPen(QPen(c.c("accent"), 1.5))
+        p.setBrush(Qt.NoBrush)
+        p.drawPolygon(QPolygonF(coins))
+        p.drawLine(haut, rotation)
+        p.drawLine(centre - QPointF(5, 0), centre + QPointF(5, 0))
+        p.drawLine(centre - QPointF(0, 5), centre + QPointF(0, 5))
+        p.setPen(QPen(c.c("bg-app"), 1))
+        p.setBrush(c.c("ink"))
+        for pt in coins:
+            p.drawRect(QRectF(pt.x() - 4, pt.y() - 4, 8, 8))
+        p.drawEllipse(rotation, 4.5, 4.5)
+        p.end()
+
+    def _trouver(self, pos: QPointF) -> str | None:
+        pts = self._points(self.valeurs) if self.valeurs is not None else None
+        if pts is None:
+            return None
+        coins, _, _, rotation = pts
+        if (pos - rotation).manhattanLength() <= self.RAYON * 1.5:
+            return "rotation"
+        for i, pt in enumerate(coins):
+            if abs(pt.x() - pos.x()) <= self.RAYON and abs(pt.y() - pos.y()) <= self.RAYON:
+                return f"coin{i}"
+        if QPolygonF(coins).containsPoint(pos, Qt.OddEvenFill):
+            return "dedans"
+        return None
+
+    def mousePressEvent(self, e):
+        if e.button() != Qt.LeftButton or self.valeurs is None:
+            return
+        quoi = self._trouver(e.position())
+        if quoi is not None:
+            self._prise = (quoi, e.position(), dict(self.valeurs))
+
+    def mouseMoveEvent(self, e):
+        pos = e.position()
+        if self._prise is None:
+            quoi = self._trouver(pos)
+            self.setCursor(Qt.ArrowCursor if quoi is None else Qt.SizeAllCursor
+                           if quoi == "dedans" else Qt.CrossCursor)
+            return
+        self.valeurs = {**self.valeurs, **self.nouvelles(pos, e.modifiers())}
+        self.update()
+        self.glisse.emit(self._reglages())
+
+    def mouseReleaseEvent(self, e):
+        if self._prise is None:
+            return
+        depart = self._prise[1]
+        reglages = self._reglages()
+        self._prise = None
+        if (e.position() - depart).manhattanLength() > 0:
+            self.relache.emit(reglages)
+
+    def _reglages(self) -> dict:
+        quoi = self._prise[0] if self._prise else ""
+        cles = {"dedans": ("x", "y"), "rotation": ("rotation",)}.get(
+            quoi, ("taille", "largeur", "hauteur"))
+        return {k: self.valeurs[k] for k in cles}
+
+    def nouvelles(self, pos: QPointF, modificateurs=Qt.NoModifier) -> dict:
+        """Les réglages du geste en cours, le pointeur en pos."""
+        quoi, depart, v0 = self._prise
+        inverse = self._ecran_seq().inverted()[0]
+        a, b = inverse.map(depart), inverse.map(pos)  # pixels de la séquence
+        l, h = self.taille
+        if quoi == "dedans":
+            return {"x": max(-200.0, min(200.0, v0["x"] + (b.x() - a.x()) / l * 100)),
+                    "y": max(-200.0, min(200.0, v0["y"] + (b.y() - a.y()) / h * 100))}
+        centre = QPointF(l / 2 + v0["x"] / 100 * l, h / 2 + v0["y"] / 100 * h)
+        u, w = a - centre, b - centre
+        if quoi == "rotation":
+            angle = math.degrees(math.atan2(w.y(), w.x()) - math.atan2(u.y(), u.x()))
+            if angle > 180:
+                angle -= 360
+            elif angle < -180:
+                angle += 360
+            nouvelle = v0["rotation"] - angle
+            if modificateurs & Qt.ShiftModifier:
+                nouvelle = round(nouvelle / 15) * 15
+            return {"rotation": max(-720.0, min(720.0, nouvelle))}
+        if modificateurs & Qt.ShiftModifier:
+            # Dans les axes de l'image : largeur et hauteur séparées.
+            r = math.radians(v0["rotation"])
+            ca, sa = math.cos(r), math.sin(r)
+
+            def locale(q):
+                return ca * q.x() - sa * q.y(), sa * q.x() + ca * q.y()
+            (ux, uy), (wx, wy) = locale(u), locale(w)
+            fx = abs(wx / ux) if abs(ux) > 1e-6 else 1.0
+            fy = abs(wy / uy) if abs(uy) > 1e-6 else 1.0
+            return {"largeur": min(1000.0, v0["largeur"] * fx),
+                    "hauteur": min(1000.0, v0["hauteur"] * fy)}
+        n0 = math.hypot(u.x(), u.y())
+        f = math.hypot(w.x(), w.y()) / n0 if n0 > 1e-6 else 1.0
+        return {"taille": min(1000.0, v0["taille"] * f)}
 
 
 class BarreDefilement(QWidget):

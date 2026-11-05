@@ -217,6 +217,8 @@ class Inspecteur(PanneauFiche):
     reglage_masque = Signal(str, str, str, object)
     # Effet dont les masques se modifient sur l'image du programme ("" : aucun).
     edition_masques = Signal(str)
+    # Identifiant du clip dont la transformation se règle sur l'image, ou "" pour arrêter.
+    edition_transformation = Signal(str)
     # Effets à enregistrer comme préréglage personnel (un seul, ou toute la pile).
     enregistrer_prereglage = Signal(object)
     # Texte du badge de l'en-tête (« Clip vidéo », « Clip audio »), vide sans sélection.
@@ -235,6 +237,8 @@ class Inspecteur(PanneauFiche):
         # Tête de lecture du programme : les réglages animés montrent leur valeur à cet instant.
         self.temps = 0
         self.masques_edites = ""
+        # Clip dont la transformation se règle sur l'image du programme.
+        self.transformation_editee = ""
         self._animes: list[tuple] = []
         # Clip affiché pendant la construction de ses effets (source du transfert).
         self._clip_courant = None
@@ -630,6 +634,15 @@ class Inspecteur(PanneauFiche):
             raz = bouton_icone("rotate-ccw", "Réinitialiser", taille=14)
             raz.clicked.connect(lambda: self.reglage_effet.emit(e.id, "reinitialiser", None))
             section.ajouter_outil(raz)
+        sur_image = QPushButton("Sur l'image")
+        sur_image.setCheckable(True)
+        sur_image.setChecked(self.transformation_editee == c.id)
+        sur_image.toggled.connect(lambda v: self.edition_transformation.emit(c.id if v else ""))
+        rang = QHBoxLayout()
+        rang.addSpacing(RETRAIT_LOSANGE)
+        rang.addWidget(sur_image)
+        rang.addStretch(1)
+        self._cible.addLayout(rang)
         t = self.temps - c.debut
         parametres = {p.cle: p for p in EFFETS[transformation.CLE].parametres}
         for cle in transformation.REGLAGES:

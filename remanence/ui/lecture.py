@@ -30,7 +30,7 @@ COMPARAISONS = {"apres": "Après", "avant": "Avant", "volet": "Volet", "cote": "
 
 
 def _suivant(compositeur: Compositeur | None, projet: Projet | None) -> Compositeur | None:
-    """Le compositeur de la nouvelle version du projet : le même, s'il existe déjà."""
+    """Le compositeur de la nouvelle version du projet : le même, s'il existe déjà."""
     if projet is None:
         if compositeur is not None:
             compositeur.fermer()

@@ -1,17 +1,17 @@
-"""Transformation d'un clip : position, taille, rotation, recadrage, retournement.
+"""Transformation d'un clip : position, taille, rotation, recadrage, retournement.
 
-Elle est rangée dans `Clip.transformation`, sous la forme d'un effet interne : images clés,
+Elle est rangée dans `Clip.transformation`, sous la forme d'un effet interne : images clés,
 courbes et modulateurs s'y appliquent comme aux autres effets. Le composeur la place après
-les effets du clip et avant ceux de sa piste (`composition.couches`) : un clip glitché et
+les effets du clip et avant ceux de sa piste (`composition.couches`) : un clip glitché et
 réduit garde son glitch dans son cadre, comme dans Vegas.
 
-Repères : position en % de la largeur (X) et de la hauteur (Y) de la séquence, vers la droite
-et vers le bas ; taille en %, multipliée par la largeur et la hauteur ; rotation en degrés,
-positive dans le sens inverse des aiguilles d'une montre ; recadrage en % du cadre de l'image
+Repères : position en % de la largeur (X) et de la hauteur (Y) de la séquence, vers la droite
+et vers le bas ; taille en %, multipliée par la largeur et la hauteur ; rotation en degrés,
+positive dans le sens inverse des aiguilles d'une montre ; recadrage en % du cadre de l'image
 (l'image du média telle qu'elle tient dans la séquence), rogné de chaque côté avant la
 transformation. Le centre de rotation et de taille est le centre de la séquence.
 
-Sans transformation (tous les réglages à leur valeur de départ), le clip n'en reçoit aucune :
+Sans transformation (tous les réglages à leur valeur de départ), le clip n'en reçoit aucune :
 ses pixels restent ceux de la source, au bit près.
 """
 
@@ -22,7 +22,7 @@ from remanence.projet.modele import Effet, nouvel_id
 
 CLE = "transformation"
 
-# Cadre de l'image du clip dans la séquence, en fraction : posé par le composeur à chaque
+# Cadre de l'image du clip dans la séquence, en fraction : posé par le composeur à chaque
 # image, jamais montré dans l'inspecteur.
 CADRE = ("cadre_x", "cadre_y", "cadre_l", "cadre_h")
 
@@ -152,7 +152,7 @@ DEFAUTS = {p.cle: p.defaut for p in DESCRIPTION.parametres}
 
 
 def id_pour(clip_id: str) -> str:
-    """L'identifiant de la transformation d'un clip, connu avant qu'elle n'existe : la section
+    """L'identifiant de la transformation d'un clip, connu avant qu'elle n'existe : la section
     de l'inspecteur, les courbes et les modulateurs la visent, le premier réglage la crée."""
     return "tr-" + clip_id
 
@@ -163,14 +163,50 @@ def nouvelle(clip_id: str | None = None) -> Effet:
 
 
 def neutre(valeurs: dict) -> bool:
-    """Aucun changement de l'image : le composeur n'applique rien."""
+    """Aucun changement de l'image : le composeur n'applique rien."""
     return all(abs(float(valeurs.get(k, DEFAUTS[k])) - DEFAUTS[k]) < 1e-9 for k in REGLAGES)
 
 
 def cadre(largeur_media: int, hauteur_media: int, largeur: int, hauteur: int) -> dict:
-    """Le cadre de l'image du média dans la séquence, en fraction : l'image tient entière,
+    """Le cadre de l'image du média dans la séquence, en fraction : l'image tient entière,
     centrée, comme la place le composeur."""
     s = min(largeur / largeur_media, hauteur / hauteur_media)
     lp, hp = max(2, round(largeur_media * s)), max(2, round(hauteur_media * s))
     return {"cadre_x": (largeur - lp) // 2 / largeur, "cadre_y": (hauteur - hp) // 2 / hauteur,
             "cadre_l": lp / largeur, "cadre_h": hp / hauteur}
+
+
+def matrice(valeurs: dict, largeur: int, hauteur: int):
+    """La transformation en matrice 3 × 3, du calque (pixels de la séquence, image du clip
+    avant transformation) vers l'image de la séquence : le calcul inverse de celui du
+    programme. Sert aux poignées et aux masques posés sur l'image."""
+    import math
+
+    import numpy as np
+    v = {**DEFAUTS, **valeurs}
+    sx = v["taille"] * v["largeur"] / 10000.0 * (-1 if v["miroir_h"] > 0.5 else 1)
+    sy = v["taille"] * v["hauteur"] / 10000.0 * (-1 if v["miroir_v"] > 0.5 else 1)
+    a = math.radians(v["rotation"])
+    ca, sa = math.cos(a), math.sin(a)
+    cx, cy = largeur / 2, hauteur / 2
+    centre = np.array([[1, 0, cx], [0, 1, cy], [0, 0, 1]], float)
+    retour = np.array([[1, 0, -cx], [0, 1, -cy], [0, 0, 1]], float)
+    echelle = np.diag([sx, sy, 1.0])
+    # Sens inverse des aiguilles d'une montre à l'écran (y vers le bas).
+    rotation = np.array([[ca, sa, 0], [-sa, ca, 0], [0, 0, 1]], float)
+    deplacement = np.array([[1, 0, v["x"] / 100 * largeur], [0, 1, v["y"] / 100 * hauteur],
+                            [0, 0, 1]], float)
+    return deplacement @ centre @ rotation @ echelle @ retour
+
+
+def coins(valeurs: dict, largeur: int, hauteur: int) -> list[tuple[float, float]]:
+    """Les quatre coins de l'image recadrée, dans le calque (pixels de la séquence) : haut
+    gauche, haut droit, bas droit, bas gauche."""
+    v = {**DEFAUTS, **valeurs}
+    x0, y0 = v["cadre_x"] * largeur, v["cadre_y"] * hauteur
+    l, h = v["cadre_l"] * largeur, v["cadre_h"] * hauteur
+    g = x0 + l * v["rognage_gauche"] / 100
+    d = x0 + l * (1 - v["rognage_droite"] / 100)
+    hh = y0 + h * v["rognage_haut"] / 100
+    b = y0 + h * (1 - v["rognage_bas"] / 100)
+    return [(g, hh), (d, hh), (d, b), (g, b)]

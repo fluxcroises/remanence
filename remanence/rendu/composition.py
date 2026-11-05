@@ -52,9 +52,9 @@ def actifs(effets: list[Effet], t: float = 0, decalages: dict | None = None) -> 
 
 def transformee(c: Clip, media: Media | None, seq: Sequence, t: float,
                 decalages: dict | None = None) -> list[Effet]:
-    """La transformation du clip au temps t (depuis son début), avec le cadre de son image ;
+    """La transformation du clip au temps t (depuis son début), avec le cadre de son image ;
     aucune si elle ne change rien. Elle agit avant la première image clé et après la
-    dernière : une position animée reste là où elle arrive."""
+    dernière : une position animée reste là où elle arrive."""
     base = c.transformation
     if base is None:
         # Un modulateur peut viser la transformation avant qu'elle n'existe.
@@ -151,7 +151,7 @@ def sequence_par_id(projet: Projet, sequence_id: str) -> Sequence | None:
 
 
 def visibles(pile: list[Couche], seq: Sequence) -> list[Couche]:
-    """La pile sans les couches entièrement cachées : sous une image opaque, sans effet, en
+    """La pile sans les couches entièrement cachées : sous une image opaque, sans effet, en
     mode normal, qui couvre toute la séquence, rien ne se voit (le mélange normal d'une image
     opaque donne exactement cette image). Évite de décoder six pistes pour n'en montrer
     qu'une."""
@@ -200,7 +200,7 @@ class Compositeur:
         self._gpu: RenduGPU | None = None
 
     def changer_projet(self, projet: Projet):
-        """Nouvelle version du projet : les décodeurs et le contexte de la carte graphique
+        """Nouvelle version du projet : les décodeurs et le contexte de la carte graphique
         restent ouverts (les rouvrir à chaque réglage déplacé coûtait des dizaines de ms)."""
         self.projet = projet
         self.manquants = set()
@@ -246,7 +246,7 @@ class Compositeur:
 
     def image(self, seq: Sequence, f: int, echelle: float = 1.0, proxy: bool = False,
               ecran: bool = False) -> np.ndarray:
-        """RVBA float32 prémultiplié ; ecran : RVB float16 lu tel quel sur la carte graphique
+        """RVBA float32 prémultiplié ; ecran : RVB float16 lu tel quel sur la carte graphique
         (aperçu), si elle est là."""
         largeur = max(2, round(seq.largeur * echelle))
         hauteur = max(2, round(seq.hauteur * echelle))

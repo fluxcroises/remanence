@@ -52,7 +52,7 @@ class Courbe:
 
 
 def courbes_de(porteur, seq=None) -> list[Courbe]:
-    """Les réglages animables des effets d'un clip, d'une piste ou de la séquence ; pour un
+    """Les réglages animables des effets d'un clip, d'une piste ou de la séquence ; pour un
     clip d'une piste vidéo de seq, ceux de sa transformation à la suite."""
     resultat = []
     for e in porteur.effets:

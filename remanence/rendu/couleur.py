@@ -147,9 +147,9 @@ def depuis_rvba(rvba: np.ndarray, pix_fmt: str, couleur: Couleur) -> av.VideoFra
     tampons = [np.zeros((plan.height, plan.line_size // octets), dtype) for plan in image.planes]
     alpha = len(image.planes) >= 4
     complete = _plage_complete(fmt, couleur)
-    # Bandes de lignes calculées en parallèle (NumPy libère le verrou de Python) : en UHD,
-    # la conversion d'une image prenait 0,3 s sur un seul cœur. Chaque bande fait le même
-    # calcul que l'image entière : le résultat ne change pas.
+    # Bandes de lignes calculées en parallèle (NumPy libère le verrou de Python) : en UHD,
+    # la conversion d'une image prenait 0,3 s sur un seul cœur. Chaque bande fait le même
+    # calcul que l'image entière : le résultat ne change pas.
     pas = max(fy, (h // (_FILS * 2) // fy) * fy)
     bandes = [(r, min(h, r + pas)) for r in range(0, h, pas)]
 

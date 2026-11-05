@@ -1,4 +1,4 @@
-"""Étape 8, lot 1 : position, taille, rotation, recadrage et retournement des clips."""
+"""Étape 8, lot 1 : position, taille, rotation, recadrage et retournement des clips."""
 
 import numpy as np
 
@@ -45,7 +45,7 @@ def test_sans_transformation_rien_ne_change(medias, tmp_path):
 def test_deplacement_au_pixel_pres(medias):
     projet, clip = _projet(medias)
     source = _image(projet)
-    # 320 × 180 : 10 px à droite, 9 px vers le bas.
+    # 320 × 180 : 10 px à droite, 9 px vers le bas.
     _transformer(clip, x=10 / 320 * 100, y=9 / 180 * 100)
     image = _image(projet)
     assert identite(couches(projet, projet.sequence, 5), projet.sequence, 5) is None
@@ -69,12 +69,12 @@ def test_rotation_d_un_quart_de_tour(medias):
     source = _image(projet)
     _transformer(clip, rotation=90)
     image = _image(projet)
-    # Sens inverse des aiguilles d'une montre : le bord droit de la source monte en haut.
-    # Le carré central de 180 × 180 se retrouve tourné.
+    # Sens inverse des aiguilles d'une montre : le bord droit de la source monte en haut.
+    # Le carré central de 180 × 180 se retrouve tourné.
     c = source[:, 70:250]
     attendu = np.rot90(c, 1)
     assert np.abs(image[:, 70:250] - attendu).max() < 1e-4
-    assert not image[:, :20].any()  # hors de l'image tournée : transparent
+    assert not image[:, :20].any()  # hors de l'image tournée : transparent
 
 
 def test_reduction_et_recadrage(medias):
@@ -93,7 +93,7 @@ def test_reduction_et_recadrage(medias):
 
 
 def test_animation_exportee_deux_fois(medias, tmp_path):
-    """Validation : une position animée donne deux exports identiques, conformes à
+    """Validation : une position animée donne deux exports identiques, conformes à
     l'aperçu."""
     projet, clip = _projet(medias)
     t = _transformer(clip, rotation=15, taille=70)
