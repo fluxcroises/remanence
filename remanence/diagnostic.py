@@ -35,7 +35,9 @@ def lignes() -> list[tuple[str, bool, str]]:
             raise RuntimeError("charte ou fiches d'aide introuvables")
         if not (charte.RESSOURCES / "guide" / "index.html").exists():
             raise RuntimeError("guide introuvable")
-        return f"{len(polices)} polices, {len(aide.fiches())} fiches, guide"
+        if not (charte.RACINE / "NOTES_DE_VERSION.md").exists():
+            raise RuntimeError("notes de version introuvables")
+        return f"{len(polices)} polices, {len(aide.fiches())} fiches, guide, notes de version"
 
     def echanges():
         import opentimelineio as otio

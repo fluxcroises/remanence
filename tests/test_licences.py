@@ -42,3 +42,19 @@ def test_guide():
     images = re.findall(r'src="([^"]+)"', texte)
     assert len(images) > 30 and all((guide / s).resolve().exists() for s in images)
     assert "{NB}" not in texte and "Ctrl+Z" in texte
+
+
+def test_version_et_notes():
+    """Étape 10, lot 1 : version 1.0.0 sur trois nombres (propriétés du programme), notes
+    de version de cette version, dans un onglet d'À propos."""
+    from PySide6.QtWidgets import QApplication
+    from remanence import __version__
+    from remanence.ui.apropos import APropos
+    QApplication.instance() or QApplication([])
+    from remanence.ui.charte import RACINE
+    assert [int(x) for x in __version__.split(".")] == [1, 0, 0]
+    notes = (RACINE / "NOTES_DE_VERSION.md").read_text(encoding="utf-8")
+    assert f"## Remanence {__version__}" in notes and "—" not in notes
+    fenetre = APropos()
+    assert [fenetre.onglets.tabText(i) for i in range(fenetre.onglets.count())] ==         ["Notes de version", "Licences"]
+    assert "Limites connues" in fenetre.onglets.widget(0).toPlainText()

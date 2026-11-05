@@ -7,8 +7,8 @@ from pathlib import Path
 
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QTextBrowser,
-                               QVBoxLayout)
+from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QTabWidget,
+                               QTextBrowser, QVBoxLayout)
 
 from remanence import EDITEUR, LICENCE, __version__
 from remanence.ui import charte
@@ -47,12 +47,16 @@ class APropos(QDialog):
         texte = etiquette(f"Édité par {EDITEUR}. Logiciel libre, licence {LICENCE}.", "")
         texte.setWordWrap(True)
         lay.addWidget(texte)
-        licences = QTextBrowser()
-        licences.setOpenExternalLinks(True)
-        fichier = RACINE / "LICENCES.md"
-        licences.setMarkdown(fichier.read_text(encoding="utf-8") if fichier.exists()
-                             else "Le fichier LICENCES.md est introuvable.")
-        lay.addWidget(licences, 1)
+        self.onglets = QTabWidget()
+        for nom, titre in (("NOTES_DE_VERSION.md", "Notes de version"),
+                           ("LICENCES.md", "Licences")):
+            texte = QTextBrowser()
+            texte.setOpenExternalLinks(True)
+            fichier = RACINE / nom
+            texte.setMarkdown(fichier.read_text(encoding="utf-8") if fichier.exists()
+                              else f"{nom} introuvable")
+            self.onglets.addTab(texte, titre)
+        lay.addWidget(self.onglets, 1)
         boutons = QDialogButtonBox(QDialogButtonBox.Close)
         boutons.button(QDialogButtonBox.Close).setText("Fermer")
         boutons.rejected.connect(self.accept)

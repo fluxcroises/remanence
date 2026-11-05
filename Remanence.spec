@@ -35,6 +35,7 @@ datas = [
     (chemin("UI", "charte", "tokens.json"), os.path.join("UI", "charte")),
     (chemin("UI", "charte", "assets", "Logos"), os.path.join("UI", "charte", "assets", "Logos")),
     (chemin("LICENCES.md"), "."),
+    (chemin("NOTES_DE_VERSION.md"), "."),
 ]
 # OpenTimelineIO trouve ses formats (EDL, FCP XML) par les métadonnées des paquets.
 for paquet in ("opentimelineio", "otio-cmx3600-adapter", "otio-fcp-adapter"):
@@ -118,6 +119,7 @@ def copier_licences():
     shutil.rmtree(dossier, ignore_errors=True)
     os.makedirs(dossier)
     shutil.copy(chemin("LICENCES.md"), livre)
+    shutil.copy(chemin("NOTES_DE_VERSION.md"), livre)
     ressources = chemin("remanence", "ressources")
     for source in (os.path.join(ressources, "licences"),):
         for nom in os.listdir(source):
