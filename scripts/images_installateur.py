@@ -1,7 +1,7 @@
 """Fabrique les images de l'installateur (Inno Setup) aux couleurs de la charte, dans
-build/installateur : le grand panneau des pages d'accueil et de fin (fond de l'application,
+build/installateur : le grand panneau des pages d'accueil et de fin (fond de l'application,
 symbole de Remanence) et la petite image en haut à droite des autres pages (l'icône de
-l'application). En BMP 24 bits, à plusieurs tailles pour les écrans agrandis.
+l'application). En BMP 24 bits, à plusieurs tailles pour les écrans agrandis.
 
     .venv\\Scripts\\python.exe scripts\\images_installateur.py
 """
@@ -19,7 +19,7 @@ from PySide6.QtGui import QImage, QPainter  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 SORTIE = RACINE / "build" / "installateur"
-# Tailles d'Inno Setup à 100, 150 et 200 % : grand panneau, petite image.
+# Tailles d'Inno Setup à 100, 150 et 200 % : grand panneau, petite image.
 GRANDES = ((164, 314), (246, 459), (328, 628))
 PETITES = (55, 83, 110)
 
