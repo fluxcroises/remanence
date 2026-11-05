@@ -592,7 +592,8 @@ def _renouveler_effets(c: Clip):
         for m in e.masques:
             m.id = nouvel_id()
     if c.transformation is not None:
-        c.transformation.id = nouvel_id()
+        from remanence.effets.transformation import id_pour
+        c.transformation.id = id_pour(c.id)
 
 
 def porteurs_effets(seq: Sequence):
@@ -603,11 +604,23 @@ def porteurs_effets(seq: Sequence):
         yield from p.clips
 
 
-def trouver_effet(seq: Sequence, effet_id: str):
+def trouver_effet(seq: Sequence, effet_id: str, creer: bool = False):
+    """(porteur, effet) ; la transformation d'un clip compte (porteur : le clip). creer : la
+    transformation visée par son identifiant (`transformation.id_pour`) est créée si elle
+    manque encore."""
     for porteur in porteurs_effets(seq):
         for e in porteur.effets:
             if e.id == effet_id:
                 return porteur, e
+        t = getattr(porteur, "transformation", None)
+        if t is not None and t.id == effet_id:
+            return porteur, t
+    if creer and effet_id.startswith("tr-"):
+        from remanence.effets.transformation import nouvelle
+        piste, c = seq.trouver(effet_id[3:])
+        if c is not None and piste.type == "video" and not c.est_effet:
+            c.transformation = nouvelle(c.id)
+            return c, c.transformation
     return None, None
 
 
@@ -625,14 +638,14 @@ def ajouter_effet(porteur, effet: Effet):
 
 def retirer_effet(seq: Sequence, effet_id: str):
     porteur, e = trouver_effet(seq, effet_id)
-    if porteur is not None:
+    if porteur is not None and e in porteur.effets:
         porteur.effets.remove(e)
 
 
 def deplacer_effet(seq: Sequence, effet_id: str, sens: int):
     """Monte (sens -1) ou descend (sens 1) un effet dans sa chaîne."""
     porteur, e = trouver_effet(seq, effet_id)
-    if porteur is None:
+    if porteur is None or e not in porteur.effets:
         return
     i = porteur.effets.index(e)
     j = max(0, min(len(porteur.effets) - 1, i + sens))

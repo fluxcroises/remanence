@@ -1463,10 +1463,16 @@ class FenetrePrincipale(QMainWindow):
         self.timeline.vue._choisir({clip.id})
 
     def reglage_effet(self, effet_id: str, champ: str, valeur):
-        porteur, e = edition.trouver_effet(self.projet.sequence, effet_id)
+        # La transformation d'un clip naît à son premier réglage.
+        porteur, e = edition.trouver_effet(self.projet.sequence, effet_id,
+                                           creer=champ != "reinitialiser")
         if e is None:
             return
         nom = EFFETS[e.type].nom if e.type in EFFETS else e.type
+        if isinstance(porteur, Clip) and e is porteur.transformation and                 champ == "reinitialiser":
+            porteur.transformation = None
+            QTimer.singleShot(0, lambda: self.valider("Transformation réinitialisée"))
+            return
         if champ == "retirer":
             porteur.effets.remove(e)
             libelle = f"Effet {nom} retiré"

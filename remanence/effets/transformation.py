@@ -38,12 +38,12 @@ DESCRIPTION = DescriptionEffet(
         Parametre("largeur", "Largeur", 0, 1000, 100, "%", 1),
         Parametre("hauteur", "Hauteur", 0, 1000, 100, "%", 1),
         Parametre("rotation", "Rotation", -720, 720, 0, "°", 1),
-        Parametre("rognage_gauche", "Gauche", 0, 100, 0, "%", 1),
-        Parametre("rognage_droite", "Droite", 0, 100, 0, "%", 1),
-        Parametre("rognage_haut", "Haut", 0, 100, 0, "%", 1),
-        Parametre("rognage_bas", "Bas", 0, 100, 0, "%", 1),
-        Parametre("miroir_h", "Retourner à l'horizontale", 0, 1, 0, booleen=True),
-        Parametre("miroir_v", "Retourner à la verticale", 0, 1, 0, booleen=True),
+        Parametre("rognage_gauche", "Rognage gauche", 0, 100, 0, "%", 1),
+        Parametre("rognage_droite", "Rognage droite", 0, 100, 0, "%", 1),
+        Parametre("rognage_haut", "Rognage haut", 0, 100, 0, "%", 1),
+        Parametre("rognage_bas", "Rognage bas", 0, 100, 0, "%", 1),
+        Parametre("miroir_h", "Miroir horizontal", 0, 1, 0, booleen=True),
+        Parametre("miroir_v", "Miroir vertical", 0, 1, 0, booleen=True),
         Parametre("cadre_x", "Cadre X", 0, 1, 0, decimales=6),
         Parametre("cadre_y", "Cadre Y", 0, 1, 0, decimales=6),
         Parametre("cadre_l", "Cadre L", 0, 1, 1, decimales=6),
@@ -151,8 +151,15 @@ REGLAGES = [p.cle for p in DESCRIPTION.parametres if p.cle not in CADRE]
 DEFAUTS = {p.cle: p.defaut for p in DESCRIPTION.parametres}
 
 
-def nouvelle() -> Effet:
-    return Effet(nouvel_id(), CLE, {k: DEFAUTS[k] for k in REGLAGES})
+def id_pour(clip_id: str) -> str:
+    """L'identifiant de la transformation d'un clip, connu avant qu'elle n'existe : la section
+    de l'inspecteur, les courbes et les modulateurs la visent, le premier réglage la crée."""
+    return "tr-" + clip_id
+
+
+def nouvelle(clip_id: str | None = None) -> Effet:
+    return Effet(id_pour(clip_id) if clip_id else nouvel_id(), CLE,
+                 {k: DEFAUTS[k] for k in REGLAGES})
 
 
 def neutre(valeurs: dict) -> bool:

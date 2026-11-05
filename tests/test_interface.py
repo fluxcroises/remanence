@@ -716,9 +716,10 @@ def test_effets_ffglitch_dans_l_inspecteur(fenetre, medias, monkeypatch):
     textes = lambda: [l.text() for l in w.inspecteur.findChildren(QLabel)
                       if l.isVisibleTo(w.inspecteur)]
     assert _attendre(lambda: "aucun clip au-dessus" in textes(), 2)
-    # Vecteurs : 7 réglages et l'opacité ; transfert : 2 réglages et l'opacité.
+    # Vecteurs : 7 réglages et l'opacité ; transfert : 2 réglages et l'opacité ; et les 12
+    # réglages de la transformation du clip.
     assert _attendre(lambda: len([b for b in w.inspecteur.findChildren(BoutonCle)
-                                  if b.isVisibleTo(w.inspecteur)]) == 11, 2)
+                                  if b.isVisibleTo(w.inspecteur)]) == 23, 2)
     effet_id = w.projet.sequence.pistes_video[0].clips[0].effets[0].id
     w.aller_a(4)
     w.reglage_effet(effet_id, "cle:horizontal", None)
@@ -1378,3 +1379,47 @@ def test_file_export_nom_long(app):
     assert ligne.bouton.geometry().right() <= ligne.width()
     assert "…" in ligne.nom.text() and ligne.nom.toolTip().endswith(".mov")
     f.close()
+
+def test_transformation_depuis_l_inspecteur(fenetre, medias):
+    """Étape 8, lot 2 : section Transformation, images clés, courbes, modulateur, remise à zéro."""
+    from remanence.effets import transformation
+    from remanence.ui.composants import LigneParametre, SectionRepliable
+    from remanence.ui.panneau_courbes import courbes_de
+    from remanence.rendu.composition import couches
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+
+    def clip():
+        return w.projet.sequence.pistes_video[0].clips[0]
+    w.timeline.vue._choisir({clip().id})
+    titres = lambda: {s.titre.text() for s in w.inspecteur.findChildren(SectionRepliable)
+                      if s.isVisibleTo(w.inspecteur)}
+    assert _attendre(lambda: "Transformation" in titres(), 2)
+    libelles = {l.libelle.text() for l in w.inspecteur.findChildren(LigneParametre)}
+    assert {"Position X", "Taille", "Rotation", "Rognage gauche"} <= libelles
+    assert clip().transformation is None
+    # La transformation naît au premier réglage.
+    cible = transformation.id_pour(clip().id)
+    w.reglage_effet(cible, "taille", 50.0)
+    assert _attendre(lambda: clip().transformation is not None
+                     and clip().transformation.params["taille"] == 50.0, 2)
+    seq = w.projet.sequence
+    assert couches(w.projet, seq, 3)[0].effets
+    # Images clés de la rotation, et courbes dans le panneau.
+    w.aller_a(2)
+    w.reglage_effet(cible, "cle:rotation", None)
+    w.aller_a(20)
+    assert _attendre(lambda: "rotation" in clip().transformation.cles, 2)
+    w.reglage_effet(cible, "rotation", 45.0)
+    assert _attendre(lambda: len(clip().transformation.cles["rotation"]) == 2, 2)
+    noms = [c.nom for c in courbes_de(clip(), seq)]
+    assert "Transformation · Rotation" in noms and "Transformation · Cadre X" not in noms
+    assert not courbes_de(seq.pistes_audio[0].clips[0], seq)
+    # Un modulateur peut viser la position.
+    w.reglage_modulateur("", "ajouter", ["oscillateur", [cible, "x"]])
+    assert _attendre(lambda: w.projet.sequence.modulateurs, 2)
+    # Réinitialiser : plus de transformation, l'image redevient la source.
+    w.reglage_effet(cible, "reinitialiser", None)
+    assert _attendre(lambda: clip().transformation is None, 2)

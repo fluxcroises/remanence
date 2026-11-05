@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QGridLayout, 
                                QMenu, QPushButton, QScrollArea, QSizePolicy, QToolButton,
                                QVBoxLayout, QWidget)
 
-from remanence.effets import EFFETS, courbes, masque_a, transitions, valeur_a
+from remanence.effets import EFFETS, courbes, masque_a, transformation, transitions, valeur_a
 from remanence.moteurs.codec import ffglitch, scripts
 from remanence.projet import edition
 from remanence.media.timecode import images_vers_tc
@@ -424,6 +424,9 @@ class Inspecteur(PanneauFiche):
         if c.titre is not None:
             self._section_titre(c)
 
+        if video and not c.est_effet:
+            self._section_transformation(c)
+
         section = self._section("Niveau et fondus", "niveau")
         if c.gain != 1.0 or c.fondu_entree or c.fondu_sortie:
             raz = bouton_icone("rotate-ccw", "Réinitialiser",
@@ -617,6 +620,38 @@ class Inspecteur(PanneauFiche):
         rang.addWidget(bouton)
         rang.addStretch(1)
         self._cible.addLayout(rang)
+
+    def _section_transformation(self, c):
+        """Position, taille, rotation, recadrage, retournement. Sans transformation, les
+        réglages visent celle que le premier réglage créera (`transformation.id_pour`)."""
+        e = c.transformation or transformation.nouvelle(c.id)
+        section = self._section("Transformation", "transformation")
+        if c.transformation is not None:
+            raz = bouton_icone("rotate-ccw", "Réinitialiser", taille=14)
+            raz.clicked.connect(lambda: self.reglage_effet.emit(e.id, "reinitialiser", None))
+            section.ajouter_outil(raz)
+        t = self.temps - c.debut
+        parametres = {p.cle: p for p in EFFETS[transformation.CLE].parametres}
+        for cle in transformation.REGLAGES:
+            p = parametres[cle]
+            bouton = self._bouton_cle(e, cle, c.debut)
+            if p.booleen:
+                case = QCheckBox(p.nom)
+                case.setChecked(valeur_a(e, cle, t) > 0.5)
+                case.toggled.connect(lambda v, cle=cle: self.reglage_effet.emit(
+                    e.id, cle, 1.0 if v else 0.0))
+                rang = QHBoxLayout()
+                rang.setSpacing(8)
+                rang.addWidget(bouton)
+                rang.addWidget(case, 1)
+                self._cible.addLayout(rang)
+                self._animes.append((e, cle, c.debut, case, bouton, 1.0))
+                continue
+            ligne = LigneParametre(p.nom, p.minimum, p.maximum, valeur_a(e, cle, t), p.unite,
+                                   p.defaut, p.decimales, cle=bouton)
+            ligne.valeur_finale.connect(lambda v, cle=cle: self.reglage_effet.emit(e.id, cle, v))
+            self._cible.addWidget(ligne)
+            self._animes.append((e, cle, c.debut, ligne, bouton, 1.0))
 
     def _choix_transition(self, c):
         """Lignes « Transition » (l'allure du fondu d'entrée) et, pour un volet, « Direction »."""

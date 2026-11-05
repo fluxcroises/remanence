@@ -19,7 +19,8 @@ from PySide6.QtGui import QPainter, QPainterPath, QPen, QPolygonF
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QHBoxLayout, QListWidget, QListWidgetItem,
                                QMenu, QPushButton, QToolButton, QVBoxLayout, QWidget)
 
-from remanence.effets import EFFETS, courbes, modulateurs, valeur
+from remanence.effets import EFFETS, courbes, modulateurs, transformation, valeur
+from remanence.projet.modele import Clip
 from remanence.moteurs.audio import BANDES
 from remanence.ui import charte, midi
 from remanence.ui.composants import LigneParametre, bouton_icone, etiquette, poser_icone
@@ -50,8 +51,9 @@ class Courbe:
         return courbes.interpoler(cles, t) if cles else self.fixe()
 
 
-def courbes_de(porteur) -> list[Courbe]:
-    """Les réglages animables des effets d'un clip, d'une piste ou de la séquence."""
+def courbes_de(porteur, seq=None) -> list[Courbe]:
+    """Les réglages animables des effets d'un clip, d'une piste ou de la séquence ; pour un
+    clip d'une piste vidéo de seq, ceux de sa transformation à la suite."""
     resultat = []
     for e in porteur.effets:
         d = EFFETS.get(e.type)
@@ -82,6 +84,36 @@ def courbes_de(porteur) -> list[Courbe]:
                     lambda m=m, c=champ: getattr(m, c),
                     lambda v, m=m, c=champ: (m.cles.pop(c, None), setattr(m, c, v)),
                     mini, 25.0))
+    return resultat + _courbes_transformation(porteur, seq)
+
+
+def _courbes_transformation(c, seq) -> list[Courbe]:
+    if not isinstance(c, Clip) or seq is None or c.est_effet:
+        return []
+    piste, _ = seq.trouver(c.id)
+    if piste is None or piste.type != "video":
+        return []
+
+    def creee():
+        # La transformation naît à sa première image clé.
+        if c.transformation is None:
+            c.transformation = transformation.nouvelle(c.id)
+        return c.transformation
+
+    resultat = []
+    d = EFFETS[transformation.CLE]
+    eid = c.transformation.id if c.transformation is not None else transformation.id_pour(c.id)
+    for p in d.parametres:
+        if p.cle in transformation.CADRE:
+            continue
+        resultat.append(Courbe(
+            f"{d.nom} · {p.nom}",
+            lambda k=p.cle: c.transformation.cles.get(k) if c.transformation else None,
+            lambda k=p.cle: creee().cles.setdefault(k, []),
+            lambda k=p.cle: valeur(c.transformation, k) if c.transformation
+            else transformation.DEFAUTS[k],
+            lambda v, k=p.cle: (creee().cles.pop(k, None), creee().params.__setitem__(k, v)),
+            p.minimum, p.maximum, p.booleen, eid, p.cle))
     return resultat
 
 
@@ -594,7 +626,7 @@ class PanneauCourbes(QWidget):
         self.fiche.pistes_audio = {"": "Toutes les pistes", **{
             p.id: p.nom for p in (seq.pistes_audio if seq is not None else [])}}
         self.graphe.duree = max(1, duree)
-        self.graphe.courbes = courbes_de(porteur) if porteur is not None else []
+        self.graphe.courbes = courbes_de(porteur, seq) if porteur is not None else []
         self.liste.blockSignals(True)
         self.liste.clear()
         for courbe in self.graphe.courbes:
@@ -627,7 +659,7 @@ class PanneauCourbes(QWidget):
             return noms
         porteurs = [self.seq] + self.seq.pistes + [c for p in self.seq.pistes for c in p.clips]
         for porteur in porteurs:
-            for courbe in courbes_de(porteur):
+            for courbe in courbes_de(porteur, self.seq):
                 if courbe.effet_id is not None:
                     noms[(courbe.effet_id, courbe.cle)] = courbe.nom
         return noms

@@ -55,14 +55,21 @@ def transformee(c: Clip, media: Media | None, seq: Sequence, t: float,
     """La transformation du clip au temps t (depuis son début), avec le cadre de son image ;
     aucune si elle ne change rien. Elle agit avant la première image clé et après la
     dernière : une position animée reste là où elle arrive."""
-    if c.transformation is None or not c.transformation.actif:
+    base = c.transformation
+    if base is None:
+        # Un modulateur peut viser la transformation avant qu'elle n'existe.
+        cible = transformation.id_pour(c.id)
+        if not any(eid == cible for eid, _ in (decalages or {})):
+            return []
+        base = transformation.nouvelle(c.id)
+    if not base.actif:
         return []
-    e = instantane(c.transformation, t, decalages)
+    e = instantane(base, t, decalages)
     if transformation.neutre(e.params):
         return []
     v = media.infos.video if media is not None else None
     cadre = transformation.cadre(v.largeur, v.hauteur, seq.largeur, seq.hauteur) if v         else {"cadre_x": 0.0, "cadre_y": 0.0, "cadre_l": 1.0, "cadre_h": 1.0}
-    if e is c.transformation:
+    if e is base:
         e = copy.copy(e)
     e.params = {**e.params, **cadre}
     return [e]
