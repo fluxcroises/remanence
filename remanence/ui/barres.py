@@ -113,9 +113,10 @@ class BarreTitre(QWidget):
 
 
 ESPACES = [("media", "Média", "folder", "Média (Maj+1)"),
-           ("montage", "Montage", "clapperboard", "Montage (Maj+2)"),
-           ("effets", "Effets", "layers", "Effets (Maj+3)"),
-           ("export", "Export", "upload", "Export (Maj+4)")]
+           ("cut", "Cut", "scissors", "Cut (Maj+2)"),
+           ("montage", "Montage", "clapperboard", "Montage (Maj+3)"),
+           ("effets", "Effets", "layers", "Effets (Maj+4)"),
+           ("export", "Export", "upload", "Export (Maj+5)")]
 
 
 class BarreEspaces(QWidget):

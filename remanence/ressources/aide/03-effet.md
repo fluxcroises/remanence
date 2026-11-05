@@ -2,7 +2,7 @@
 
 ![Bibliothèque d'effets](bibliotheque.png)
 
-1. Ouvrez l'onglet **Effets**, à côté de Média, ou passez dans l'espace **Effets** (Maj+3).
+1. Ouvrez l'onglet **Effets**, à côté de Média, ou passez dans l'espace **Effets** (Maj+4).
 2. Survolez une tuile pour voir l'effet en mouvement.
 3. Glissez la tuile sur un clip. Ou sélectionnez le clip et double-cliquez la tuile.
 4. Réglez l'effet dans l'**inspecteur**, à droite.

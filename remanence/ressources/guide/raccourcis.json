@@ -211,16 +211,20 @@
     "Shift+1"
    ],
    [
-    "Espace Montage",
+    "Espace Cut",
     "Shift+2"
    ],
    [
-    "Espace Effets",
+    "Espace Montage",
     "Shift+3"
    ],
    [
-    "Espace Export",
+    "Espace Effets",
     "Shift+4"
+   ],
+   [
+    "Espace Export",
+    "Shift+5"
    ],
    [
     "Basculer avant / après",

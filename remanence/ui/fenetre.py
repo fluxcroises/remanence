@@ -71,6 +71,8 @@ HAUTEUR_HABILLAGE_MONITEUR = 118
 # Panneaux visibles dans chaque espace de travail.
 PANNEAUX_ESPACE = {
     "media": {"medias", "source", "droite"},
+    # Montage rapide, façon page Cut de Resolve : médias, un grand moniteur, la timeline.
+    "cut": {"medias", "visionneuse", "timeline"},
     "montage": {"medias", "source", "visionneuse", "droite", "timeline", "courbes"},
     # Compression : facultatif, ouvert depuis le menu Fenêtre.
     "effets": {"medias", "visionneuse", "droite", "timeline", "analyse", "courbes"},
@@ -358,6 +360,14 @@ class FenetrePrincipale(QMainWindow):
             self.resizeDocks([d["medias"], d["visionneuse"], d["droite"]], [420, 840, 360],
                              Qt.Horizontal)
             self.resizeDocks([d["visionneuse"], d["analyse"]], [400, 120], Qt.Vertical)
+        elif espace == "cut":
+            self.addDockWidget(Qt.BottomDockWidgetArea, d["timeline"])
+            if self._est_externe("medias"):
+                self.addDockWidget(Qt.LeftDockWidgetArea, d["visionneuse"])
+            else:
+                self.addDockWidget(Qt.LeftDockWidgetArea, d["medias"])
+                self.splitDockWidget(d["medias"], d["visionneuse"], Qt.Horizontal)
+                self.resizeDocks([d["medias"], d["visionneuse"]], [420, 1200], Qt.Horizontal)
         elif espace == "media" and self._est_externe("medias"):
             self.addDockWidget(Qt.LeftDockWidgetArea, d["source"])
             self.splitDockWidget(d["source"], d["droite"], Qt.Horizontal)
@@ -394,7 +404,7 @@ class FenetrePrincipale(QMainWindow):
                 dock.setVisible(nom in visibles and nom not in ("analyse", "courbes"))
         # Hauteur des moniteurs : quand la fenêtre a sa taille finale (au lancement, elle est
         # construite petite puis agrandie, et Qt rapetissait les moniteurs avec elle).
-        self._moniteurs_a_ajuster = espace in ("montage", "effets")
+        self._moniteurs_a_ajuster = espace in ("cut", "montage", "effets")
         QTimer.singleShot(0, self._ajuster_moniteurs)
 
     def _ajuster_moniteurs(self):
@@ -410,6 +420,8 @@ class FenetrePrincipale(QMainWindow):
         largeur, hauteur = self.width(), self.height()
         if self._espace == "montage":
             moniteur = (largeur - 300 - 340) // 2
+        elif self._espace == "cut":
+            moniteur = largeur - 420
         else:
             moniteur = largeur - 420 - 360
         haut = min(round(moniteur * 9 / 16) + HAUTEUR_HABILLAGE_MONITEUR, hauteur - 72 - 260)
@@ -647,11 +659,12 @@ class FenetrePrincipale(QMainWindow):
             self._action(qualite, nom,
                          lambda _=False, cle=cle: self.visionneuse.choisir_qualite(cle))
         a.addSeparator()
-        # Sur un clavier AZERTY, Maj+1 arrive comme Maj+& : les deux sont acceptés.
+        # Sur un clavier AZERTY, Maj+1 arrive comme Maj+& : les deux sont acceptés.
         for i, (cle, nom, azerty) in enumerate((("media", "Média", "&"),
-                                                ("montage", "Montage", "é"),
-                                                ("effets", "Effets", '"'),
-                                                ("export", "Export", "'")), 1):
+                                                ("cut", "Cut", "é"),
+                                                ("montage", "Montage", '"'),
+                                                ("effets", "Effets", "'"),
+                                                ("export", "Export", "(")), 1):
             self._action(a, f"Espace {nom}", lambda _=False, cle=cle: self.choisir_espace(cle),
                          [f"Shift+{i}", f"Shift+{azerty}"])
         a.addSeparator()

@@ -104,7 +104,7 @@ def captures():
     w.charger_source(w.projet.medias[b])
     w.aller_a(8)
     IMAGES.mkdir(parents=True, exist_ok=True)
-    for espace in ("media", "montage", "effets", "export"):
+    for espace in ("media", "cut", "montage", "effets", "export"):
         w.choisir_espace(espace)
         if espace in ("montage", "effets"):
             clip = w.projet.sequence.pistes_video[0].clips[0]

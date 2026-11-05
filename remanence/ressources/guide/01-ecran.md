@@ -1,12 +1,18 @@
 # L'écran
 
-L'écran se partage en espaces de travail, choisis dans la barre du bas (ou Maj+1 à Maj+4). Chacun dispose les mêmes panneaux autrement, selon ce qu'on y fait.
+L'écran se partage en espaces de travail, choisis dans la barre du bas (ou Maj+1 à Maj+5). Chacun dispose les mêmes panneaux autrement, selon ce qu'on y fait.
 
 ## Média
 
 ![Espace Média](images/espace-media.png)
 
 Le panneau Média range les plans importés, en chutiers. Double-cliquez un plan pour le voir dans le moniteur Source. À droite, les métadonnées du plan choisi (format, codec, cadence, timecode).
+
+## Cut
+
+![Espace Cut](images/espace-cut.png)
+
+Pour monter vite : les médias à gauche, un grand moniteur, la timeline dessous. Pas d'inspecteur : les réglages se font dans les espaces Montage et Effets.
 
 ## Montage
 

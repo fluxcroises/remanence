@@ -1355,7 +1355,7 @@ def test_corrections_du_test_en_main(fenetre, medias, tmp_path):
     assert not w._coches_comparaison["apres"].isChecked()
     w.comparer("apres")
     raccourcis = {s.toString() for a in w.findChildren(type(w.a_annuler)) for s in a.shortcuts()}
-    assert {"Shift+1", "Shift+&", "Shift+É", "Shift+A"} <= raccourcis
+    assert {"Shift+1", "Shift+&", "Shift+É", "Shift+5", "Shift+(", "Shift+A"} <= raccourcis
     assert "Alt+A" not in raccourcis
     w.importer_chemins([str(medias["prores_hq"])])
     assert _attendre(lambda: len(w.projet.medias) == 1)
@@ -1529,3 +1529,23 @@ def test_cadrages_et_copie_de_transformation(fenetre, medias):
     w.reinitialiser_transformation()
     assert _attendre(lambda: clips()[1].transformation is None, 2)
     assert clips()[0].transformation is not None
+
+
+
+def test_espace_cut(fenetre, medias):
+    """Étape 11, lot 1 : espace Cut entre Média et Montage (Maj+2) : médias, un grand
+    moniteur, la timeline, pas d'inspecteur."""
+    from PySide6.QtGui import QKeySequence
+    w = fenetre
+    assert list(w.barre_espaces.boutons) == ["media", "cut", "montage", "effets", "export"]
+    action = next(a for a in w.findChildren(type(w.a_barre_espaces))
+                  if a.text() == "Espace Cut")
+    assert {QKeySequence("Shift+2"), QKeySequence("Shift+é")} <= set(action.shortcuts())
+    w.choisir_espace("cut")
+    assert _attendre(lambda: w.barre_espaces.boutons["cut"].isChecked(), 2)
+    visibles = {nom for nom, d in w._docks.items() if d.isVisible()}
+    assert {"medias", "visionneuse", "timeline"} <= visibles
+    assert not visibles & {"droite", "source", "export"}
+    assert w.onglets_gauche.currentIndex() == 0  # l'onglet Média
+    w.choisir_espace("montage")
+    assert _attendre(lambda: w._docks["droite"].isVisible(), 2)

@@ -2,7 +2,7 @@
 
 ![Formulaire d'export](export.png)
 
-1. Passez dans l'espace **Export** (Maj+4 ou Ctrl+E).
+1. Passez dans l'espace **Export** (Maj+5 ou Ctrl+E).
 2. Choisissez le format. ProRes 422 HQ garde la qualité pour la suite du montage.
 3. Choisissez le dossier, puis le nom : un modèle où {plan} devient le nom du média, {version} le premier numéro libre (01, 02…), {date} la date du jour. Le nom obtenu s'affiche dessous.
 4. Cliquez Exporter. L'export rejoint la file d'export, à droite, et se calcule en arrière-plan.
