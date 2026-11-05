@@ -371,8 +371,8 @@ class Inspecteur(PanneauFiche):
         self._vider()
         self.badge.emit("Piste")
         self._titre(piste.nom, f"Piste {nom_court_piste(seq, piste)}")
-        if piste.type == "video":
-            self._effets("piste", piste.id, piste.effets, "Effets de piste")
+        self._effets("piste", piste.id, piste.effets, "Effets de piste",
+                     son=piste.type == "audio")
 
     def clip(self, projet: Projet, clip_id: str):
         seq = projet.sequence
@@ -481,6 +481,8 @@ class Inspecteur(PanneauFiche):
             self._projet_courant = projet
             self._effets("clip", c.id, c.effets, "Effets", origine=c.debut)
             self._clip_courant = None
+        else:
+            self._effets("clip", c.id, c.effets, "Effets", origine=c.debut, son=True)
 
     def _bouton_cle_masque(self, e, m, champ: str, origine: int, widget=None) -> BoutonCle:
         b = BoutonCle()
@@ -714,7 +716,8 @@ class Inspecteur(PanneauFiche):
 
     # Effets : une section par effet, réglages construits depuis la description de l'effet.
 
-    def _effets(self, genre: str, porteur_id: str, effets: list, titre: str, origine: int = 0):
+    def _effets(self, genre: str, porteur_id: str, effets: list, titre: str, origine: int = 0,
+                son: bool = False):
         """origine : image de la séquence où commence le temps des images clés (début du
         clip, ou 0 pour un effet de piste ou de séquence)."""
         t = self.temps - origine
@@ -777,16 +780,18 @@ class Inspecteur(PanneauFiche):
                 if d.animable:
                     self._animes.append((e, p.cle, origine, ligne, bouton, 1.0))
             bouton = self._bouton_cle(e, "opacite", origine)
-            opacite = LigneParametre("Opacité", 0, 100, valeur_a(e, "opacite", t) * 100, "%",
-                                     100, 0, cle=bouton)
+            # Effet audio : l'opacité est le mélange avec le son reçu.
+            opacite = LigneParametre("Mélange" if d.audio else "Opacité", 0, 100,
+                                     valeur_a(e, "opacite", t) * 100, "%", 100, 0, cle=bouton)
             opacite.valeur_finale.connect(lambda v, e=e: self.reglage_effet.emit(
                 e.id, "opacite", v / 100))
             self._cible.addWidget(opacite)
             self._animes.append((e, "opacite", origine, opacite, bouton, 100.0))
-            self._cible.addLayout(self._choix_fusion(
-                e.fusion, lambda mode, e=e: self.reglage_effet.emit(e.id, "fusion", mode),
-                retrait=True))
-            self._masques(e, origine)
+            if not d.audio:
+                self._cible.addLayout(self._choix_fusion(
+                    e.fusion, lambda mode, e=e: self.reglage_effet.emit(e.id, "fusion", mode),
+                    retrait=True))
+                self._masques(e, origine)
             rang = QHBoxLayout()
             rang.setSpacing(8)
             rang.addSpacing(RETRAIT_LOSANGE)
@@ -807,7 +812,7 @@ class Inspecteur(PanneauFiche):
         ajout.setPopupMode(QToolButton.InstantPopup)
         menu = QMenu(ajout)
         remplir_menu_effets(menu, lambda effets: self.ajout_effet.emit(genre, porteur_id,
-                                                                       effets))
+                                                                       effets), son=son)
         ajout.setMenu(menu)
         rang = QHBoxLayout()
         rang.addWidget(ajout)

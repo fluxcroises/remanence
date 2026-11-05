@@ -1508,6 +1508,16 @@ class FenetrePrincipale(QMainWindow):
             porteur = seq.trouver(porteur_id)[1]
         if porteur is None or not effets:
             return
+        # Effets audio sur le son, effets vidéo sur l'image.
+        if genre == "sequence":
+            type_porteur = "video"
+        elif genre == "piste":
+            type_porteur = porteur.type
+        else:
+            type_porteur = seq.trouver(porteur_id)[0].type
+        if any(EFFETS[e.type].audio != (type_porteur == "audio") for e in effets):
+            self.message("Effet audio sur le son, effet vidéo sur l'image")
+            return
 
         def poser():
             for e in effets:

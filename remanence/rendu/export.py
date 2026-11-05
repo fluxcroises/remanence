@@ -195,7 +195,8 @@ def _plan_audio(projet: Projet, seq: Sequence, debut: int, fin: int):
              if c.fin > debut and c.debut < fin]
     if not clips:
         return None, None
-    if len(clips) == 1 and clips[0][0].niveau == 1.0:
+    if len(clips) == 1 and clips[0][0].niveau == 1.0 and not clips[0][0].effets             and not clips[0][1].effets:
+        # Un effet audio sur le clip ou sa piste : le son est recalculé.
         c = clips[0][1]
         m = projet.medias.get(c.media_id)
         if m and m.infos.video and c.debut <= debut and c.fin >= fin \

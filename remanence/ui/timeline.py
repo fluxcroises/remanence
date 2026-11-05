@@ -991,10 +991,9 @@ class VueTimeline(QWidget):
             if clip.est_media and piste_clip.type == "video":
                 menu.addAction("Découper aux changements de plan (Ctrl+K)",
                                fenetre.decouper_aux_plans)
-            if self.projet.sequence.trouver(clip.id)[0].type == "video":
-                effets = menu.addMenu("Ajouter un effet")
-                remplir_menu_effets(effets, lambda liste: fenetre.ajouter_effet(
-                    "clip", clip.id, liste))
+            effets = menu.addMenu("Ajouter un effet")
+            remplir_menu_effets(effets, lambda liste: fenetre.ajouter_effet(
+                "clip", clip.id, liste), son=piste_clip.type == "audio")
             if clip.sequence_id is not None:
                 menu.addAction("Ouvrir la séquence",
                                lambda: fenetre.ouvrir_sequence(clip.sequence_id))
@@ -1311,10 +1310,9 @@ class EntetePiste(QWidget):
         menu = QMenu(self)
         f = self.fenetre
         menu.addAction("Renommer…", self.renommer)
-        if self.piste.type == "video":
-            effets = menu.addMenu("Ajouter un effet de piste")
-            remplir_menu_effets(effets, lambda liste: f.ajouter_effet(
-                "piste", self.piste.id, liste))
+        effets = menu.addMenu("Ajouter un effet de piste")
+        remplir_menu_effets(effets, lambda liste: f.ajouter_effet(
+            "piste", self.piste.id, liste), son=self.piste.type == "audio")
         menu.addAction(f"Niveau de la piste ({self._texte_niveau()})…", self._regler_niveau)
         if self.piste.type == "video":
             solo = menu.addAction("Solo",

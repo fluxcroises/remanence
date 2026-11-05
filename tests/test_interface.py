@@ -1701,3 +1701,37 @@ def test_validation_etape_11(fenetre, medias):
     e = w.timeline.ensemble
     tete = min(w.lecture.position, seq().duree() - 1)  # la bande vise la dernière image
     assert e.isVisible() and e.f_de(e.x_de(tete)) == tete
+
+
+def test_effets_audio_dans_l_interface(fenetre, medias):
+    """Étape 12, lot 1 : effets audio sur un clip audio (inspecteur : Mélange, sans masques
+    ni fusion), menus par genre, effet mal placé refusé."""
+    from PySide6.QtWidgets import QMenu
+    from remanence.effets import nouvel_effet
+    from remanence.ui.composants import LigneParametre, SectionRepliable
+    from remanence.ui.menu_effets import remplir_menu_effets
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    seq = w.projet.sequence
+    video, son = seq.pistes_video[0].clips[0], seq.pistes_audio[0].clips[0]
+    menu = QMenu()
+    remplir_menu_effets(menu, lambda e: None, son=True)
+    assert [a.text() for a in menu.actions()] == ["Son"]
+    menu = QMenu()
+    remplir_menu_effets(menu, lambda e: None)
+    assert "Son" not in [a.text() for a in menu.actions()]
+    w.ajouter_effet("clip", son.id, [nouvel_effet("decalage_rvb")])
+    w.ajouter_effet("clip", video.id, [nouvel_effet("bitcrusher")])
+    assert not son.effets and not video.effets
+    w.ajouter_effet("clip", son.id, [nouvel_effet("bitcrusher")])
+    assert _attendre(lambda: w.projet.sequence.pistes_audio[0].clips[0].effets, 2)
+    w.timeline.vue._choisir({son.id})
+    titres = lambda: {s.titre.text() for s in w.inspecteur.findChildren(SectionRepliable)
+                      if s.isVisibleTo(w.inspecteur)}
+    assert _attendre(lambda: "Bitcrusher" in titres(), 2)
+    libelles = {l.libelle.text() for l in w.inspecteur.findChildren(LigneParametre)
+                if l.isVisibleTo(w.inspecteur)}
+    assert {"Bits", "Réduction", "Mélange"} <= libelles and "Opacité" not in libelles
+    assert "Transformation" not in titres()

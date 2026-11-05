@@ -61,8 +61,15 @@ class DescriptionEffet:
     # Moteur flux optique : flux(images RVB float, valeurs de chaque image) rend les images
     # traitées. Pré-rendu comme le moteur codec, mais en 16 bits.
     flux: object = None
-    # Programme interne (transitions des fondus) : ni bibliothèque, ni menus, ni inspecteur.
+    # Programme interne (transitions des fondus) : ni bibliothèque, ni menus, ni inspecteur.
     interne: bool = False
+    # Moteur audio : son(lire, valeurs, graine, fréquence) rend un lecteur du son traité (voir
+    # rendu/son.py). Sur les clips et les pistes audio seulement.
+    son: object = None
+
+    @property
+    def audio(self) -> bool:
+        return self.moteur == "audio"
 
     @property
     def codec(self) -> bool:
@@ -146,6 +153,8 @@ def _charger():
 _charger()
 
 FAMILLES = ["Datamosh", "Corruption", "Couleur", "Pixels", "Signal", "Scripts"]
+# Effets audio : une famille à part, proposée sur les clips et les pistes audio seulement.
+FAMILLES_SON = ["Son"]
 
 
 def nouvel_effet(cle: str, prereglage: str | None = None, script: str | None = None) -> Effet:

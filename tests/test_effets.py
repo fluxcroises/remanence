@@ -32,7 +32,8 @@ def _image(projet, f=5, echelle=1.0):
         c.fermer()
 
 
-@pytest.mark.parametrize("cle", sorted(c for c, d in EFFETS.items() if not d.codec and not d.interne))
+@pytest.mark.parametrize("cle", sorted(c for c, d in EFFETS.items()
+                                       if not d.codec and not d.interne and not d.audio))
 def test_chaque_effet_a_0_50_et_100(medias, cle):
     projet, clip = _projet(medias)
     source = _image(projet)
@@ -52,7 +53,7 @@ def test_chaque_effet_a_0_50_et_100(medias, cle):
 
 def test_prereglages_et_animation(medias):
     projet, clip = _projet(medias)
-    for cle, d in ((c, d) for c, d in EFFETS.items() if not d.interne):
+    for cle, d in ((c, d) for c, d in EFFETS.items() if not d.interne and not d.audio):
         assert len(d.prereglages) >= 3, d.nom
         for nom in d.prereglages:
             clip.effets = [nouvel_effet(cle, nom)]

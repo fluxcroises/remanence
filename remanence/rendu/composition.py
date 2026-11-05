@@ -20,7 +20,7 @@ from remanence.media.sonde import analyser
 from remanence.effets import EFFETS, agit_a, instantane, modulateurs, transformation, transitions
 from remanence.projet.modele import Clip, Effet, Media, Projet, Sequence
 from remanence.moteurs.codec import prerendu
-from remanence.rendu import titres
+from remanence.rendu import son, titres
 from remanence.rendu.couleur import vers_rvb16_apercu, vers_rvba
 from remanence.rendu.gpu import RenduGPU, gpu_demande
 
@@ -409,40 +409,73 @@ class Compositeur:
         return toile
 
     def audio(self, seq: Sequence, debut: int, n: int) -> np.ndarray:
-        """Mixage stéréo des échantillons [debut, debut+n) à 48 kHz."""
+        """Mixage stéréo des échantillons [debut, debut+n) à 48 kHz : chaque clip passe par
+        ses effets audio puis son niveau et ses fondus ; une piste qui a des effets audio les
+        applique au mélange de ses clips."""
         sortie = np.zeros((n, 2), np.float32)
-        cadence = seq.fraction_cadence
-        par_image = FREQUENCE_MIXAGE / float(cadence)
+        par_image = FREQUENCE_MIXAGE / float(seq.fraction_cadence)
         for piste in seq.pistes_entendues("audio"):
-            for c in piste.clips:
-                e0 = round(c.debut * par_image)
-                e1 = round(c.fin * par_image)
-                a, b = max(debut, e0), min(debut + n, e1)
-                if b <= a:
-                    continue
-                if c.sequence_id is not None:
-                    imbriquee = sequence_par_id(self.projet, c.sequence_id)
-                    if imbriquee is None or imbriquee is seq:
-                        continue
-                    lire = (lambda s, k, q=imbriquee: self.audio(q, s, k))
-                    cad_source, decalage_s, longueur = cadence, 0.0, imbriquee.duree()
-                else:
-                    media = self.projet.medias.get(c.media_id)
-                    if media is None or media.hors_ligne or not media.infos.audio:
-                        continue
-                    cache = self.pool.audio(chemin_audio(media.infos))
-                    if cache is None:
-                        continue
-                    lire = cache.lire
-                    cad_source = Fraction(media.infos.video.cadence) if media.infos.video \
-                        else cadence
-                    decalage_s, longueur = cache.decalage_s, media.nb_images(cadence)
-                bloc = self._son_du_clip(c, lire, float(cad_source), decalage_s, longueur,
-                                         a - e0, b - a)
-                positions = (np.arange(a, b) - e0) / par_image
-                images = np.arange(int(positions[0]), int(positions[-1]) + 2)
-                gains = np.array([c.facteur(c.debut + min(int(k), c.duree - 1)) * piste.niveau
-                                  for k in images], np.float32)
-                bloc *= np.interp(positions, images, gains).astype(np.float32)[:, None]
-                sortie[a - debut:b - debut] += bloc
+            effets = [e for e in piste.effets if e.type in EFFETS and EFFETS[e.type].audio]
+            if not effets:
+                for c in piste.clips:
+                    if round(c.fin * par_image) > debut and round(c.debut * par_image) < debut + n:
+                        lecteur = self._lecteur_clip(seq, piste, c, par_image)
+                        if lecteur is not None:
+                            sortie += lecteur(debut, n)
+                continue
+            lecteurs = [(c, self._lecteur_clip(seq, piste, c, par_image)) for c in piste.clips]
+
+            def bus(a: int, m: int, lecteurs=lecteurs) -> np.ndarray:
+                somme = np.zeros((m, 2), np.float32)
+                for c, lecteur in lecteurs:
+                    if lecteur is not None and round(c.fin * par_image) > a and                             round(c.debut * par_image) < a + m:
+                        somme += lecteur(a, m)
+                return somme
+            traite = son.chaine(bus, lambda f, piste=piste: actifs(
+                piste.effets, f, modulateurs.decalages(seq, f, self.projet)), par_image)
+            sortie += traite(debut, n)
         return sortie
+
+    def _lecteur_clip(self, seq: Sequence, piste, c: Clip, par_image: float):
+        """Le son du clip dans la séquence (positions en échantillons de la séquence, muet hors
+        du clip) : source, effets audio du clip, puis niveau, fondus et enveloppe. None si le
+        clip n'a pas de son."""
+        cadence = seq.fraction_cadence
+        if c.sequence_id is not None:
+            imbriquee = sequence_par_id(self.projet, c.sequence_id)
+            if imbriquee is None or imbriquee is seq:
+                return None
+            lire = (lambda s, k, q=imbriquee: self.audio(q, s, k))
+            cad_source, decalage_s, longueur = cadence, 0.0, imbriquee.duree()
+        else:
+            media = self.projet.medias.get(c.media_id)
+            if media is None or media.hors_ligne or not media.infos.audio:
+                return None
+            cache = self.pool.audio(chemin_audio(media.infos))
+            if cache is None:
+                return None
+            lire = cache.lire
+            cad_source = Fraction(media.infos.video.cadence) if media.infos.video else cadence
+            decalage_s, longueur = cache.decalage_s, media.nb_images(cadence)
+        e0 = round(c.debut * par_image)
+        taille = round(c.fin * par_image) - e0
+        source = son.borne(lambda a, k: self._son_du_clip(c, lire, float(cad_source),
+                                                          decalage_s, longueur, a, k), taille)
+        if any(e.type in EFFETS and EFFETS[e.type].audio for e in c.effets):
+            source = son.chaine(source, lambda t: actifs(
+                c.effets, t, modulateurs.decalages(seq, c.debut + t, self.projet)), par_image)
+
+        def lecteur(debut: int, n: int) -> np.ndarray:
+            sortie = np.zeros((n, 2), np.float32)
+            a, b = max(debut, e0), min(debut + n, e0 + taille)
+            if b <= a:
+                return sortie
+            bloc = source(a - e0, b - a)
+            positions = (np.arange(a, b) - e0) / par_image
+            images = np.arange(int(positions[0]), int(positions[-1]) + 2)
+            gains = np.array([c.facteur(c.debut + min(int(k), c.duree - 1)) * piste.niveau
+                              for k in images], np.float32)
+            sortie[a - debut:b - debut] = bloc * np.interp(positions, images,
+                                                            gains).astype(np.float32)[:, None]
+            return sortie
+        return lecteur
