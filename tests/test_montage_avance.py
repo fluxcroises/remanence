@@ -131,3 +131,11 @@ def test_poses_rapides_gardent_les_pistes_synchrones(medias):
     edition.remplacer_plan(p, seq, v1[0].id, m, 0, 9)
     assert [(c.debut, c.duree) for c in seq.pistes_video[-1].clips] == [(0, 9), (9, 10)]
     assert seq.pistes_video[0].clips[0].debut == 11
+
+
+def test_plan_autour_et_raccord_a_rogner():
+    from remanence.projet import edition
+    assert edition.plan_autour([10, 20], 14, 30) == (10, 20)
+    assert edition.plan_autour([10, 20], 3, 30) == (0, 10)
+    assert edition.plan_autour([10, 20], 25, 30) == (20, 30)
+    assert edition.plan_autour(None, 5, 30) == (0, 30)

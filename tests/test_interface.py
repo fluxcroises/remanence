@@ -1628,3 +1628,76 @@ def test_double_timeline_de_cut(fenetre, medias):
     assert _attendre(lambda: abs(tl.vue.x_de(tl.vue.tete) - tl.vue.width() / 2) < 2, 2)
     w.choisir_espace("montage")
     assert not tl.ensemble.isVisible() and not tl.vue.montrer_raccord and not tl.centrer_tete
+
+
+def test_aller_plus_vite_dans_cut(fenetre, medias):
+    """Étape 11, lot 4 : découper aux changements de plan, plan de la bande entre deux
+    coupes, rognage du raccord visé au clavier, revue rapide."""
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    m = next(iter(w.projet.medias.values()))
+    assert _attendre(lambda: m.coupes is not None, 10)
+    m.coupes = [10, 20]  # trois plans : 0-10, 10-20, 20-30
+    w.poser_medias([m.id], 0, "")
+    seq = lambda: w.projet.sequence
+    v1 = lambda: [(c.debut, c.duree) for c in seq().pistes_video[-1].clips]
+    w.timeline.vue._choisir({seq().pistes_video[-1].clips[0].id})
+    w.decouper_aux_plans()
+    assert _attendre(lambda: v1() == [(0, 10), (10, 10), (20, 10)], 2)
+    assert len(seq().pistes_audio[0].clips) == 3, "le son est coupé avec l'image"
+    # Rognage du raccord le plus proche de la tête (ici celui de l'image 10).
+    w.aller_a(9)
+    w.rogner_raccord(2)
+    assert _attendre(lambda: v1() == [(0, 12), (12, 8), (20, 10)], 2)
+    assert w.lecture.position == 12, "la tête suit le raccord"
+    w.rogner_raccord(-3)
+    assert _attendre(lambda: v1() == [(0, 9), (9, 11), (20, 10)], 2)
+    # Bande source sans points : la pose prend le plan sous la tête, pas le média entier.
+    w.choisir_espace("cut")
+    w.b_bande.setChecked(True)
+    w.aller("source", 14)
+    assert _attendre(lambda: w.lecture_source.position == 14, 2)
+    w.poser_cut("fin")
+    assert _attendre(lambda: len(v1()) == 4, 2)
+    dernier = seq().pistes_video[-1].clips[-1]
+    assert (dernier.entree, dernier.duree) == (10, 10)
+    # Revue rapide : plus vite sur un long plan, jamais moins que la vitesse normale.
+    assert w._vitesse_revue("programme", 2) == 1.0
+    assert w._vitesse_revue("source", 5) == 1.0  # plans de 10 images : vitesse normale
+    w.activer_moniteur("programme")
+    w.aller_a(0)
+    w.b_revue.setChecked(True)
+    assert w.lecture.en_lecture and w.lecture.vitesse >= 1
+    w.b_revue.setChecked(False)
+    assert not w.lecture.en_lecture
+
+
+def test_validation_etape_11(fenetre, medias):
+    """Validation de l'étape 11 : dix plans montés sans quitter Cut (raccourcis des poses),
+    les deux timelines sur la même tête, l'insertion intelligente toujours sur un raccord."""
+    from PySide6.QtGui import QKeySequence
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"]), str(medias["sans_audio_2997"])])
+    assert _attendre(lambda: len(w.projet.medias) == 2)
+    w.choisir_espace("cut")
+    w.b_bande.setChecked(True)
+    actions = {a.text(): a for a in w.findChildren(type(w.a_barre_espaces))}
+    assert actions["Insertion intelligente"].shortcut() == QKeySequence("Shift+F9")
+    seq = lambda: w.projet.sequence
+    import random
+    hasard = random.Random(3)
+    for i in range(10):
+        segment = w._bande[i % 2]
+        w.aller("source", segment[1] + hasard.randrange(segment[2]))
+        w.aller_a(hasard.randrange(max(1, seq().duree() + 1)))
+        actions["Insertion intelligente" if i % 3 else "Ajouter à la fin"].trigger()
+        assert w._espace == "cut"
+    v1 = seq().pistes_video[-1].clips
+    assert len(v1) == 10, "dix plans, aucun coupé en deux"
+    assert all(c.entree == 0 for c in v1), "chaque plan entier, jamais entamé"
+    assert all(a.fin == b.debut for a, b in zip(v1, v1[1:])), "sans trou"
+    assert w.timeline.vue.tete == w.lecture.position
+    e = w.timeline.ensemble
+    tete = min(w.lecture.position, seq().duree() - 1)  # la bande vise la dernière image
+    assert e.isVisible() and e.f_de(e.x_de(tete)) == tete

@@ -133,6 +133,12 @@ def main():
     attendre(app, delai=0.6)
     photo(w._docks["export"], "export.png")
 
+    # Espace Cut : la bande d'ensemble au-dessus de la timeline, le raccord visé.
+    w.choisir_espace("cut")
+    w.aller_a(seq.pistes_video[-1].clips[0].fin - 3)
+    attendre(app, delai=0.8)
+    photo(w._docks["timeline"], "cut.png", 820, 270)
+
     w.modifie = False
     w.close()
 

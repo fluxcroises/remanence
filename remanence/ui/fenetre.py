@@ -467,6 +467,8 @@ class FenetrePrincipale(QMainWindow):
         self.timeline.mode_cut(espace == "cut")
         if espace != "cut" and self._bande is not None:
             self.b_bande.setChecked(False)
+        if espace != "cut" and self.b_revue.isChecked():
+            self.b_revue.setChecked(False)
         self._espace = espace
         if espace == "cut":
             self.activer_moniteur("source" if self.media_source is not None else "programme")
@@ -612,6 +614,15 @@ class FenetrePrincipale(QMainWindow):
         mo.addSeparator()
         for mode, _, nom, touche in self.POSES:
             self._action(mo, nom, lambda _=False, mode=mode: self.poser_cut(mode), touche)
+        self._action(mo, "Découper aux changements de plan", self.decouper_aux_plans, "Ctrl+K")
+        self._action(mo, "Raccord : une image à gauche", lambda: self.rogner_raccord(-1),
+                     "Alt+Left")
+        self._action(mo, "Raccord : une image à droite", lambda: self.rogner_raccord(1),
+                     "Alt+Right")
+        self._action(mo, "Raccord : dix images à gauche", lambda: self.rogner_raccord(-10),
+                     "Alt+Shift+Left")
+        self._action(mo, "Raccord : dix images à droite", lambda: self.rogner_raccord(10),
+                     "Alt+Shift+Right")
         self._action(mo, "Insérer depuis la source", lambda: self.monter_source(True), "F9",
                      "")
         self._action(mo, "Écraser depuis la source", lambda: self.monter_source(False), "F10",
@@ -2101,6 +2112,14 @@ class FenetrePrincipale(QMainWindow):
         self.b_bande.setToolTip("Bande source")
         self.b_bande.toggled.connect(self.basculer_bande)
         lay.addWidget(self.b_bande)
+        self.b_revue = QPushButton("Revue rapide")
+        self.b_revue.setCheckable(True)
+        self.b_revue.setToolTip("Revue rapide")
+        self.b_revue.toggled.connect(self.revue_rapide)
+        lay.addWidget(self.b_revue)
+        self._minuterie_revue = QTimer(self)
+        self._minuterie_revue.setInterval(80)
+        self._minuterie_revue.timeout.connect(self._suivre_revue)
         lay.addStretch(1)
         self.boutons_poses = {}
         for mode, texte, nom, touche in self.POSES:
@@ -2113,6 +2132,92 @@ class FenetrePrincipale(QMainWindow):
         barre.hide()
         self._barre_poses = barre
         self.source.ajouter_ligne(barre)
+
+    # Revue rapide : lecture accélérée, d'autant plus que le plan est long (chaque plan dure à
+    # peu près REVUE_SECONDES à l'écran, au plus ×8, jamais moins que la vitesse normale).
+    REVUE_SECONDES = 2.5
+
+    def _plan_lu(self, nom: str, f: int) -> tuple[int, int]:
+        """Le plan sous la tête du moniteur : dans la bande, entre deux changements de plan ;
+        au programme, entre deux raccords."""
+        if nom == "source" and self._bande:
+            m, d, longueur = self._segment_bande(f)
+            a, b = edition.plan_autour(m.coupes, f - d, longueur)
+            return d + a, d + b
+        if nom == "source":
+            return 0, max(1, self._duree("source"))
+        raccords = [0] + edition.coupes(self.projet.sequence)
+        debut = max([r for r in raccords if r <= f] or [0])
+        fin = min([r for r in raccords if r > f] or [max(f + 1, self._duree("programme"))])
+        return debut, fin
+
+    def _vitesse_revue(self, nom: str, f: int) -> float:
+        a, b = self._plan_lu(nom, f)
+        cadence = float(self.projet.sequence.fraction_cadence)
+        return max(1.0, min(8.0, round((b - a) / (self.REVUE_SECONDES * cadence) * 2) / 2))
+
+    def revue_rapide(self, actif: bool):
+        nom = self._actif
+        moteur = self._moteur(nom)
+        if not actif:
+            self._minuterie_revue.stop()
+            if moteur.en_lecture:
+                moteur.pause()
+            return
+        self._revue = nom
+        self._moteur("programme" if nom == "source" else "source").pause()
+        moteur.lire(self._vitesse_revue(nom, moteur.position))
+        self._minuterie_revue.start()
+
+    def _suivre_revue(self):
+        moteur = self._moteur(self._revue)
+        if not moteur.en_lecture:
+            # Arrêtée (fin, K, Espace) : le bouton se relâche.
+            self._minuterie_revue.stop()
+            self.b_revue.blockSignals(True)
+            self.b_revue.setChecked(False)
+            self.b_revue.blockSignals(False)
+            return
+        v = self._vitesse_revue(self._revue, moteur.position)
+        if v != moteur.vitesse:
+            moteur.lire(v)
+
+    def rogner_raccord(self, delta: int):
+        """Fait glisser d'images le raccord visé (le plus proche de la tête) : le plan de
+        gauche gagne ce que celui de droite perd (roll) ; la tête suit le raccord."""
+        seq = self.projet.sequence
+        c = edition.raccord_a_rogner(seq, self.lecture.position)
+        if c is None:
+            self.message("Aucun raccord à rogner")
+            return
+        fait = []
+
+        def faire():
+            fait.append(edition.rouler(self.projet, seq, c.id, delta))
+        self._tenter("Rognage du raccord", faire)
+        if fait:
+            self.aller_a(c.fin)
+
+    def decouper_aux_plans(self):
+        """Coupe les clips choisis à chaque changement de plan de leur média."""
+        seq = self.projet.sequence
+        clips = [c for c in (seq.trouver(i)[1] for i in self.timeline.vue.selection)
+                 if c is not None and c.est_media]
+        if not clips:
+            self.message("Choisissez un clip")
+            return
+        if any(self.projet.medias[c.media_id].coupes is None for c in clips):
+            self.message("Analyse des plans en cours")
+            return
+        total = []
+
+        def faire():
+            for c in clips:
+                total.append(edition.decouper_aux_plans(
+                    seq, c.id, prerendu.coupes_du_clip(self.projet, c)))
+        self._tenter("Découpe aux changements de plan", faire)
+        if total:
+            self.message(f"{sum(total)} coupes" if sum(total) else "Aucun changement de plan")
 
     def _segment_bande(self, f: int):
         """(média, début dans la bande, longueur) de l'image f de la bande."""
@@ -2185,6 +2290,10 @@ class FenetrePrincipale(QMainWindow):
             return
         seq = self.projet.sequence
         entree, sortie = m.plage_source(seq.fraction_cadence)
+        if self._bande and m.point_entree is None and m.point_sortie is None:
+            # Bande source sans points : le plan sous la tête, entre deux changements de plan.
+            t = self.lecture_source.position - self._debut_dans_bande()
+            entree, sortie = edition.plan_autour(m.coupes, t, m.nb_images(seq.fraction_cadence))
         duree = sortie - entree
         f = self.lecture.position
         clips = []

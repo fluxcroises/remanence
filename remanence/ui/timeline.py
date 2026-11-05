@@ -988,6 +988,9 @@ class VueTimeline(QWidget):
                 a.setEnabled(fenetre._transformation_copiee is not None)
                 a = sous.addAction("Réinitialiser", fenetre.reinitialiser_transformation)
                 a.setEnabled(clip.transformation is not None)
+            if clip.est_media and piste_clip.type == "video":
+                menu.addAction("Découper aux changements de plan (Ctrl+K)",
+                               fenetre.decouper_aux_plans)
             if self.projet.sequence.trouver(clip.id)[0].type == "video":
                 effets = menu.addMenu("Ajouter un effet")
                 remplir_menu_effets(effets, lambda liste: fenetre.ajouter_effet(

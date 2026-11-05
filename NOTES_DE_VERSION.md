@@ -11,6 +11,7 @@ Novembre 2026. Première version publique, éditée par Flux Croisés, sous lice
 - Timeline à pistes vidéo et audio, gestes de Vegas Pro : slip, slide, roll, ripple, aimantation, fondus enchaînés au chevauchement.
 - Vitesse par clip et lecture à rebours, séquences imbriquées, titres, rendu sur place.
 - Position, taille, rotation, recadrage et miroir des clips, réglés dans l'inspecteur ou à la souris sur l'image.
+- Espace Cut pour monter vite : bande source, insertion au raccord le plus proche, ajout à la fin, remplacement, pose au-dessus, double timeline, revue rapide, découpe aux changements de plan.
 - Marqueurs nommés, timecode au choix, double écran.
 
 ### Effets

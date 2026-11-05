@@ -142,6 +142,40 @@ def _refermer(seq: Sequence, debut: int, fin: int):
             m.position = debut
 
 
+def decouper_aux_plans(seq: Sequence, clip_id: str, coupes: list[int]) -> int:
+    """Coupe le clip (et ses liés) à chacune de ses coupes (images depuis son début, voir
+    `prerendu.coupes_du_clip`). Renvoie le nombre de coupes faites."""
+    piste, c = seq.trouver(clip_id)
+    if c is None:
+        return 0
+    ids = avec_lies(seq, {c.id})
+    debut = c.debut
+    # De la dernière à la première : la partie gauche garde l'identité du clip.
+    images = sorted({debut + k for k in coupes if 0 < k < c.duree}, reverse=True)
+    for f in images:
+        couper(seq, f, ids)
+    return len(images)
+
+
+def plan_autour(coupes: list[int] | None, t: int, longueur: int) -> tuple[int, int]:
+    """Le plan du média qui contient l'image t : (première image, fin exclue), d'après ses
+    changements de plan ; le média entier sans analyse."""
+    if not coupes:
+        return 0, longueur
+    debut = max([0] + [k for k in coupes if k <= t])
+    fin = min([longueur] + [k for k in coupes if k > t])
+    return debut, fin
+
+
+def raccord_a_rogner(seq: Sequence, f: int) -> Clip | None:
+    """Le clip de V1 qui finit au raccord le plus proche de f, s'il a un voisin collé à sa
+    droite : celui que le rognage au clavier fait glisser."""
+    r = raccord_proche(seq, f)
+    piste = _piste_type(seq, "video")
+    return next((c for c in piste.clips if c.fin == r
+                 and any(o.debut == r for o in piste.clips if o is not c)), None)
+
+
 def remplacer_plan(projet: Projet, seq: Sequence, clip_id: str, media: Media, entree: int,
                    duree: int) -> list[Clip]:
     """Le plan prend la place du clip (et de ses liés) ; la suite de la séquence, sur toutes

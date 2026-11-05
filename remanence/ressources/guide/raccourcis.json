@@ -101,6 +101,42 @@
     "F8"
    ],
    [
+    "Insertion intelligente",
+    "Shift+F9"
+   ],
+   [
+    "Ajouter à la fin",
+    "Shift+F12"
+   ],
+   [
+    "Remplacer le plan",
+    "Shift+F10"
+   ],
+   [
+    "Placer au-dessus",
+    "F12"
+   ],
+   [
+    "Découper aux changements de plan",
+    "Ctrl+K"
+   ],
+   [
+    "Raccord : une image à gauche",
+    "Alt+Left"
+   ],
+   [
+    "Raccord : une image à droite",
+    "Alt+Right"
+   ],
+   [
+    "Raccord : dix images à gauche",
+    "Alt+Shift+Left"
+   ],
+   [
+    "Raccord : dix images à droite",
+    "Alt+Shift+Right"
+   ],
+   [
     "Insérer depuis la source",
     "F9"
    ],
