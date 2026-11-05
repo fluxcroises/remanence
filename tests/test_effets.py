@@ -247,6 +247,23 @@ def test_rogner_le_debut_garde_les_cles_en_place(medias):
     assert droite.effets[0].cles["force"][0][0] == 2
 
 
+def test_rogner_le_debut_garde_les_masques_animes_en_place(medias):
+    """Les images clés d'un masque suivent celles de son effet (finitions, étape 9)."""
+    from remanence.effets import courbes
+    from remanence.effets.masques import nouveau_masque
+    projet, clip = _projet(medias)
+    e = nouvel_effet("vhs")
+    m = nouveau_masque("rectangle")
+    courbes.poser(m.cles.setdefault("adoucissement", []), 10, 5.0)
+    e.masques = [m]
+    clip.effets = [e]
+    edition.rogner(projet, projet.sequence, clip.id, "debut", 4)
+    assert m.cles["adoucissement"][0][0] == 6
+    edition.couper(projet.sequence, 8)
+    droite = projet.sequence.pistes_video[0].clips[1]
+    assert droite.effets[0].masques[0].cles["adoucissement"][0][0] == 2
+
+
 def _masque_effet(projet, clip, *masques):
     e = nouvel_effet("decalage_rvb", "Anaglyphe")
     e.masques = list(masques)
@@ -912,3 +929,20 @@ def test_ffglitch_dans_le_programme_construit(tmp_path, monkeypatch):
     for nom in ("ffgac.exe", "ffedit.exe"):
         (outils / nom).write_bytes(b"")
     assert ffglitch.dossier() == outils, "trouvé aussi dans le second dossier"
+
+
+def test_script_ffglitch_depuis_un_menu(medias):
+    """Un Script FFglitch choisi dans un menu (sans préréglage) reçoit le premier script de
+    la bibliothèque ; un script sans glitch_frame laisse l'image passer (erreur du 5 novembre
+    2026 : « __glitch_frame is not defined »)."""
+    from remanence.moteurs.codec import ffglitch, prerendu, scripts
+    e = nouvel_effet("script_ffglitch")
+    assert e.script and e.script == next(iter(EFFETS["script_ffglitch"].textes.values()))
+    assert "typeof __glitch_frame" in scripts.adapter("", {}, 1)
+    if not ffglitch.disponible():
+        return
+    projet, clip = _projet(medias)
+    vide = nouvel_effet("script_ffglitch")
+    vide.script = "// rien\n"
+    clip.effets = [vide]
+    assert prerendu.calculer(projet, projet.sequence, clip).exists()

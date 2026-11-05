@@ -118,10 +118,16 @@ def _brancher_qt():
                QtMsgType.QtFatalMsg: logging.CRITICAL}
 
     deja: set[str] = set()
+    # Message interne de Qt, sans effet visible : le style Windows 11 tente parfois de
+    # recalculer en points une police donnée en pixels (celles de la charte), au survol
+    # d'un élément. Aucun appel de Remanence en cause (cherché le 5 novembre 2026).
+    ignores = ("QFont::setPointSize: Point size <= 0",)
 
     def relais(type_, _contexte, message):
         # Une fois par séance : sans OpenGL, Qt répète le même avertissement à chaque dessin.
         niveau = niveaux.get(type_)
+        if any(message.startswith(i) for i in ignores):
+            return
         if niveau is not None and message not in deja:
             deja.add(message)
             _journal.log(niveau, f"Qt : {message}")

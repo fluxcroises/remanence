@@ -97,7 +97,8 @@ export function setup(args) {
 export function glitch_frame(frame, stream) {
   if (frame.mv)
     frame.mv.overflow = "truncate";
-  const r = __glitch_frame(frame, stream);
+  // Un script sans glitch_frame (vide, ou qui ne fait que setup) laisse l'image passer.
+  const r = typeof __glitch_frame === "function" ? __glitch_frame(frame, stream) : undefined;
   __n++;
   return r;
 }

@@ -153,7 +153,10 @@ def nouvel_effet(cle: str, prereglage: str | None = None, script: str | None = N
     d = EFFETS[cle]
     e = Effet(nouvel_id(), cle, d.valeurs(prereglage) if prereglage in d.prereglages
               else d.valeurs())
-    e.script = script if script is not None else d.textes.get(prereglage or "", "")
+    # Sans préréglage (menus d'effets, qui ne proposent plus que l'effet), le premier script
+    # fourni : un Script FFglitch vide ne ferait rien.
+    defaut = next(iter(d.textes.values()), "")
+    e.script = script if script is not None else d.textes.get(prereglage, defaut)         if prereglage else defaut
     if d.parametres_de:
         e.params = {**{p.cle: p.defaut for p in d.parametres_de(e)}, **e.params}
     return e

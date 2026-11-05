@@ -136,7 +136,8 @@ def liberer(piste: Piste, debut: int, fin: int, exclure: set[str]):
 def decaler_cles(c: Clip, delta: int):
     """Le début du clip bouge de delta : ses images clés gardent leur place à l'écran."""
     for e in c.effets + ([c.transformation] if c.transformation else []):
-        for cles in e.cles.values():
+        # Les images clés des masques comptent leur temps comme celles de l'effet.
+        for cles in list(e.cles.values()) + [v for m in e.masques for v in m.cles.values()]:
             for k in cles:
                 k[0] -= delta
     c.cles_supprimees = [k - delta for k in c.cles_supprimees if k - delta > 0]
