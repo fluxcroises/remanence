@@ -1,4 +1,4 @@
-"""Bitcrusher : moins de bits et moins d'échantillons, le son devient granuleux."""
+"""Bitcrusher : moins de bits et moins d'échantillons, le son devient granuleux."""
 
 import numpy as np
 
@@ -12,7 +12,7 @@ def son(lire, valeurs, graine, frequence):
 
     def lecteur(debut: int, n: int) -> np.ndarray:
         if reduction > 1:
-            # Échantillon tenu : aligné sur les positions absolues (même son lu par blocs).
+            # Échantillon tenu : aligné sur les positions absolues (même son lu par blocs).
             positions = (np.arange(debut, debut + n) // reduction) * reduction
             a = int(positions[0])
             brut = lire(a, int(positions[-1]) - a + 1)
