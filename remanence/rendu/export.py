@@ -285,6 +285,11 @@ def exporter(projet: Projet, seq: Sequence, chemin: Path, cle_format: str = "sou
             fv = sortie.add_stream(fmt.codec, rate=cadence)
             fv.width, fv.height, fv.pix_fmt = seq.largeur, seq.hauteur, fmt.pix_fmt
             fv.time_base = base_temps
+            # Plusieurs images encodées à la fois : en UHD, ProRes passe de 106 à 66 ms par
+            # image, avec exactement le même fichier. Seulement si aucune image n'est recopiée :
+            # l'encodeur rend ses images en retard, après les recopies qui les suivent.
+            if all(i is None for i in idents):
+                fv.thread_type = "AUTO"
             cc = fv.codec_context
             cc.options = dict(fmt.options)
             cc.color_primaries = couleur.primaires

@@ -7,6 +7,9 @@ une image en log reste en log.
 
 from __future__ import annotations
 
+import os
+from concurrent.futures import ThreadPoolExecutor
+
 import av
 import numpy as np
 
@@ -126,10 +129,8 @@ def depuis_rvba(rvba: np.ndarray, pix_fmt: str, couleur: Couleur) -> av.VideoFra
     """Opération inverse de vers_rvba, vers le format de pixel demandé."""
     fmt = av.VideoFormat(pix_fmt)
     h, l = rvba.shape[:2]
-    a = np.clip(rvba[..., 3], 0.0, 1.0)
-    droite = rvba[..., :3] / np.maximum(a, 1e-6)[..., None]
-    droite[a <= 1e-6] = 0.0
     if not _est_yuv(fmt):
+        a, droite = _droite(rvba)
         tab = np.empty((h, l, 4), np.uint16)
         tab[..., :3] = np.clip(np.rint(droite * 65535.0), 0, 65535)
         tab[..., 3] = np.rint(a * 65535.0)
@@ -137,15 +138,61 @@ def depuis_rvba(rvba: np.ndarray, pix_fmt: str, couleur: Couleur) -> av.VideoFra
         return appliquer_couleur(image, couleur)
     bits = max(c.bits for c in fmt.components)
     kr, kb = coefficients(couleur.matrice, h)
+    image = av.VideoFrame(l, h, pix_fmt)
+    ch, cl = image.planes[1].height, image.planes[1].width
+    fy, fx = -(-h // ch), -(-l // cl)
+    maxv = float((1 << bits) - 1)
+    dtype = np.uint16 if bits > 8 else np.uint8
+    octets = np.dtype(dtype).itemsize
+    tampons = [np.zeros((plan.height, plan.line_size // octets), dtype) for plan in image.planes]
+    alpha = len(image.planes) >= 4
+    complete = _plage_complete(fmt, couleur)
+    # Bandes de lignes calculées en parallèle (NumPy libère le verrou de Python) : en UHD,
+    # la conversion d'une image prenait 0,3 s sur un seul cœur. Chaque bande fait le même
+    # calcul que l'image entière : le résultat ne change pas.
+    pas = max(fy, (h // (_FILS * 2) // fy) * fy)
+    bandes = [(r, min(h, r + pas)) for r in range(0, h, pas)]
+
+    def bande(r0: int, r1: int):
+        _bande_yuv(rvba[r0:r1], kr, kb, fy, fx, cl, bits, maxv,
+                   complete, [t[r0:r1] for t in tampons[:1]]
+                   + [t[r0 // fy:-(-r1 // fy)] for t in tampons[1:3]]
+                   + ([tampons[3][r0:r1]] if alpha else []), l)
+
+    list(_pool().map(lambda b: bande(*b), bandes))
+    for plan, tampon in zip(image.planes, tampons):
+        plan.update(tampon.tobytes())
+    return appliquer_couleur(image, couleur, 2 if complete else 1)
+
+
+_FILS = min(8, os.cpu_count() or 1)
+_POOL: ThreadPoolExecutor | None = None
+
+
+def _pool() -> ThreadPoolExecutor:
+    global _POOL
+    if _POOL is None:
+        _POOL = ThreadPoolExecutor(_FILS, thread_name_prefix="conversion")
+    return _POOL
+
+
+def _droite(rvba: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Alpha et couleurs non prémultipliées."""
+    a = np.clip(rvba[..., 3], 0.0, 1.0)
+    droite = rvba[..., :3] / np.maximum(a, 1e-6)[..., None]
+    droite[a <= 1e-6] = 0.0
+    return a, droite
+
+
+def _bande_yuv(rvba, kr, kb, fy, fx, cl, bits, maxv, complete, sorties, l):
+    h = rvba.shape[0]
+    a, droite = _droite(rvba)
     kg = 1.0 - kr - kb
     r, g, b = droite[..., 0], droite[..., 1], droite[..., 2]
     y = kr * r + kg * g + kb * b
     u = (b - y) / (2.0 * (1.0 - kb))
     v = (r - y) / (2.0 * (1.0 - kr))
-    image = av.VideoFrame(l, h, pix_fmt)
-    plans_dims = [(p.height, p.width) for p in image.planes]
-    ch, cl = plans_dims[1]
-    fy, fx = -(-h // ch), -(-l // cl)
+    ch = -(-h // fy)
 
     def reduire(c):
         if fy == 1 and fx == 1:
@@ -156,23 +203,15 @@ def depuis_rvba(rvba: np.ndarray, pix_fmt: str, couleur: Couleur) -> av.VideoFra
 
     u, v = reduire(u), reduire(v)
     echelle = float(1 << (bits - 8))
-    maxv = float((1 << bits) - 1)
-    if _plage_complete(fmt, couleur):
+    if complete:
         yq, uq, vq = y * maxv, u * maxv + 128 * echelle, v * maxv + 128 * echelle
     else:
         yq = y * 219 * echelle + 16 * echelle
         uq = u * 224 * echelle + 128 * echelle
         vq = v * 224 * echelle + 128 * echelle
-    valeurs = [yq, uq, vq]
-    if len(image.planes) >= 4:
-        valeurs.append(a * maxv)
-    dtype = np.uint16 if bits > 8 else np.uint8
-    for plan, val in zip(image.planes, valeurs):
-        octets = np.dtype(dtype).itemsize
-        tampon = np.zeros((plan.height, plan.line_size // octets), dtype)
-        tampon[:, : plan.width] = np.clip(np.rint(val), 0, maxv)
-        plan.update(tampon.tobytes())
-    return appliquer_couleur(image, couleur, 2 if _plage_complete(fmt, couleur) else 1)
+    valeurs = [yq, uq, vq] + ([a * maxv] if len(sorties) >= 4 else [])
+    for sortie, val in zip(sorties, valeurs):
+        sortie[:, : val.shape[1]] = np.clip(np.rint(val), 0, maxv)
 
 
 def appliquer_couleur(image: av.VideoFrame, couleur: Couleur, plage: int | None = None):

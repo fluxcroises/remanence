@@ -463,16 +463,22 @@ class VueTimeline(QWidget):
             x += l
 
     def _dessiner_onde(self, p: QPainter, clip: Clip, media, r: QRectF):
-        cache = self._ondes.get(media.id)
-        if cache is None:
+        if media.id not in self._ondes:
+            # Son pas encore prêt : retenu comme absent jusqu'à oublier_ondes (appelé quand
+            # le cache audio est écrit). Le chercher sur le disque à chaque dessin coûtait
+            # 30 ms à une timeline de 200 clips.
             fichier = chemin_audio(media.infos)
-            if not fichier.exists():
-                return
-            try:
-                ac = AudioCache(fichier)
-            except Exception:
-                return
-            cache = self._ondes[media.id] = (ac.cretes(4000), ac.nb, ac.decalage_s)
+            cache = None
+            if fichier.exists():
+                try:
+                    ac = AudioCache(fichier)
+                    cache = (ac.cretes(4000), ac.nb, ac.decalage_s)
+                except Exception:
+                    pass
+            self._ondes[media.id] = cache
+        cache = self._ondes[media.id]
+        if cache is None:
+            return
         cretes, nb, decalage = cache
         if nb == 0 or len(cretes) == 0:
             return

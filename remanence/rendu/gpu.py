@@ -458,12 +458,44 @@ class RenduGPU:
         brut = fbo.read(components=4, dtype="f4", alignment=1)
         return np.frombuffer(brut, np.float32).reshape(h, l, 4).copy()
 
+    def lire_apercu(self) -> np.ndarray:
+        """L'image composée pour l'écran : H×L×3 float16 (vue en lecture seule), convertie par
+        la carte graphique. La conversion par NumPy coûtait 17 ms par image en 1080."""
+        _, fbo = self._cible(f"accu{self._courant}", self._taille)
+        l, h = self._taille
+        k = ("ecran", self._taille)
+        if k not in self._cibles:
+            t = self.ctx.texture(self._taille, 4, dtype="f2")
+            self._cibles[k] = (t, self.ctx.framebuffer(color_attachments=[t]))
+        _, demi = self._cibles[k]
+        # Conversion en demi-flottants par la carte (copie entre tampons), puis lecture dans
+        # le format même du tampon : lire directement en f2 faisait convertir le pilote, 37 ms.
+        self.ctx.copy_framebuffer(demi, fbo)
+        brut = demi.read(components=4, dtype="f2", alignment=1)
+        return np.frombuffer(brut, np.float16).reshape(h, l, 4)[..., :3]
+
     def lire(self) -> np.ndarray:
         """L'image composée, H×L×4 float32, première ligne en haut."""
         _, fbo = self._cible(f"accu{self._courant}", self._taille)
         l, h = self._taille
         brut = fbo.read(components=4, dtype="f4", alignment=1)
         return np.frombuffer(brut, np.float32).reshape(h, l, 4).copy()
+
+    def lire_apercu(self) -> np.ndarray:
+        """L'image composée pour l'écran : H×L×3 float16 (vue en lecture seule), convertie par
+        la carte graphique. La conversion par NumPy coûtait 17 ms par image en 1080."""
+        _, fbo = self._cible(f"accu{self._courant}", self._taille)
+        l, h = self._taille
+        k = ("ecran", self._taille)
+        if k not in self._cibles:
+            t = self.ctx.texture(self._taille, 4, dtype="f2")
+            self._cibles[k] = (t, self.ctx.framebuffer(color_attachments=[t]))
+        _, demi = self._cibles[k]
+        # Conversion en demi-flottants par la carte (copie entre tampons), puis lecture dans
+        # le format même du tampon : lire directement en f2 faisait convertir le pilote, 37 ms.
+        self.ctx.copy_framebuffer(demi, fbo)
+        brut = demi.read(components=4, dtype="f2", alignment=1)
+        return np.frombuffer(brut, np.float16).reshape(h, l, 4)[..., :3]
 
     def _convertir(self, image: av.VideoFrame, couleur: Couleur, x0: int, y0: int,
                    cible: str = "couche"):

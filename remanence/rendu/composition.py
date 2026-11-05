@@ -124,6 +124,21 @@ def sequence_par_id(projet: Projet, sequence_id: str) -> Sequence | None:
     return next((s for s in projet.sequences if s.id == sequence_id), None)
 
 
+def visibles(pile: list[Couche], seq: Sequence) -> list[Couche]:
+    """La pile sans les couches entièrement cachées : sous une image opaque, sans effet, en
+    mode normal, qui couvre toute la séquence, rien ne se voit (le mélange normal d'une image
+    opaque donne exactement cette image). Évite de décoder six pistes pour n'en montrer
+    qu'une."""
+    for i in range(len(pile) - 1, 0, -1):
+        c = pile[i]
+        if c.media is None or c.calcul or c.effets or c.opacite < 1.0 or c.fusion != "normal":
+            continue
+        v = c.media.infos.video
+        if not v.alpha and v.largeur * seq.hauteur == v.hauteur * seq.largeur:
+            return pile[i:]
+    return pile
+
+
 def identite(pile: list[Couche], seq: Sequence | None = None, f: int = 0) -> Couche | None:
     """La couche dont l'image source est le résultat exact à l'image f, s'il en existe une :
     aucun effet sur elle, au-dessus d'elle ni sur la séquence."""
@@ -154,8 +169,16 @@ class Compositeur:
         # (aperçu) l'image sort sans lui, et le clip est noté dans `manquants`.
         self.synchrone = synchrone
         self.manquants: set[str] = set()
+        self._proxies: dict[tuple, str | None] = {}
         self._gpu_voulu = gpu_demande() if gpu is None else gpu
         self._gpu: RenduGPU | None = None
+
+    def changer_projet(self, projet: Projet):
+        """Nouvelle version du projet : les décodeurs et le contexte de la carte graphique
+        restent ouverts (les rouvrir à chaque réglage déplacé coûtait des dizaines de ms)."""
+        self.projet = projet
+        self.manquants = set()
+        self._proxies = {}
 
     def fermer(self):
         self.pool.fermer()
@@ -176,9 +199,15 @@ class Compositeur:
     def lecteur(self, media: Media, proxy: bool) -> LecteurVideo:
         chemin = media.chemin
         if proxy:
-            p = chemin_proxy(media.infos)
-            if p.exists():
-                chemin = str(p)
+            # Le proxy est cherché sur le disque une fois par version du projet (une fenêtre
+            # qui voit arriver un proxy envoie une nouvelle version), pas à chaque image.
+            cle_proxy = (media.id, media.chemin)
+            p = self._proxies.get(cle_proxy)
+            if cle_proxy not in self._proxies:
+                p = chemin_proxy(media.infos)
+                p = self._proxies[cle_proxy] = str(p) if p.exists() else None
+            if p is not None:
+                chemin = p
             else:
                 proxy = False
 
@@ -187,13 +216,16 @@ class Compositeur:
                 media.chemin, None if not media.infos.sequence_images else media.infos.video.cadence)
             return LecteurVideo(chemin, index, None if proxy else infos.sequence_images,
                                 media.infos.video.cadence)
-        return self.pool.video((media.id, proxy), fabrique)
+        return self.pool.video((media.id, chemin, proxy), fabrique)
 
-    def image(self, seq: Sequence, f: int, echelle: float = 1.0, proxy: bool = False) -> np.ndarray:
+    def image(self, seq: Sequence, f: int, echelle: float = 1.0, proxy: bool = False,
+              ecran: bool = False) -> np.ndarray:
+        """RVBA float32 prémultiplié ; ecran : RVB float16 lu tel quel sur la carte graphique
+        (aperçu), si elle est là."""
         largeur = max(2, round(seq.largeur * echelle))
         hauteur = max(2, round(seq.hauteur * echelle))
         sortie = np.zeros((hauteur, largeur, 4), np.float32)
-        pile = couches(self.projet, seq, f)
+        pile = visibles(couches(self.projet, seq, f), seq)
         # Les couches calculées d'abord : une séquence imbriquée se compose elle-même sur la
         # carte graphique, avant que la composition de cette image ne commence.
         calculees = {id(c): self._image_calculee(c, largeur, hauteur, proxy)
@@ -220,7 +252,7 @@ class Compositeur:
             effets = actifs(seq.effets, f, modulateurs.decalages(seq, f, self.projet))
             if effets:
                 g.effets_sequence(effets, f)
-            return g.lire()
+            return g.lire_apercu() if ecran else g.lire()
         # Sans carte graphique, les effets ne sont pas calculés : seules les images sont fusionnées.
         pile = [c for c in pile if c.media is not None or c.calcul]
         for i, couche in enumerate(pile):
@@ -245,7 +277,7 @@ class Compositeur:
         sinon RVB float16 issu de la composition complète."""
         largeur = max(2, round(seq.largeur * echelle))
         hauteur = max(2, round(seq.hauteur * echelle))
-        pile = couches(self.projet, seq, f)
+        pile = visibles(couches(self.projet, seq, f), seq)
         if len(pile) == 1 and identite(pile, seq, f) is not None:
             v = pile[0].media.infos.video
             if not v.alpha and (v.largeur, v.hauteur) == (seq.largeur, seq.hauteur):
@@ -253,7 +285,9 @@ class Compositeur:
                 rapide = vers_rvb16_apercu(image, v.couleur, largeur, hauteur)
                 if rapide is not None:
                     return rapide
-        rvba = self.image(seq, f, echelle, proxy)
+        rvba = self.image(seq, f, echelle, proxy, ecran=True)
+        if rvba.dtype == np.float16:
+            return rvba
         return np.ascontiguousarray(rvba[..., :3].astype(np.float16))
 
     def _image_calculee(self, couche: Couche, largeur: int, hauteur: int,

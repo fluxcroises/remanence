@@ -29,6 +29,18 @@ QUALITES = {"Pleine": (1.0, False), "1/2": (0.5, True), "1/4": (0.25, True)}
 COMPARAISONS = {"apres": "Après", "avant": "Avant", "volet": "Volet", "cote": "Côte à côte"}
 
 
+def _suivant(compositeur: Compositeur | None, projet: Projet | None) -> Compositeur | None:
+    """Le compositeur de la nouvelle version du projet : le même, s'il existe déjà."""
+    if projet is None:
+        if compositeur is not None:
+            compositeur.fermer()
+        return None
+    if compositeur is None:
+        return Compositeur(projet, apercu=True)
+    compositeur.changer_projet(projet)
+    return compositeur
+
+
 class MoteurLecture(QObject):
     # L'image, ou (après, avant) pour un volet ou un côte à côte.
     image_prete = Signal(object, int)
@@ -239,11 +251,8 @@ class MoteurLecture(QObject):
                 comparaison = self._comparaison
                 projet_avant = self._projet_avant if comparaison != "apres" else None
                 if self._version != version:
-                    for c in (compositeur, avant):
-                        if c is not None:
-                            c.fermer()
-                    compositeur = Compositeur(projet, apercu=True) if projet else None
-                    avant = Compositeur(projet_avant, apercu=True) if projet_avant else None
+                    compositeur = _suivant(compositeur, projet)
+                    avant = _suivant(avant, projet_avant)
                     version = self._version
             if arret_auto:
                 self.lecture_changee.emit(False)
