@@ -1,8 +1,8 @@
-"""Arrêt de bande : le son ralentit et descend jusqu'à s'arrêter, comme une cassette freinée.
+"""Arrêt de bande : le son ralentit et descend jusqu'à s'arrêter, comme une cassette freinée.
 
 Toutes les « intervalle » secondes (depuis le début du clip), une période tirée (probabilité)
-finit par un freinage de « durée » : la vitesse passe de 1 à 0 (la hauteur descend avec
-elle) ; le son repart net à la période suivante."""
+finit par un freinage de « durée » : la vitesse passe de 1 à 0 (la hauteur descend avec
+elle) ; le son repart net à la période suivante."""
 
 import numpy as np
 
@@ -23,7 +23,7 @@ def son(lire, valeurs, graine, frequence):
         x = (p - depart).astype(np.float64)
         tires = {int(i): hasard(graine, int(i)) < probabilite for i in np.unique(k)}
         freine = (x >= 0) & np.array([tires[int(i)] for i in k])
-        # Vitesse v(u) = (1 - u)^courbe, u = x / durée ; position = intégrale de la vitesse.
+        # Vitesse v(u) = (1 - u)^courbe, u = x / durée ; position = intégrale de la vitesse.
         u = np.clip(x / duree, 0, 1)
         parcouru = duree * (1 - (1 - u) ** (courbe + 1)) / (courbe + 1)
         source = np.where(freine, depart + parcouru, p)
@@ -36,6 +36,10 @@ def son(lire, valeurs, graine, frequence):
 
 DESCRIPTION = DescriptionEffet(
     cle="arret_bande", nom="Arrêt de bande", famille="Son", moteur="audio", son=son,
+    prereglages={"Cassette freinée": {"intervalle": 2, "duree": 600, "courbe": 1},
+                 "Platine débranchée": {"intervalle": 4, "duree": 1500, "courbe": 2},
+                 "Ralenti nerveux": {"intervalle": 0.8, "duree": 250, "courbe": 0.6,
+                                     "probabilite": 60}},
     parametres=[Parametre("intervalle", "Intervalle", 0.2, 10, 2, "s", 1),
                 Parametre("duree", "Durée", 50, 5000, 600, "ms"),
                 Parametre("courbe", "Courbe", 0.2, 4, 1, "", 1),

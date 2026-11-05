@@ -1,8 +1,8 @@
-"""Databending audio : le datamosh du son. Le son est encodé en MP2 (le format des vieilles
-radios numériques et des Video CD), des octets des paquets sont abîmés, puis il est décodé :
+"""Databending audio : le datamosh du son. Le son est encodé en MP2 (le format des vieilles
+radios numériques et des Video CD), des octets des paquets sont abîmés, puis il est décodé :
 craquements, trous, bouts de son répétés ou métalliques.
 
-Le travail se fait par tranches d'une seconde comptées depuis le début du clip ; chaque tranche
+Le travail se fait par tranches d'une seconde comptées depuis le début du clip ; chaque tranche
 dépend de son seul contenu, du débit, de la corruption et de la graine (même son à chaque
 lecture). Les tranches calculées sont gardées en mémoire, la lecture les redemande souvent."""
 
@@ -53,7 +53,7 @@ def _decoder(paquets: list[bytes]) -> np.ndarray:
                 x = trame.to_ndarray()
                 morceaux.append(x.T if x.shape[0] == 2 else x.reshape(-1, 2))
         except (av.error.FFmpegError, ValueError):
-            morceaux.append(np.zeros((TRAME, 2), np.int16))  # trame illisible : un trou
+            morceaux.append(np.zeros((TRAME, 2), np.int16))  # trame illisible : un trou
     if not morceaux:
         return np.zeros((0, 2), np.float32)
     return np.concatenate(morceaux).astype(np.float32) / 32768
@@ -109,6 +109,9 @@ def son(lire, valeurs, graine, frequence):
 
 DESCRIPTION = DescriptionEffet(
     cle="databending_audio", nom="Databending audio", famille="Son", moteur="audio", son=son,
+    prereglages={"Radio abîmée": {"debit": 64, "corruption": 15},
+                 "Fichier corrompu": {"debit": 96, "corruption": 45},
+                 "Crépitements": {"debit": 32, "corruption": 8}},
     parametres=[Parametre("debit", "Débit", 32, 192, 64, "kb/s"),
                 Parametre("corruption", "Corruption", 0, 100, 20, "%")],
 )

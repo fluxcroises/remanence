@@ -31,6 +31,9 @@ DESCRIPTION = DescriptionEffet(
     famille="Son",
     moteur="audio",
     son=son,
+    prereglages={"Console 8 bits": {"bits": 8, "reduction": 4},
+                 "Téléphone cassé": {"bits": 4, "reduction": 12},
+                 "Poussière": {"bits": 3, "reduction": 32}},
     parametres=[Parametre("bits", "Bits", 1, 16, 6),
                 Parametre("reduction", "Réduction", 1, 64, 8, "×")],
 )

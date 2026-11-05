@@ -172,6 +172,9 @@ class Clip:
     # Titre (texte dessiné, voir rendu/titres.py) ou séquence imbriquée : un clip sans média.
     titre: dict | None = None
     sequence_id: str | None = None
+    # Le son lié bave avec l'image : pendant la transition datamosh et aux images clés
+    # supprimées, le son d'avant tourne en boucle et s'efface (rendu/son.py, bave).
+    son_bave: bool = False
     # Position, taille, rotation, recadrage (effet interne « transformation », voir
     # effets/transformation.py) ; None : l'image telle qu'elle tient dans la séquence.
     transformation: Effet | None = None

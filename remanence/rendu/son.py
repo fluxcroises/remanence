@@ -103,3 +103,54 @@ def lire_positions(lire: Lecteur, positions: np.ndarray) -> np.ndarray:
 
 def echantillons(ms: float) -> int:
     return max(1, int(round(ms * FREQUENCE / 1000)))
+
+
+# Le son bave avec l'image (transition datamosh, images clés supprimées)
+
+GRAIN_BAVE_MS = 60
+BAVE_MAX_MS = 2000
+
+
+def bave(lire: Lecteur, plages: list[tuple[int, int]]) -> Lecteur:
+    """Pendant chaque plage (début, longueur) en positions du porteur, le grain de son qui la
+    précède tourne en boucle et s'efface, pendant que le son de la plage monte : comme l'image
+    du plan d'avant qui bave dans le suivant. Au-delà de deux secondes, le son est net."""
+    grain = echantillons(GRAIN_BAVE_MS)
+    fondu = max(1, grain // 8)
+    plages = sorted(plages)
+
+    def lecteur(debut: int, n: int) -> np.ndarray:
+        sortie = lire(debut, n)
+        for s, longueur in plages:
+            duree = min(longueur, echantillons(BAVE_MAX_MS))
+            a, b = max(debut, s), min(debut + n, s + duree)
+            if b <= a:
+                continue
+            x = np.arange(a, b) - s
+            o = x % grain
+            gele = lire_positions(lire, (s - grain + o).astype(np.float64))
+            bord = np.minimum(o, grain - 1 - o)
+            gele *= np.clip((bord + 1) / fondu, 0, 1).astype(np.float32)[:, None]
+            u = (x / duree).astype(np.float32)[:, None]
+            sortie[a - debut:b - debut] = gele * (1 - u) + sortie[a - debut:b - debut] * u
+        return sortie
+    return lecteur
+
+
+def son_demo(duree_s: float = 2.0) -> np.ndarray:
+    """Motif rythmé (percussions, petite mélodie) pour les vignettes des effets audio."""
+    n = int(duree_s * FREQUENCE)
+    x = np.zeros((n, 2), np.float32)
+    for d in np.arange(0, duree_s, 0.5):
+        i = int(d * FREQUENCE)
+        k = np.arange(min(6000, n - i))
+        x[i:i + len(k)] += (np.sin(2 * np.pi * (60 + 80 * np.exp(-k / 800)) * k / FREQUENCE)
+                            * np.exp(-k / 3000) * 0.7)[:, None]
+    notes = [220, 277, 330, 440, 330, 277, 247, 330]
+    for r, d in enumerate(np.arange(0, duree_s, 0.25)):
+        i = int(d * FREQUENCE)
+        k = np.arange(min(int(0.24 * FREQUENCE), n - i))
+        s = np.sin(2 * np.pi * notes[r % len(notes)] * k / FREQUENCE) * np.exp(-k / 6000) * 0.25
+        x[i:i + len(k), 0] += s
+        x[i:i + len(k), 1] += s * 0.8
+    return np.clip(x, -1, 1)

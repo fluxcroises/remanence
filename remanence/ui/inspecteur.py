@@ -476,6 +476,18 @@ class Inspecteur(PanneauFiche):
                 ligne.valeur_finale.connect(lambda v, champ=champ: self.reglage.emit(
                     c.id, "transition_" + champ, v))
                 self._cible.addWidget(ligne)
+        if video and (c.transition is not None or c.cles_supprimees) and c.lien:
+            # Le son lié bave avec l'image (dans la section de la transition s'il y en a une).
+            if c.transition is None:
+                self._section("Datamosh", "datamosh")
+            bave = QCheckBox("Le son bave")
+            bave.setToolTip("Le son bave avec l'image")
+            bave.setChecked(c.son_bave)
+            bave.toggled.connect(lambda v: self.reglage.emit(c.id, "son_bave", v))
+            rang = QHBoxLayout()
+            rang.addSpacing(RETRAIT_LOSANGE)
+            rang.addWidget(bave, 1)
+            self._cible.addLayout(rang)
         if video:
             self._clip_courant = (seq, c)
             self._projet_courant = projet

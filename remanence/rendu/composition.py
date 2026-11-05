@@ -416,7 +416,8 @@ class Compositeur:
         par_image = FREQUENCE_MIXAGE / float(seq.fraction_cadence)
         for piste in seq.pistes_entendues("audio"):
             effets = [e for e in piste.effets if e.type in EFFETS and EFFETS[e.type].audio]
-            if not effets:
+            plages = self._plages_bave(seq, piste, par_image)
+            if not effets and not plages:
                 for c in piste.clips:
                     if round(c.fin * par_image) > debut and round(c.debut * par_image) < debut + n:
                         lecteur = self._lecteur_clip(seq, piste, c, par_image)
@@ -431,10 +432,26 @@ class Compositeur:
                     if lecteur is not None and round(c.fin * par_image) > a and                             round(c.debut * par_image) < a + m:
                         somme += lecteur(a, m)
                 return somme
-            traite = son.chaine(bus, lambda f, piste=piste: actifs(
-                piste.effets, f, modulateurs.decalages(seq, f, self.projet)), par_image)
+            # Le son bave d'abord (sur le mélange : le grain vient du plan d'avant), puis les
+            # effets de la piste.
+            source = son.bave(bus, plages) if plages else bus
+            traite = son.chaine(source, lambda f, piste=piste: actifs(
+                piste.effets, f, modulateurs.decalages(seq, f, self.projet)), par_image)                 if effets else source
             sortie += traite(debut, n)
         return sortie
+
+    def _plages_bave(self, seq: Sequence, piste, par_image: float) -> list[tuple[int, int]]:
+        """Plages (début, longueur, en échantillons de la séquence) où le son de la piste bave :
+        celles de la source modifiée des clips vidéo liés à ses clips, si « le son bave »."""
+        liens = {c.lien for c in piste.clips if c.lien}
+        plages = []
+        for _, v in seq.tous_les_clips():
+            if v.son_bave and v.lien in liens and v.est_media:
+                for a, b in prerendu.plages_modifiees(self.projet, seq, v):
+                    if b > a:
+                        plages.append((round((v.debut + a) * par_image),
+                                       round((b - a) * par_image)))
+        return plages
 
     def _lecteur_clip(self, seq: Sequence, piste, c: Clip, par_image: float):
         """Le son du clip dans la séquence (positions en échantillons de la séquence, muet hors

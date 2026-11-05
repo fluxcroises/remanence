@@ -1,4 +1,4 @@
-"""Inversion par fragments : des morceaux du son, tirés au hasard, joués à l'envers."""
+"""Inversion par fragments : des morceaux du son, tirés au hasard, joués à l'envers."""
 
 import numpy as np
 
@@ -23,6 +23,9 @@ def son(lire, valeurs, graine, frequence):
 DESCRIPTION = DescriptionEffet(
     cle="inversion_fragments", nom="Inversion par fragments", famille="Son", moteur="audio",
     son=son,
+    prereglages={"Envers aléatoire": {"fragment": 150, "probabilite": 50},
+                 "Bribes à rebours": {"fragment": 60, "probabilite": 70},
+                 "Message caché": {"fragment": 600, "probabilite": 40}},
     parametres=[Parametre("fragment", "Fragment", 10, 2000, 150, "ms"),
                 Parametre("probabilite", "Probabilité", 0, 100, 50, "%")],
 )

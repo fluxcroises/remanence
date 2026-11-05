@@ -216,12 +216,12 @@ def markdown(texte: str, base: str, ancre: str) -> tuple[str, str]:
 
 
 def catalogue() -> tuple[str, str]:
-    from remanence.effets import EFFETS, FAMILLES
+    from remanence.effets import EFFETS, FAMILLES, FAMILLES_SON
     morceaux = ['<h2 id="catalogue">Catalogue des effets</h2>',
                 f"<p>Chaque effet se règle dans l'inspecteur{NB}; ses préréglages sont dans la "
                 f"bibliothèque d'effets. « Temps réel »{NB}: calculé à l'image, à la lecture. "
                 f"« Calculé à part »{NB}: calculé en arrière-plan, gardé en cache.</p>"]
-    for famille in FAMILLES:
+    for famille in FAMILLES + FAMILLES_SON:
         effets = sorted((d for d in EFFETS.values() if d.famille == famille and not d.interne),
                         key=lambda d: d.nom)
         if not effets:
@@ -232,7 +232,7 @@ def catalogue() -> tuple[str, str]:
             image = IMAGES / "effets" / f"{d.cle}.png"
             vignette = f'<img alt="{html.escape(d.nom)}" src="images/effets/{d.cle}.png">' \
                 if image.exists() else ""
-            moteur = "Calculé à part" if d.codec else "Temps réel"
+            moteur = "Son" if d.audio else "Calculé à part" if d.codec else "Temps réel"
             reglages = ", ".join(p.nom for p in d.parametres_pour(None)) if not d.parametres_de \
                 else "les réglages du script"
             prereglages = ", ".join(d.prereglages)

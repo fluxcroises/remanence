@@ -13,9 +13,10 @@ from PySide6.QtWidgets import (QAbstractItemView, QHBoxLayout, QInputDialog, QLi
                                QListView, QListWidget, QListWidgetItem, QMenu, QMessageBox,
                                QStyle, QStyledItemDelegate, QToolButton, QVBoxLayout, QWidget)
 
-from remanence.effets import EFFETS, FAMILLES
+from remanence.effets import EFFETS, FAMILLES, FAMILLES_SON
 from remanence.effets import prereglages as pr
 from remanence.moteurs.codec import prerendu
+from remanence.rendu import son as son_
 from remanence.rendu.gpu import RenduGPU, gpu_demande
 from remanence.ui import charte
 from remanence.ui.composants import bouton_icone, etiquette
@@ -135,6 +136,7 @@ class PanneauEffets(QWidget):
         self.actifs: set[str] = set()
         self._vignettes: dict[int, QImage] = {}
         self._animations_codec: dict[int, list] = {}
+        self._ondes: dict[int, np.ndarray] = {}
         self._gpu: RenduGPU | None = None
         self._gpu_essaye = False
         self._survole: int | None = None
@@ -154,7 +156,7 @@ class PanneauEffets(QWidget):
         self.b_filtre.setPopupMode(QToolButton.InstantPopup)
         menu = QMenu(self.b_filtre)
         self._actions_filtre = {}
-        for famille in ["", *FAMILLES, pr.FAMILLE_PERSONNELS]:
+        for famille in ["", *FAMILLES, *FAMILLES_SON, pr.FAMILLE_PERSONNELS]:
             a = menu.addAction(famille or "Toutes les familles",
                                lambda famille=famille: self._filtrer(famille))
             a.setCheckable(True)
@@ -192,6 +194,7 @@ class PanneauEffets(QWidget):
         self.prereglages = pr.tous()
         self._vignettes.clear()
         self._animations_codec.clear()
+        self._ondes.clear()
         self._remplir()
 
     def _filtrer(self, famille: str):
@@ -251,7 +254,55 @@ class PanneauEffets(QWidget):
             self._animations_codec[i] = prerendu.apercu(images, effets)
         return self._animations_codec[i]
 
+    def est_audio(self, i: int) -> bool:
+        effets = self.prereglages[i].effets
+        return bool(effets) and all(e["type"] in EFFETS and EFFETS[e["type"]].audio
+                                    for e in effets)
+
+    def _onde(self, i: int) -> np.ndarray:
+        """Préréglage audio : le motif de démonstration passé par ses effets (calculé une
+        fois)."""
+        if i not in self._ondes:
+            demo = son_.son_demo()
+
+            def lire(a: int, n: int) -> np.ndarray:
+                sortie = np.zeros((n, 2), np.float32)
+                b, c = max(0, a), min(len(demo), a + n)
+                if c > b:
+                    sortie[b - a:c - a] = demo[b:c]
+                return sortie
+            for e in self.prereglages[i].nouveaux_effets():
+                lire = EFFETS[e.type].son(lire, e.params, e.graine, son_.FREQUENCE)
+            self._ondes[i] = lire(0, len(demo))[:, 0]
+        return self._ondes[i]
+
+    def _calculer_onde(self, i: int, numero: int) -> QImage:
+        """Vignette d'un effet audio : la forme d'onde du son traité ; au survol, une tête de
+        lecture la parcourt."""
+        c = charte.actuelle()
+        largeur, hauteur = 256, 144
+        image = QImage(largeur, hauteur, QImage.Format_RGB888)
+        # Comme un clip audio de la timeline : l'onde claire sur le fond des clips audio.
+        image.fill(c.c("clip-audio"))
+        onde = self._onde(i)
+        colonnes = np.array_split(onde, largeur)
+        p = QPainter(image)
+        p.setPen(c.c("ink"))
+        milieu = hauteur / 2
+        for x, col in enumerate(colonnes):
+            if len(col):
+                haut, bas = float(col.max()), float(col.min())
+                p.drawLine(x, round(milieu - haut * milieu * 0.9), x,
+                           round(milieu - bas * milieu * 0.9))
+        if numero > 6:
+            xt = (numero - 6) * 6 % largeur
+            p.fillRect(QRectF(xt, 0, 2, hauteur), c.c("playhead"))
+        p.end()
+        return image
+
     def _calculer(self, i: int, numero: int) -> QImage:
+        if self.est_audio(i):
+            return self._calculer_onde(i, numero)
         codec = self._codec(i)
         if codec is not None:
             rvb = np.ascontiguousarray(codec[numero % IMAGES_ANIMATION])
@@ -309,8 +360,10 @@ class PanneauEffets(QWidget):
         p = self.prereglages[item.data(ROLE_INDEX)]
         menu = QMenu(self)
         menu.addAction("Appliquer aux clips sélectionnés", lambda: self.appliquer.emit(p, "selection"))
-        menu.addAction("Clip d'effet à la tête de lecture", lambda: self.appliquer.emit(p, "clip_effet"))
-        menu.addAction("Effet de séquence", lambda: self.appliquer.emit(p, "sequence"))
+        if not self.est_audio(item.data(ROLE_INDEX)):
+            menu.addAction("Clip d'effet à la tête de lecture",
+                           lambda: self.appliquer.emit(p, "clip_effet"))
+            menu.addAction("Effet de séquence", lambda: self.appliquer.emit(p, "sequence"))
         if not p.fourni:
             menu.addSeparator()
             menu.addAction("Renommer…", lambda: self._renommer(p))

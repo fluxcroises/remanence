@@ -1,7 +1,7 @@
-"""Bégaiement : un petit fragment se répète, comme un disque rayé ou un sampler qu'on martèle.
+"""Bégaiement : un petit fragment se répète, comme un disque rayé ou un sampler qu'on martèle.
 
 Le son est découpé en fenêtres de « fragment × répétitions », comptées depuis le début du
-clip ; dans une fenêtre tirée (probabilité), le premier fragment est rejoué jusqu'à la fin de
+clip ; dans une fenêtre tirée (probabilité), le premier fragment est rejoué jusqu'à la fin de
 la fenêtre, sinon le son passe."""
 
 import numpy as np
@@ -27,6 +27,9 @@ def son(lire, valeurs, graine, frequence):
 
 DESCRIPTION = DescriptionEffet(
     cle="begaiement", nom="Bégaiement", famille="Son", moteur="audio", son=son,
+    prereglages={"Disque rayé": {"fragment": 60, "repetitions": 6, "probabilite": 100},
+                 "Sampler nerveux": {"fragment": 30, "repetitions": 8, "probabilite": 50},
+                 "Hoquet": {"fragment": 200, "repetitions": 2, "probabilite": 70}},
     parametres=[Parametre("fragment", "Fragment", 5, 1000, 80, "ms"),
                 Parametre("repetitions", "Répétitions", 1, 32, 4),
                 Parametre("probabilite", "Probabilité", 0, 100, 100, "%")],

@@ -1,7 +1,7 @@
-"""Gel : un instant du son tenu, comme une image figée.
+"""Gel : un instant du son tenu, comme une image figée.
 
 Toutes les « intervalle » secondes (depuis le début du clip), une période tirée (probabilité)
-finit par un gel : pendant « durée », le grain de son qui la précède est rejoué en boucle, avec
+finit par un gel : pendant « durée », le grain de son qui la précède est rejoué en boucle, avec
 un fondu sur ses bords pour qu'il chante au lieu de claquer."""
 
 import numpy as np
@@ -36,6 +36,9 @@ def son(lire, valeurs, graine, frequence):
 
 DESCRIPTION = DescriptionEffet(
     cle="gel", nom="Gel", famille="Son", moteur="audio", son=son,
+    prereglages={"Note tenue": {"intervalle": 3, "duree": 800, "grain": 60},
+                 "Glace fine": {"intervalle": 1, "duree": 300, "grain": 20},
+                 "Bourdon": {"intervalle": 4, "duree": 2500, "grain": 120}},
     parametres=[Parametre("intervalle", "Intervalle", 0.2, 10, 3, "s", 1),
                 Parametre("duree", "Durée", 20, 5000, 400, "ms"),
                 Parametre("grain", "Grain", 5, 300, 40, "ms"),

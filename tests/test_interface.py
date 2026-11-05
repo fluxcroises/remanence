@@ -632,9 +632,12 @@ def test_bibliotheque_d_effets(fenetre, medias, monkeypatch):
     assert b.vue.count() == len(pr.fournis())
     b._filtrer("Signal")
     assert b.vue.count() == 18, "six effets Signal, trois préréglages chacun"
-    b._filtrer("")
+    b._filtrer("Son")
+    assert b.vue.count() == 18, "six effets audio, trois préréglages chacun"
+    b._filtrer("Signal")
     b.recherche.setText("cassette")
     assert b.vue.count() == 3, "les trois préréglages de Cassette VHS"
+    b._filtrer("")
     b.recherche.setText("")
     assert b.vignette(0).width() == 256
 
@@ -1735,3 +1738,37 @@ def test_effets_audio_dans_l_interface(fenetre, medias):
                 if l.isVisibleTo(w.inspecteur)}
     assert {"Bits", "Réduction", "Mélange"} <= libelles and "Opacité" not in libelles
     assert "Transformation" not in titres()
+
+
+def test_bibliotheque_son_et_son_bave(fenetre, medias):
+    """Étape 12, lot 3 : tuile d'un préréglage audio (forme d'onde), préréglage audio appliqué
+    à un clip vidéo : il va à son son lié ; case « Le son bave » de la transition."""
+    from PySide6.QtWidgets import QCheckBox
+    from remanence.effets import prereglages as pr
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    mid = next(iter(w.projet.medias))
+    w.poser_medias([mid], 0, "")
+    w.poser_medias([mid], w.projet.sequence.duree(), "")
+    seq = lambda: w.projet.sequence
+    b = w.bibliotheque
+    i = next(k for k, p in enumerate(b.prereglages) if p.nom == "Disque rayé")
+    assert b.est_audio(i) and not b.est_audio(0)
+    image = b.vignette(i)
+    assert image.width() == 256
+    video = seq().pistes_video[0].clips[0]
+    w.timeline.vue._choisir({video.id})
+    w.appliquer_prereglage(b.prereglages[i], "selection")
+    assert _attendre(lambda: seq().pistes_audio[0].clips[0].effets, 2)
+    assert not seq().pistes_video[0].clips[0].effets
+    assert seq().pistes_audio[0].clips[0].effets[0].type == "begaiement"
+    # Transition datamosh sur le second plan : la case apparaît et règle son_bave.
+    second = seq().pistes_video[0].clips[1]
+    w.basculer_cle("raccord", second.id, 0)
+    w.timeline.vue._choisir({second.id})
+    case = lambda: next((c for c in w.inspecteur.findChildren(QCheckBox)
+                         if c.text() == "Le son bave" and c.isVisibleTo(w.inspecteur)), None)
+    assert _attendre(lambda: case() is not None, 2)
+    case().setChecked(True)
+    assert _attendre(lambda: seq().pistes_video[0].clips[1].son_bave, 2)

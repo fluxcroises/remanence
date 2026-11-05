@@ -1440,13 +1440,21 @@ class FenetrePrincipale(QMainWindow):
         if cible == "sequence":
             self.ajouter_effet("sequence", "", p.nouveaux_effets())
             return
-        clips = [c for _, c in seq.tous_les_clips() if c.id in self.timeline.vue.selection
-                 and seq.trouver(c.id)[0].type == "video"]
-        if not clips and self._piste_choisie is not None:
-            self.ajouter_effet("piste", self._piste_choisie, p.nouveaux_effets())
+        audio = self._prereglage_audio(p)
+        genre = "audio" if audio else "video"
+        choisis = [c for _, c in seq.tous_les_clips() if c.id in self.timeline.vue.selection]
+        if audio:
+            # Un effet audio sur un clip vidéo choisi va à son son lié.
+            choisis = [self._son_lie(c) or c for c in choisis]
+        clips = [c for c in choisis if seq.trouver(c.id)[0].type == genre]
+        clips = list({c.id: c for c in clips}.values())
+        piste = next((q for q in seq.pistes if q.id == self._piste_choisie), None)
+        if not clips and piste is not None and piste.type == genre:
+            self.ajouter_effet("piste", piste.id, p.nouveaux_effets())
             return
         if not clips:
-            self.message("Aucun clip vidéo sélectionné")
+            self.message("Aucun clip audio sélectionné" if audio
+                         else "Aucun clip vidéo sélectionné")
             return
 
         def poser():
@@ -1455,9 +1463,30 @@ class FenetrePrincipale(QMainWindow):
                     edition.ajouter_effet(c, e)
         self._tenter(f"Préréglage {p.nom}", poser)
 
+    @staticmethod
+    def _prereglage_audio(p) -> bool:
+        return bool(p.effets) and all(e["type"] in EFFETS and EFFETS[e["type"]].audio
+                                      for e in p.effets)
+
+    def _son_lie(self, c):
+        """Le clip audio lié à un clip vidéo, s'il y en a un."""
+        if not c.lien:
+            return None
+        return next((o for p, o in self.projet.sequence.tous_les_clips()
+                     if o.lien == c.lien and o.id != c.id and p.type == "audio"), None)
+
     def _prereglage_depose(self, p, genre: str, cible_id: str, f: int):
         """Préréglage glissé sur la timeline : sur un clip, sur un en-tête de piste, ou dans le
-        vide d'une piste vidéo (clip d'effet à cet endroit)."""
+        vide d'une piste vidéo (clip d'effet à cet endroit). Un préréglage audio lâché sur un
+        clip vidéo va à son son lié."""
+        audio = self._prereglage_audio(p)
+        if audio and genre == "vide":
+            self.message("Un effet audio se pose sur un clip audio")
+            return
+        if audio and genre == "clip":
+            piste, c = self.projet.sequence.trouver(cible_id)
+            if c is not None and piste.type == "video" and self._son_lie(c) is not None:
+                cible_id = self._son_lie(c).id
         if genre == "vide":
             seq = self.projet.sequence
             clip = edition.ajouter_clip_effet(seq, f, 5 * self._cadence(), p.nouveaux_effets(),

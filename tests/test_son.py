@@ -125,3 +125,27 @@ def test_effet_audio_agit_et_se_lit_par_blocs(medias, cle):
     blocs.append(n - sum(blocs))
     assert np.array_equal(_son(projet, blocs=blocs), traite)
     assert np.array_equal(_son(projet), traite)
+
+
+def test_le_son_bave_avec_l_image(medias):
+    """Lot 3 : pendant la transition datamosh, le grain du plan d'avant tourne et s'efface ;
+    ailleurs le son ne change pas ; le résultat ne dépend pas du découpage."""
+    projet, _ = _projet(medias)
+    seq = projet.sequence
+    m = next(iter(projet.medias.values()))
+    for p in seq.pistes:
+        p.clips.clear()
+    edition.ajouter_media(projet, seq, m, 0, duree=15)
+    edition.ajouter_media(projet, seq, m, 15, entree=10, duree=15)
+    v2 = seq.pistes_video[0].clips[1]
+    edition.basculer_transition(seq, v2.id, 8)
+    source = _son(projet)
+    v2.son_bave = True
+    bave = _son(projet)
+    par_image = 48000 / float(seq.fraction_cadence)
+    a, b = round(15 * par_image), round(23 * par_image)
+    assert np.array_equal(bave[:a], source[:a]) and np.array_equal(bave[b:], source[b:])
+    assert np.abs(bave[a:b] - source[a:b]).max() > 0.01
+    blocs = [777, 9001, 333]
+    blocs.append(len(bave) - sum(blocs))
+    assert np.array_equal(_son(projet, blocs=blocs), bave)
