@@ -464,6 +464,7 @@ class FenetrePrincipale(QMainWindow):
         if espace == "effets":
             self.onglets_droite.choisir(0)  # on y règle les effets : l'inspecteur
         self._barre_poses.setVisible(espace == "cut")
+        self.timeline.mode_cut(espace == "cut")
         if espace != "cut" and self._bande is not None:
             self.b_bande.setChecked(False)
         self._espace = espace

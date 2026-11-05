@@ -1599,3 +1599,32 @@ def test_bande_source_et_poses_rapides(fenetre, medias):
     assert _attendre(lambda: b.point_entree == 5, 2)
     w.choisir_espace("montage")
     assert w._bande is None and not w._barre_poses.isVisible()
+
+
+def test_double_timeline_de_cut(fenetre, medias):
+    """Étape 11, lot 3 : dans Cut, la bande d'ensemble montre toute la séquence et y amène la
+    tête ; la timeline détaillée garde la tête au centre ; le raccord visé est marqué."""
+    from PySide6.QtCore import QEvent, QPointF
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    mid = next(iter(w.projet.medias))
+    for _ in range(4):
+        w.poser_medias([mid], w.projet.sequence.duree(), "")
+    tl = w.timeline
+    assert not tl.ensemble.isVisible()
+    w.choisir_espace("cut")
+    assert _attendre(lambda: tl.ensemble.isVisible(), 2)
+    assert tl.vue.montrer_raccord
+    duree = w.projet.sequence.duree()
+    e = tl.ensemble
+    # Un clic aux trois quarts de la bande : la tête y va.
+    x = e.x_de(duree * 3 / 4)
+    _souris(e, QEvent.MouseButtonPress, QPointF(x, e.height() / 2))
+    assert _attendre(lambda: abs(w.lecture.position - duree * 3 / 4) <= 2, 2)
+    # Timeline détaillée : la tête au centre (zoom serré).
+    tl.zoomer(20)
+    w.aller_a(duree // 2)
+    assert _attendre(lambda: abs(tl.vue.x_de(tl.vue.tete) - tl.vue.width() / 2) < 2, 2)
+    w.choisir_espace("montage")
+    assert not tl.ensemble.isVisible() and not tl.vue.montrer_raccord and not tl.centrer_tete

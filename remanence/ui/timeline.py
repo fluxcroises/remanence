@@ -164,6 +164,8 @@ class VueTimeline(QWidget):
 
     # Dessin
 
+    montrer_raccord = False
+
     def paintEvent(self, _e):
         c = charte.actuelle()
         p = QPainter(self)
@@ -192,6 +194,10 @@ class VueTimeline(QWidget):
             p.drawLine(0, self.insertion, self.width(), self.insertion)
         if self.survol_coupe is not None:
             self._ligne_pointillee(p, self.survol_coupe, "ink", HAUT_PISTES)
+        if self.montrer_raccord:
+            # Espace Cut : le raccord que vise l'insertion intelligente.
+            self._ligne_pointillee(p, edition.raccord_proche(seq, self.tete), "accent-2",
+                                   HAUT_PISTES)
         p.restore()
         self._dessiner_regle(p, seq)
         self._dessiner_marqueurs(p, seq)
@@ -212,6 +218,10 @@ class VueTimeline(QWidget):
             p.drawText(QRect(0, HAUT_PISTES, self.width(), self.height() - HAUT_PISTES),
                        Qt.AlignCenter, "Timeline vide")
         p.end()
+        # La bande d'ensemble (espace Cut) suit tout ce que montre la timeline détaillée.
+        ensemble = getattr(self.parent(), "ensemble", None)
+        if ensemble is not None and ensemble.isVisible():
+            ensemble.update()
 
     def _ligne_pointillee(self, p: QPainter, f: float, couleur: str, y0: int):
         x = self.x_de(f)
@@ -1121,6 +1131,74 @@ def bouton_lettre(lettre: str, aide: str) -> QToolButton:
     return b
 
 
+class VueEnsemble(QWidget):
+    """Espace Cut : toute la séquence d'un coup, au-dessus de la timeline détaillée. Une
+    rangée fine par piste, la partie que montre la timeline détaillée, le raccord visé et la
+    tête de lecture ; un clic ou un glisser y déplace la tête."""
+    HAUTEUR = 56
+    MARGE = 8
+
+    def __init__(self, timeline: "Timeline"):
+        super().__init__(timeline)
+        self.timeline = timeline
+        self.setFixedHeight(self.HAUTEUR)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip("Toute la séquence")
+
+    def _duree(self) -> int:
+        projet = self.timeline.vue.projet
+        return max(1, projet.sequence.duree()) if projet else 1
+
+    def x_de(self, f: float) -> float:
+        return self.MARGE + (self.width() - 2 * self.MARGE) * f / self._duree()
+
+    def f_de(self, x: float) -> int:
+        f = (x - self.MARGE) / max(1, self.width() - 2 * self.MARGE) * self._duree()
+        return max(0, min(self._duree() - 1, round(f)))
+
+    def paintEvent(self, _e):
+        c = charte.actuelle()
+        p = QPainter(self)
+        p.fillRect(self.rect(), c.c("bg-app"))
+        vue = self.timeline.vue
+        if vue.projet is None:
+            p.end()
+            return
+        seq = vue.projet.sequence
+        pistes = [pi for pi in seq.pistes if pi.clips] or seq.pistes
+        haut, bas = 6, self.height() - 6
+        h = max(2.0, min(8.0, (bas - haut) / max(1, len(pistes)) - 1))
+        # La partie montrée par la timeline détaillée.
+        a, b = self.x_de(vue.f_de(0)), self.x_de(vue.f_de(vue.width()))
+        p.fillRect(QRectF(a, 2, max(2.0, b - a), self.height() - 4), c.c("surface-hover"))
+        y = haut + max(0.0, (bas - haut - len(pistes) * (h + 1)) / 2)
+        for piste in pistes:
+            for clip in piste.clips:
+                fond = c.c("clip-effect" if clip.est_effet else "clip-video"
+                           if piste.type == "video" else "clip-audio")
+                if clip.id in vue.selection:
+                    fond = c.c("accent")
+                x0, x1 = self.x_de(clip.debut), self.x_de(clip.fin)
+                p.fillRect(QRectF(x0, y, max(1.0, x1 - x0 - 1), h), fond)
+            y += h + 1
+        r = self.x_de(edition.raccord_proche(seq, vue.tete))
+        p.setPen(QPen(c.c("accent-2"), 1, Qt.DashLine))
+        p.drawLine(QPointF(r, 2), QPointF(r, self.height() - 2))
+        xt = self.x_de(vue.tete)
+        p.fillRect(QRectF(xt - 1, 0, 2, self.height()), c.c("playhead"))
+        p.setPen(c.c("line"))
+        p.drawLine(0, self.height() - 1, self.width(), self.height() - 1)
+        p.end()
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            self.timeline.fenetre.aller_a(self.f_de(e.position().x()))
+
+    def mouseMoveEvent(self, e):
+        if e.buttons() & Qt.LeftButton:
+            self.timeline.fenetre.aller_a(self.f_de(e.position().x()))
+
+
 class EntetePiste(QWidget):
     """En-tête compact, comme sur la maquette : nom court (V1, A1), nom de la piste, visibilité
     ou muet et solo, verrou. Le niveau et le solo vidéo sont au clic droit ; tirer le bord du
@@ -1433,6 +1511,13 @@ class Timeline(QWidget):
         barre_outils.setAttribute(Qt.WA_StyledBackground, True)
         barre_outils.setLayout(outils)
 
+        self.ensemble = VueEnsemble(self)
+        self.ensemble.hide()
+        rang_ensemble = QHBoxLayout()
+        rang_ensemble.setSpacing(0)
+        rang_ensemble.addSpacing(LARGEUR_ENTETE)
+        rang_ensemble.addWidget(self.ensemble, 1)
+        rang_ensemble.addSpacing(64)
         centre = QHBoxLayout()
         centre.setSpacing(0)
         centre.addWidget(self.zone_entetes)
@@ -1447,9 +1532,20 @@ class Timeline(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
         lay.addWidget(barre_outils)
+        lay.addLayout(rang_ensemble)
         lay.addLayout(centre, 1)
         lay.addLayout(bas)
         self._synchroniser_zoom()
+
+    def mode_cut(self, actif: bool):
+        """Espace Cut : la bande d'ensemble au-dessus, la tête de lecture tenue au centre de la
+        timeline détaillée, le raccord visé marqué."""
+        self.ensemble.setVisible(actif)
+        self.centrer_tete = actif
+        self.vue.montrer_raccord = actif
+        if actif:
+            self.suivre_tete(self.vue.tete)
+        self.vue.update()
 
     def choisir_outil(self, outil: str):
         self.vue.outil = outil
@@ -1516,6 +1612,8 @@ class Timeline(QWidget):
     def _sur_defilement_h(self, v):
         self.vue.decalage_x = float(v)
         self.vue.update()
+        if self.ensemble.isVisible():
+            self.ensemble.update()
 
     def _sur_defilement_v(self, v):
         self.vue.decalage_y = int(v)
@@ -1560,13 +1658,21 @@ class Timeline(QWidget):
         self._synchroniser_zoom()
         v.update()
 
+    centrer_tete = False
+
     def suivre_tete(self, f: int):
-        """Fait défiler la vue pendant la lecture pour garder la tête visible."""
+        """Fait défiler la vue pendant la lecture pour garder la tête visible (au centre dans
+        l'espace Cut : la timeline défile sous elle)."""
         v = self.vue
         v.tete = f
         x = v.x_de(f)
-        if x > v.width() - 30 or x < 0:
+        if self.centrer_tete:
+            self.bornes()
+            self.barre_h.setValue(max(0, int(f * v.px_par_image - v.width() / 2)))
+        elif x > v.width() - 30 or x < 0:
             self.bornes()
             self.barre_h.setValue(int(f * v.px_par_image - 60))
         v.update()
+        if self.ensemble.isVisible():
+            self.ensemble.update()
 
