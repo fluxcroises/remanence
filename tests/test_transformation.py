@@ -132,3 +132,25 @@ def test_enregistree_coupee_et_rognee(medias):
     assert nouveau.transformation.id != gauche_t.id
     # La rotation reste à sa place à l'écran.
     assert np.array_equal(_image(projet, 18), _image(copie, 18))
+
+
+def test_remplir_et_taille_reelle(medias):
+    """Lot 4 : une vidéo verticale remplit la séquence sans bande ; taille réelle."""
+    projet, clip = _projet(medias)
+    seq = projet.sequence
+    infos, _ = analyser(str(medias["portrait_impair"]))
+    m = Media(nouvel_id(), infos.chemin, infos)
+    projet.medias[m.id] = m
+    seq.pistes_video[0].clips.clear()
+    edition.ajouter_media(projet, seq, m, 0, piste=seq.pistes_video[0])
+    clip = seq.pistes_video[0].clips[0]
+    v = infos.video
+    cadre = transformation.cadre(v.largeur, v.hauteur, seq.largeur, seq.hauteur)
+    t = _transformer(clip, rotation=10)
+    t.params.update(transformation.cadrage("remplir", {**t.params, **cadre},
+                                           seq.largeur, seq.hauteur))
+    image = _image(projet)
+    assert image[..., 3].min() > 0.99, "plus de bande transparente"
+    reelle = transformation.cadrage("reelle", cadre, seq.largeur, seq.hauteur,
+                                    (v.largeur, v.hauteur))
+    assert abs(reelle["taille"] / 100 * cadre["cadre_l"] * seq.largeur - v.largeur) < 1e-6

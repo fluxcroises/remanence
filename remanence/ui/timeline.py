@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QInputDialog, QMenu, QScr
 from remanence.media.lecteur import AudioCache
 from remanence.media.proxy import chemin_audio
 from remanence.media.timecode import images_vers_tc
-from remanence.effets import EFFETS, plage_cles, transitions
+from remanence.effets import EFFETS, plage_cles, transformation, transitions
 from remanence.effets.prereglages import MIME_PREREGLAGE, depuis_mime
 from remanence.projet import edition
 from remanence.projet.modele import Clip, Marqueur, Piste, Projet, valeur_enveloppe
@@ -967,6 +967,17 @@ class VueTimeline(QWidget):
                         transitions.nouveau_style(cle) if cle else None))
                     a.setCheckable(True)
                     a.setChecked(cle == style)
+            if piste_clip.type == "video" and not clip.est_effet:
+                sous = menu.addMenu("Transformation")
+                for mode, nom in transformation.CADRAGES.items():
+                    sous.addAction(nom, lambda mode=mode: fenetre.cadrer(mode))
+                sous.addSeparator()
+                a = sous.addAction("Copier la transformation", fenetre.copier_transformation)
+                a.setEnabled(clip.transformation is not None and len(self.selection) == 1)
+                a = sous.addAction("Coller la transformation", fenetre.coller_transformation)
+                a.setEnabled(fenetre._transformation_copiee is not None)
+                a = sous.addAction("Réinitialiser", fenetre.reinitialiser_transformation)
+                a.setEnabled(clip.transformation is not None)
             if self.projet.sequence.trouver(clip.id)[0].type == "video":
                 effets = menu.addMenu("Ajouter un effet")
                 remplir_menu_effets(effets, lambda liste: fenetre.ajouter_effet(

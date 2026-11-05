@@ -146,6 +146,7 @@ class FenetrePrincipale(QMainWindow):
         self._masques_effet = ""
         # Clip dont la transformation se règle sur l'image (poignées du programme).
         self._transformation_clip = ""
+        self._transformation_copiee = None  # Copier la transformation (menu du clip)
         # Pré-rendus codec en cours : empreinte -> clip.
         self._prerendus: dict[str, str] = {}
         # Médias dont les coupes s'analysent.
@@ -1719,6 +1720,66 @@ class FenetrePrincipale(QMainWindow):
             self.activer_moniteur("programme")
         self._actualiser_calque()
 
+    def _clips_transformables(self) -> list:
+        """Les clips choisis qui peuvent recevoir une transformation (vidéo, pas d'effet)."""
+        seq = self.projet.sequence
+        resultat = []
+        for clip_id in self.timeline.vue.selection:
+            piste, c = seq.trouver(clip_id)
+            if c is not None and piste.type == "video" and not c.est_effet:
+                resultat.append(c)
+        return resultat
+
+    @staticmethod
+    def _regler_transformation(c, valeurs: dict, t: int):
+        """Pose des réglages sur la transformation du clip (créée au besoin) ; un réglage
+        animé reçoit une image clé au temps t du clip."""
+        if c.transformation is None:
+            c.transformation = transformation.nouvelle(c.id)
+        e = c.transformation
+        for cle, v in valeurs.items():
+            if e.cles.get(cle):
+                poser_cle(e, cle, t, v)
+            else:
+                e.params[cle] = v
+
+    def cadrer(self, mode: str):
+        """Adapter à l'image, Remplir l'image ou Taille réelle, pour les clips choisis."""
+        seq = self.projet.sequence
+        clips = self._clips_transformables()
+        if not clips:
+            return
+        for c in clips:
+            media = self.projet.medias.get(c.media_id)
+            v = media.infos.video if media is not None else None
+            valeurs = transformation.cadrage(
+                mode, self._transformation_a(c, self.lecture.position), seq.largeur,
+                seq.hauteur, (v.largeur, v.hauteur) if v else None)
+            self._regler_transformation(c, valeurs, self._temps_effet(c))
+        self.valider(transformation.CADRAGES[mode])
+
+    def copier_transformation(self):
+        clips = self._clips_transformables()
+        if len(clips) == 1 and clips[0].transformation is not None:
+            self._transformation_copiee = copy.deepcopy(clips[0].transformation)
+
+    def coller_transformation(self):
+        """La transformation copiée, images clés comprises, sur les clips choisis."""
+        clips = self._clips_transformables()
+        if self._transformation_copiee is None or not clips:
+            return
+        for c in clips:
+            c.transformation = copy.deepcopy(self._transformation_copiee)
+            c.transformation.id = transformation.id_pour(c.id)
+        self.valider("Transformation collée")
+
+    def reinitialiser_transformation(self):
+        clips = [c for c in self._clips_transformables() if c.transformation is not None]
+        for c in clips:
+            c.transformation = None
+        if clips:
+            self.valider("Transformation réinitialisée")
+
     def transformer_sur_image(self, valeurs: dict, valider: bool = True):
         """Réglages venus des poignées : pendant le geste, l'aperçu seul ; au lâcher, une
         action de l'historique. Un réglage animé reçoit une image clé à la tête de lecture."""
@@ -1726,15 +1787,7 @@ class FenetrePrincipale(QMainWindow):
         _, c = seq.trouver(self._transformation_clip)
         if c is None:
             return
-        if c.transformation is None:
-            c.transformation = transformation.nouvelle(c.id)
-        e = c.transformation
-        t = self._temps_effet(c)
-        for cle, v in valeurs.items():
-            if e.cles.get(cle):
-                poser_cle(e, cle, t, v)
-            else:
-                e.params[cle] = v
+        self._regler_transformation(c, valeurs, self._temps_effet(c))
         if valider:
             self.valider("Transformation")
         else:

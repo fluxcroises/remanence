@@ -210,3 +210,41 @@ def coins(valeurs: dict, largeur: int, hauteur: int) -> list[tuple[float, float]
     hh = y0 + h * v["rognage_haut"] / 100
     b = y0 + h * (1 - v["rognage_bas"] / 100)
     return [(g, hh), (d, hh), (d, b), (g, b)]
+
+
+CADRAGES = {"adapter": "Adapter à l'image", "remplir": "Remplir l'image",
+            "reelle": "Taille réelle"}
+
+
+def cadrage(mode: str, valeurs: dict, largeur: int, hauteur: int,
+            taille_media: tuple[int, int] | None = None) -> dict:
+    """Réglages qui cadrent l'image : « adapter » (elle tient entière, centrée), « remplir »
+    (l'image recadrée couvre toute la séquence, centrée, sans bande), « reelle » (un pixel du
+    média pour un pixel de la séquence). valeurs : réglages actuels, cadre compris."""
+    import numpy as np
+    v = {**DEFAUTS, **valeurs}
+    if mode == "adapter":
+        return {"x": 0.0, "y": 0.0, "taille": 100.0, "largeur": 100.0, "hauteur": 100.0}
+    if mode == "reelle":
+        if not taille_media:
+            return {"taille": 100.0, "largeur": 100.0, "hauteur": 100.0}
+        s = v["cadre_l"] * largeur / taille_media[0]
+        return {"taille": min(1000.0, 100.0 / s), "largeur": 100.0, "hauteur": 100.0}
+    (g, h), (d, _), (_, b), _ = coins(v, largeur, hauteur)
+    lv, hv = max(1e-6, d - g), max(1e-6, b - h)
+    # Rotation comprise : l'image tournée doit encore couvrir le cadre de la séquence.
+    a = np.radians(v["rotation"])
+    ca, sa = abs(np.cos(a)), abs(np.sin(a))
+    if v["rotation"] % 90:
+        # Image tournée : ses coins tombent sur les bords de la séquence ; deux pixels de
+        # marge, sinon le lissage y laisse des pixels à demi transparents.
+        lv, hv = max(1e-6, lv - 4), max(1e-6, hv - 4)
+    k = max((largeur * ca + hauteur * sa) / lv, (largeur * sa + hauteur * ca) / hv)
+    nouvelles = {"taille": min(1000.0, k * 100.0), "largeur": 100.0, "hauteur": 100.0,
+                 "x": 0.0, "y": 0.0}
+    # Le centre de l'image recadrée au centre de la séquence.
+    m = matrice({**v, **nouvelles}, largeur, hauteur)
+    cx, cy, _ = m @ [(g + d) / 2, (h + b) / 2, 1.0]
+    nouvelles["x"] = max(-200.0, min(200.0, (largeur / 2 - cx) / largeur * 100))
+    nouvelles["y"] = max(-200.0, min(200.0, (hauteur / 2 - cy) / hauteur * 100))
+    return {k: float(x) for k, x in nouvelles.items()}

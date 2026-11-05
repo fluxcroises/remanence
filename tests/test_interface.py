@@ -1490,3 +1490,42 @@ def test_transformation_sur_l_image(fenetre, medias):
     q = carte.map(QPointF(0.5, 0.5))
     assert abs(q.x() - 0.75) < 0.01 and abs(q.y() - 0.5) < 0.01
     assert abs(carte.map(QPointF(1.0, 0.5)).x() - 1.0) < 0.01  # réduite de moitié
+
+
+def test_cadrages_et_copie_de_transformation(fenetre, medias):
+    """Étape 8, lot 4 : Adapter, Remplir, Taille réelle ; copier et coller une
+    transformation ; réinitialiser."""
+    from remanence.effets import poser_cle
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    mid = next(iter(w.projet.medias))
+    w.poser_medias([mid], 0, "")
+    w.poser_medias([mid], 30, "")
+
+    def clips():
+        return w.projet.sequence.pistes_video[0].clips
+    a, b = clips()[0].id, clips()[1].id
+    w.timeline.vue._choisir({a})
+    w.reglage_effet("tr-" + a, "rognage_gauche", 50.0)
+    assert _attendre(lambda: clips()[0].transformation is not None, 2)
+    w.cadrer("remplir")
+    assert _attendre(lambda: abs(clips()[0].transformation.params["taille"] - 200) < 1e-6, 2)
+    assert abs(clips()[0].transformation.params["x"] + 50) < 1e-6
+    w.cadrer("adapter")
+    assert _attendre(lambda: clips()[0].transformation.params["taille"] == 100.0, 2)
+    # Un réglage animé reçoit une image clé à la tête de lecture.
+    poser_cle(clips()[0].transformation, "taille", 0, 80.0)
+    w.aller_a(10)
+    w.cadrer("reelle")
+    assert _attendre(lambda: [10, 100.0] in [k[:2] for k in
+                                             clips()[0].transformation.cles["taille"]], 2)
+    w.copier_transformation()
+    w.timeline.vue._choisir({b})
+    w.coller_transformation()
+    assert _attendre(lambda: clips()[1].transformation is not None, 2)
+    t = clips()[1].transformation
+    assert t.id == "tr-" + b and t.params["rognage_gauche"] == 50.0 and "taille" in t.cles
+    w.reinitialiser_transformation()
+    assert _attendre(lambda: clips()[1].transformation is None, 2)
+    assert clips()[0].transformation is not None
