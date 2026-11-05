@@ -1366,3 +1366,15 @@ def test_corrections_du_test_en_main(fenetre, medias, tmp_path):
     config.retenir_dossier("medias", str(tmp_path / "x.mov"))
     assert config.dossier_fichiers("medias") == str(tmp_path)
     assert config.dossier_fichiers("projets"), "Documents par défaut"
+
+def test_file_export_nom_long(app):
+    """Un nom de fichier long se coupe : le bouton de la ligne reste dans le panneau."""
+    from remanence.ui.panneau_export import FileExport
+    f = FileExport()
+    f.resize(240, 300)
+    f.show()
+    ligne = f.ajouter("un_nom_de_fichier_tres_long_" * 4 + ".mov", "ProRes 422 HQ", lambda: None)
+    _attendre(lambda: False, 0.2)
+    assert ligne.bouton.geometry().right() <= ligne.width()
+    assert "…" in ligne.nom.text() and ligne.nom.toolTip().endswith(".mov")
+    f.close()

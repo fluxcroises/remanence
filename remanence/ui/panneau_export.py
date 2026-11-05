@@ -8,7 +8,8 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QHBoxLayout, QLineEdit,
-                               QProgressBar, QPushButton, QRadioButton, QScrollArea, QVBoxLayout,
+                               QProgressBar, QPushButton, QRadioButton, QScrollArea, QSizePolicy,
+                               QVBoxLayout,
                                QWidget)
 
 from remanence.config import reglages_interface
@@ -223,8 +224,13 @@ class LigneExport(QWidget):
         lay.setContentsMargins(12, 8, 12, 8)
         lay.setSpacing(4)
         haut = QHBoxLayout()
+        # Un nom long se coupe (« … ») au lieu de pousser le bouton hors du panneau.
+        self._nom_complet = nom
         self.nom = etiquette(nom)
         self.nom.setStyleSheet("font-weight: 500;")
+        self.nom.setToolTip(nom)
+        self.nom.setMinimumWidth(40)
+        self.nom.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         haut.addWidget(self.nom, 1)
         self.bouton = QPushButton("Annuler")
         self.bouton.setProperty("variante", "discret")
@@ -238,6 +244,11 @@ class LigneExport(QWidget):
         self.etat = etiquette("En attente", "libelle")
         lay.addWidget(self.etat)
         self._rapport: Rapport | None = None
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self.nom.setText(self.nom.fontMetrics().elidedText(
+            self._nom_complet, Qt.ElideMiddle, max(0, self.nom.width())))
 
     def progression(self, v: float):
         self.barre.setValue(int(v * 1000))
