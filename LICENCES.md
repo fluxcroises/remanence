@@ -56,6 +56,7 @@ Remanence est édité par l'association Flux Croisés, sans but commercial. C'es
 | PyInstaller et pyinstaller-hooks-contrib | 6.22.3 et 2026.9 | Construction de `Remanence.exe` | GPL 2 avec exception ; GPL 2 et Apache 2.0 |
 | pytest | 9.2.0 | Tests automatiques | MIT |
 | uv | 0.13.6 | Installation de l'environnement | MIT ou Apache 2.0 |
+| Inno Setup | 6.7.3 | Construction de l'installateur `Remanence-<version>-installation.exe` ; son programme d'installation et de désinstallation est livré dans ce fichier | Licence d'Inno Setup (permissive : usage libre, y compris commercial, mentions de copyright conservées) |
 
 ## Obligations de la distribution
 

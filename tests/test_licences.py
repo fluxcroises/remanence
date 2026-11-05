@@ -58,3 +58,17 @@ def test_version_et_notes():
     fenetre = APropos()
     assert [fenetre.onglets.tabText(i) for i in range(fenetre.onglets.count())] ==         ["Notes de version", "Licences"]
     assert "Limites connues" in fenetre.onglets.widget(0).toPlainText()
+
+
+def test_installateur():
+    """Étape 10, lot 2 : réglages essentiels de l'installateur Inno Setup."""
+    from remanence.ui.charte import RACINE
+    iss = (RACINE / "Remanence.iss").read_text(encoding="utf-8")
+    for attendu in ("PrivilegesRequired=lowest", r"DefaultDirName={autopf}\Remanence",
+                    r'Excludes: "\outils"', r"Software\Classes\.remanence",
+                    r'""{app}\Remanence.exe"" ""%1""', "ChangesAssociations=yes",
+                    "AppId={{F0F6C70C-6D7E-48AC-AFDE-D030DD36D9D4}",
+                    r'Name: "{app}\outils"', "French.isl"):
+        assert attendu in iss, attendu
+    bat = (RACINE / "Construire.bat").read_text(encoding="utf-8")
+    assert "Remanence.iss" in bat and "images_installateur.py" in bat
