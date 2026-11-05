@@ -91,3 +91,24 @@ def test_symbole_dessine(app):
     image = pm.toImage()
     # Tranche d'accent (4e bande) : sa couleur est celle du fichier, donc le mauve de la charte.
     assert image.pixelColor(int(0.62 * image.width()), int(0.64 * image.height())).name() == "#b07cc6"
+
+
+def test_feuille_lisible_dans_program_files(monkeypatch):
+    """Installé dans « C:/Program Files/Flux Croisés/Remanence », la feuille de style doit
+    rester lisible par Qt (étape 10 : l'espace du chemin la faisait rejeter en entier)."""
+    from pathlib import Path
+    from PySide6.QtCore import qInstallMessageHandler
+    from PySide6.QtWidgets import QApplication, QComboBox
+    from remanence.ui import charte
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(charte, "RESSOURCES",
+                        Path("C:/Program Files/Flux Croisés/Remanence/_internal/remanence/ressources"))
+    messages = []
+    ancien = qInstallMessageHandler(lambda _t, _c, m: messages.append(m))
+    try:
+        boite = QComboBox()
+        boite.setStyleSheet(charte.actuelle().feuille())
+        boite.ensurePolished()
+    finally:
+        qInstallMessageHandler(ancien)
+    assert not [m for m in messages if "stylesheet" in m.lower()], messages

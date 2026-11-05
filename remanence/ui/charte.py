@@ -108,6 +108,8 @@ class Charte:
         valeurs["police_timecode"] = self.css_police("timecode")
         valeurs["police_value"] = self.css_police("value")
         valeurs["police_caption"] = self.css_police("caption")
+        # Entre guillemets dans la feuille : installé dans « C:/Program Files/Flux Croisés »,
+        # l'espace du chemin faisait rejeter toute la feuille par Qt (essai du 5 novembre 2026).
         valeurs["dossier_icones"] = (RESSOURCES / "icones").as_posix()
         feuille = MODELE_QSS.format(**valeurs)
         reste = re.findall(r"\{[a-z_]+\}", feuille)
@@ -467,7 +469,7 @@ QLineEdit[role="timecode"] {{ {police_timecode} }}
 QComboBox QAbstractItemView {{ background: {surface_raised}; border: 1px solid {line};
     selection-background-color: {accent_soft}; selection-color: {ink}; }}
 QComboBox::drop-down {{ border: 0; width: 20px; }}
-QComboBox::down-arrow {{ image: url({dossier_icones}/chevron-down.svg); width: 12px; height: 12px; }}
+QComboBox::down-arrow {{ image: url("{dossier_icones}/chevron-down.svg"); width: 12px; height: 12px; }}
 
 QSlider::groove:horizontal {{ height: 4px; background: {line}; border-radius: 2px; }}
 QSlider::sub-page:horizontal {{ height: 4px; background: {ink_muted}; border-radius: 2px; }}

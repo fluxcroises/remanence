@@ -45,7 +45,7 @@ def test_guide():
 
 
 def test_version_et_notes():
-    """Étape 10, lot 1 : version 1.0.0 sur trois nombres (propriétés du programme), notes
+    """Étape 10, lot 1 : version 1.0.0 sur trois nombres (propriétés du programme), notes
     de version de cette version, dans un onglet d'À propos."""
     from PySide6.QtWidgets import QApplication
     from remanence import __version__
@@ -61,12 +61,13 @@ def test_version_et_notes():
 
 
 def test_installateur():
-    """Étape 10, lot 2 : réglages essentiels de l'installateur Inno Setup."""
+    """Étape 10, lot 2 : réglages essentiels de l'installateur Inno Setup."""
     from remanence.ui.charte import RACINE
     iss = (RACINE / "Remanence.iss").read_text(encoding="utf-8-sig")
     for attendu in ("PrivilegesRequired=admin", "PrivilegesRequiredOverridesAllowed=dialog",
                     r"DefaultDirName={autopf}\Flux Croisés\Remanence",
                     r'Name: "{localappdata}\Remanence\outils"',
+                    "uninsdeletevalue uninsdeletekeyifempty", r'Type: dirifempty; Name: "{autopf}\Flux Croisés"',
                     r'Excludes: "\outils"', r"Software\Classes\.remanence",
                     r'""{app}\Remanence.exe"" ""%1""', "ChangesAssociations=yes",
                     "AppId={{F0F6C70C-6D7E-48AC-AFDE-D030DD36D9D4}",

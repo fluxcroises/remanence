@@ -63,7 +63,7 @@ Name: "{autodesktop}\Remanence"; Filename: "{app}\Remanence.exe"; Tasks: bureau
 
 [Registry]
 ; Fichiers .remanence : double-clic pour ouvrir le projet, icône de Remanence.
-Root: HKA; Subkey: "Software\Classes\.remanence"; ValueType: string; ValueName: ""; ValueData: "Remanence.Projet"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.remanence"; ValueType: string; ValueName: ""; ValueData: "Remanence.Projet"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Remanence.Projet"; ValueType: string; ValueName: ""; ValueData: "Projet Remanence"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\Remanence.Projet\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\Remanence.exe,0"
 Root: HKA; Subkey: "Software\Classes\Remanence.Projet\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\Remanence.exe"" ""%1"""
@@ -77,3 +77,6 @@ Filename: "{app}\Remanence.exe"; Description: "Lancer Remanence"; Flags: nowait 
 ; dossier local du compte qui désinstalle quand Program Files était protégé).
 Type: filesandordirs; Name: "{app}\outils"
 Type: filesandordirs; Name: "{localappdata}\Remanence\outils"
+; Le dossier de l'éditeur, s'il ne contient plus rien (il peut héberger d'autres logiciels de
+; Flux Croisés, comme Afterdusk).
+Type: dirifempty; Name: "{autopf}\Flux Croisés"
