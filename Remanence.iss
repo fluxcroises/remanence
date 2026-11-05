@@ -1,11 +1,14 @@
-; Installateur de Remanence (Inno Setup 6), fabriqué par Construire.bat après Remanence.exe :
+﻿; Installateur de Remanence (Inno Setup 6), fabriqué par Construire.bat après Remanence.exe :
 ;   ISCC.exe /DVersion=1.0.0 Remanence.iss
 ; Résultat : dist\Remanence-<version>-installation.exe.
 ;
-; Installation pour l'utilisateur, sans droits d'administrateur, dans
-; %LOCALAPPDATA%\Programs\Remanence. FFglitch n'est pas inclus : Remanence le télécharge au
-; premier lancement, dans le dossier « outils » à côté de Remanence.exe (vidé à la
-; désinstallation). Les projets, les réglages et le journal restent après la désinstallation.
+; Par défaut, pour tous les comptes, dans C:\Program Files\Flux Croisés\Remanence (Windows
+; demande l'autorisation d'administrateur), comme Vegas Pro ou DaVinci Resolve. Au départ,
+; l'assistant propose aussi « Pour moi seulement » : sans autorisation, dans
+; %LOCALAPPDATA%\Programs\Flux Croisés\Remanence (choix de Lewis, 5 novembre 2026).
+; FFglitch n'est pas inclus : Remanence le télécharge au premier lancement, à côté de
+; Remanence.exe si ce dossier est inscriptible, sinon dans %LOCALAPPDATA%\Remanence\outils ;
+; les deux sont vidés à la désinstallation. Les projets, les réglages et le journal restent.
 
 #ifndef Version
   #define Version "1.0.0"
@@ -22,9 +25,9 @@ AppCopyright=© 2026 Flux Croisés
 VersionInfoVersion={#Version}
 VersionInfoCompany=Flux Croisés
 VersionInfoDescription=Installation de Remanence
-PrivilegesRequired=lowest
+PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
-DefaultDirName={autopf}\Remanence
+DefaultDirName={autopf}\Flux Croisés\Remanence
 DefaultGroupName=Remanence
 DisableProgramGroupPage=yes
 ArchitecturesAllowed=x64compatible
@@ -66,8 +69,11 @@ Root: HKA; Subkey: "Software\Classes\Remanence.Projet\DefaultIcon"; ValueType: s
 Root: HKA; Subkey: "Software\Classes\Remanence.Projet\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\Remanence.exe"" ""%1"""
 
 [Run]
-Filename: "{app}\Remanence.exe"; Description: "Lancer Remanence"; Flags: nowait postinstall skipifsilent
+; Lancé comme l'utilisateur et non comme administrateur (réglages et journal à leur place).
+Filename: "{app}\Remanence.exe"; Description: "Lancer Remanence"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [UninstallDelete]
-; FFglitch, téléchargé par Remanence après l'installation.
+; FFglitch, téléchargé par Remanence après l'installation (à côté du programme, ou dans le
+; dossier local du compte qui désinstalle quand Program Files était protégé).
 Type: filesandordirs; Name: "{app}\outils"
+Type: filesandordirs; Name: "{localappdata}\Remanence\outils"
