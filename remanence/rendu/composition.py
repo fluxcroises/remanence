@@ -17,7 +17,7 @@ import numpy as np
 from remanence.media.lecteur import FREQUENCE_MIXAGE, LecteurVideo, Pool
 from remanence.media.proxy import chemin_audio, chemin_proxy
 from remanence.media.sonde import analyser
-from remanence.effets import EFFETS, agit_a, instantane, modulateurs, transitions
+from remanence.effets import EFFETS, agit_a, instantane, modulateurs, transformation, transitions
 from remanence.projet.modele import Clip, Effet, Media, Projet, Sequence
 from remanence.moteurs.codec import prerendu
 from remanence.rendu import titres
@@ -48,6 +48,24 @@ def actifs(effets: list[Effet], t: float = 0, decalages: dict | None = None) -> 
     allumes = [instantane(e, t, decalages) for e in effets
                if e.actif and e.type in EFFETS and agit_a(e, t)]
     return sorted(allumes, key=lambda e: not EFFETS[e.type].codec)
+
+
+def transformee(c: Clip, media: Media | None, seq: Sequence, t: float,
+                decalages: dict | None = None) -> list[Effet]:
+    """La transformation du clip au temps t (depuis son début), avec le cadre de son image ;
+    aucune si elle ne change rien. Elle agit avant la première image clé et après la
+    dernière : une position animée reste là où elle arrive."""
+    if c.transformation is None or not c.transformation.actif:
+        return []
+    e = instantane(c.transformation, t, decalages)
+    if transformation.neutre(e.params):
+        return []
+    v = media.infos.video if media is not None else None
+    cadre = transformation.cadre(v.largeur, v.hauteur, seq.largeur, seq.hauteur) if v         else {"cadre_x": 0.0, "cadre_y": 0.0, "cadre_l": 1.0, "cadre_h": 1.0}
+    if e is c.transformation:
+        e = copy.copy(e)
+    e.params = {**e.params, **cadre}
+    return [e]
 
 
 def couches(projet: Projet, seq: Sequence, f: int) -> list[Couche]:
@@ -94,6 +112,7 @@ def couches(projet: Projet, seq: Sequence, f: int) -> list[Couche]:
                 continue
             resultat.append(Couche(c, media, n, min(opacite, 1.0),
                                    actifs(c.effets, f - c.debut, mod)
+                                   + transformee(c, media, seq, f - c.debut, mod)
                                    + actifs(piste.effets, f, mod) + entree_fondu,
                                    c.fusion, not calcul and prerendu.dans_plages(
                                        projet, seq, c, f - c.debut), calcul))

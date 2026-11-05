@@ -172,6 +172,9 @@ class Clip:
     # Titre (texte dessiné, voir rendu/titres.py) ou séquence imbriquée : un clip sans média.
     titre: dict | None = None
     sequence_id: str | None = None
+    # Position, taille, rotation, recadrage (effet interne « transformation », voir
+    # effets/transformation.py) ; None : l'image telle qu'elle tient dans la séquence.
+    transformation: Effet | None = None
 
     @property
     def fin(self) -> int:
@@ -401,8 +404,13 @@ class Projet:
                     c = dict(c)
                     effets = _effets(c.pop("effets", None))
                     transition = c.pop("transition", None)
+                    transformation = _effets([c.pop("transformation")]
+                                             if c.get("transformation") else None)
+                    c.pop("transformation", None)
                     clips.append(Clip(**c, effets=effets,
-                                      transition=Transition(**transition) if transition else None))
+                                      transition=Transition(**transition) if transition else None,
+                                      transformation=transformation[0] if transformation
+                                      else None))
                 effets = _effets(pd.pop("effets", None))
                 pistes.append(Piste(**pd, clips=clips, effets=effets))
             marqueurs = [Marqueur(**m) for m in sd.pop("marqueurs", [])]

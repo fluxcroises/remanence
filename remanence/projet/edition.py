@@ -135,7 +135,7 @@ def liberer(piste: Piste, debut: int, fin: int, exclure: set[str]):
 
 def decaler_cles(c: Clip, delta: int):
     """Le début du clip bouge de delta : ses images clés gardent leur place à l'écran."""
-    for e in c.effets:
+    for e in c.effets + ([c.transformation] if c.transformation else []):
         for cles in e.cles.values():
             for k in cles:
                 k[0] -= delta
@@ -591,6 +591,8 @@ def _renouveler_effets(c: Clip):
         e.id = nouvel_id()
         for m in e.masques:
             m.id = nouvel_id()
+    if c.transformation is not None:
+        c.transformation.id = nouvel_id()
 
 
 def porteurs_effets(seq: Sequence):
