@@ -69,6 +69,9 @@ class DescriptionEffet:
     # Effet audio : neutre(valeurs) vrai quand ces réglages laissent le son intact (il est
     # alors sauté, et l'export peut recopier le son d'origine).
     neutre: object = None
+    # Préréglage -> nom du script d'autres logiciels (Live Mosher, dd_GlitchAssist) qui donne
+    # le même genre d'image : trouvé par la recherche de la bibliothèque.
+    equivalents: dict[str, str] = field(default_factory=dict)
 
     @property
     def audio(self) -> bool:

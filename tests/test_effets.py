@@ -947,3 +947,34 @@ def test_script_ffglitch_depuis_un_menu(medias):
     vide.script = "// rien\n"
     clip.effets = [vide]
     assert prerendu.calculer(projet, projet.sequence, clip).exists()
+
+
+@pytest.mark.parametrize("cle,reglages", [
+    ("gravite", {"force": 12}),
+    ("echange_axes", {}),
+    ("sens_unique", {"bas": 1, "haut": 0, "gauche": 0, "droite": 0}),
+    ("tourbillon", {"force": 120}),
+])
+def test_equivalents_live_mosher(medias, cle, reglages):
+    """Gravité, Échange des axes, Sens unique et Tourbillon (équivalents des scripts de Live
+    Mosher) abîment l'image par FFglitch ; la bibliothèque les trouve par le nom du script."""
+    from remanence.effets import prereglages
+    from remanence.moteurs.codec import ffglitch, prerendu
+    trouves = {p.equivalent: p for p in prereglages.fournis() if p.equivalent}
+    for nom in ("dd_gravity", "dd_swap", "dd_onlyFall", "dd_circle", "dd_slamZoom",
+                "dd_mirrorX"):
+        assert nom in trouves, nom
+    assert trouves["dd_gravity"].nom == "Gravité"
+    if not ffglitch.disponible():
+        pytest.skip("FFglitch n'est pas installé")
+    projet, clip = _projet(medias)
+    seq = projet.sequence
+    clip.effets = [nouvel_effet("vecteurs")]
+    prerendu.calculer(projet, seq, clip)
+    neutre = _image(projet, 20)
+    effet = nouvel_effet(cle)
+    effet.params.update(reglages)
+    clip.effets = [effet]
+    prerendu.calculer(projet, seq, clip)
+    ecart = float(np.abs(_image(projet, 20)[..., :3] - neutre[..., :3]).mean())
+    assert ecart > 0.005, f"{cle} : {ecart}"

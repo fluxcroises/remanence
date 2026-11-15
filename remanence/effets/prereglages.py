@@ -29,6 +29,8 @@ class Prereglage:
     # seulement.
     groupe: str = ""
     direct: bool = False
+    # Script d'un autre logiciel qui donne le même genre d'image (« dd_gravity »).
+    equivalent: str = ""
 
     @property
     def famille(self) -> str:
@@ -79,7 +81,7 @@ def fournis() -> list[Prereglage]:
             p = {"type": d.cle, "params": e.params}
             if e.script:
                 p["script"] = e.script
-            resultat.append(Prereglage(nom, [p]))
+            resultat.append(Prereglage(nom, [p], equivalent=d.equivalents.get(nom, "")))
     if "script_ffglitch" in EFFETS:
         for s in scripts.scripts_de_la_bibliotheque():
             if not s.fourni:

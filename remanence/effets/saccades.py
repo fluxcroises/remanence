@@ -96,6 +96,7 @@ INVERSION_PAR_SACCADES = DescriptionEffet(
     prereglages={"Saccades rares": {"frequence": 3, "duree": 10},
                  "Longues saccades": {"frequence": 4, "duree": 30},
                  "Saccades fréquentes": {"frequence": 25, "duree": 8, "intensite": 200}},
+    equivalents={"Saccades fréquentes": "dd_RandomDamage(invert)"},
 )
 
 ZOOM_PAR_SACCADES = DescriptionEffet(
@@ -108,4 +109,5 @@ ZOOM_PAR_SACCADES = DescriptionEffet(
     prereglages={"Coups de zoom": {"frequence": 5, "duree": 6},
                  "Grands coups de zoom": {"frequence": 4, "duree": 12, "intensite": 60},
                  "Zoom nerveux": {"frequence": 25, "duree": 4, "intensite": 40}},
+    equivalents={"Coups de zoom": "dd_RandomDamage(zoom)"},
 )

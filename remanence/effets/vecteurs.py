@@ -80,5 +80,11 @@ DESCRIPTION = DescriptionEffet(
                  "Glissement horizontal": {"vertical": 0, "horizontal": 150},
                  "Traînée": {"moyenne": 12},
                  "Dérive": {"decalage_x": 3},
-                 "Grouillement": {"bruit": 4}},
+                 "Grouillement": {"bruit": 4},
+                 "Miroir horizontal": {"horizontal": -100},
+                 "Miroir vertical": {"vertical": -100},
+                 "Double vitesse": {"horizontal": 200, "vertical": 200}},
+    equivalents={"Mouvement inversé": "dd_rotate180 dd_reverse", "Traînée": "dd_AverageBastard",
+                 "Miroir horizontal": "dd_mirrorX", "Miroir vertical": "dd_mirrorY",
+                 "Double vitesse": "dd_doubleSpeed", "Mouvement amplifié": "dd_MultiplyFastest"},
 )

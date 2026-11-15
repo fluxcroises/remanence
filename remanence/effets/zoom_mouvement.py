@@ -54,5 +54,8 @@ DESCRIPTION = DescriptionEffet(
                 Parametre("blocs", "Blocs", 1, 31, 2)],
     prereglages={"Aspiration": {"force": 20},
                  "Explosion": {"force": -20},
-                 "Zoom décentré": {"force": 35, "centre_x": 25, "centre_y": 30}},
+                 "Zoom décentré": {"force": 35, "centre_x": 25, "centre_y": 30},
+                 "Coup de zoom": {"force": 150}},
+    equivalents={"Aspiration": "dd_zoomIn", "Explosion": "dd_zoomOut",
+                 "Coup de zoom": "dd_slamZoom"},
 )

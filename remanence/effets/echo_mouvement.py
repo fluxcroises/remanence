@@ -51,4 +51,5 @@ DESCRIPTION = DescriptionEffet(
     prereglages={"Écho": {"retard": 20, "retour": 0},
                  "Échos qui s'accumulent": {"retard": 10, "retour": 50},
                  "Écho lointain": {"retard": 45, "retour": 30}},
+    equivalents={"Écho": "dd_delay", "Échos qui s'accumulent": "dd_ringBuffer"},
 )

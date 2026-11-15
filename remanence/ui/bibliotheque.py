@@ -210,11 +210,13 @@ class PanneauEffets(QWidget):
         for i, p in enumerate(self.prereglages):
             if self._famille and p.famille != self._famille:
                 continue
-            if texte and texte not in (p.nom + " " + p.description + " " + p.famille).lower():
+            if texte and texte not in " ".join((p.nom, p.description, p.famille,
+                                                p.equivalent)).lower():
                 continue
             item = QListWidgetItem()
             item.setData(ROLE_INDEX, i)
-            item.setToolTip(f"{p.nom} · {p.famille}")
+            item.setToolTip(" · ".join([p.nom, p.famille]
+                                       + ([p.equivalent] if p.equivalent else [])))
             self.vue.addItem(item)
         rien = self.vue.count() == 0
         self.vue.setVisible(not rien)
