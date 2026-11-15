@@ -565,6 +565,7 @@ class FenetrePrincipale(QMainWindow):
         f.addSeparator()
         self._action(f, "Importer des médias…", self.importer, "Ctrl+I")
         self._action(f, "Importer des scripts FFglitch…", self.importer_scripts)
+        self._action(f, "Importer les scripts de Live Mosher…", self.importer_live_mosher)
         self._action(f, "Importer un montage (EDL, XML)…", self.importer_montage)
         f.addSeparator()
         self._action(f, "Exporter la séquence…", lambda: self.choisir_espace("export"), "Ctrl+E")
@@ -3023,12 +3024,35 @@ class FenetrePrincipale(QMainWindow):
         if not dossier:
             return
         try:
-            n = scripts.importer(Path(dossier))
+            bilan = scripts.importer(Path(dossier))
         except OSError as e:
             afficher_erreur(self, "Import impossible", str(e))
             return
         self.bibliotheque.recharger()
-        self.message(f"{n} script{'s' if n > 1 else ''} importé{'s' if n > 1 else ''}", 3000)
+        n = bilan.importes
+        texte = f"{n} script{'s' if n > 1 else ''} importé{'s' if n > 1 else ''}"
+        if bilan.direct:
+            texte += f", dont {bilan.direct} en direct"
+        if bilan.ignores:
+            texte += f" · {len(bilan.ignores)} écarté{'s' if len(bilan.ignores) > 1 else ''}"
+        journal.info(f"Import de scripts : {texte} ; écartés : "
+                     + ", ".join(f"{nom} ({raison})" for nom, raison in bilan.ignores))
+        self.message(texte, 5000)
+
+    def importer_live_mosher(self):
+        """Les scripts de Live Mosher, trouvés tout seuls dans les endroits habituels ; sinon,
+        le dossier de Live Mosher est demandé."""
+        dossier = scripts.trouver_live_mosher()
+        if dossier is None:
+            choisi = QFileDialog.getExistingDirectory(self, "Dossier de Live Mosher",
+                                                      dossier_fichiers("scripts"))
+            if not choisi:
+                return
+            retenir_dossier("scripts", choisi)
+            dossier = Path(choisi)
+            exemples = [dossier / "Examples", *dossier.glob("*/Examples")]
+            dossier = next((d for d in exemples if d.is_dir()), dossier)
+        self.importer_scripts(str(dossier))
 
     def importer(self):
         chemins, _ = QFileDialog.getOpenFileNames(

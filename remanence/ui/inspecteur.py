@@ -755,8 +755,10 @@ class Inspecteur(PanneauFiche):
                 e.id, "retirer", None))
             section.ajouter_outil(retirer)
             if d.ffglitch and not ffglitch.disponible():
-                self._cible.addWidget(etiquette("FFglitch absent : effet sans action",
+                self._cible.addWidget(etiquette("FFglitch absent : effet sans action",
                                                 "avertissement"))
+            elif e.type == "script_ffglitch" and scripts.direct_seulement(e.script):
+                self._cible.addWidget(etiquette("Script à lire en direct", "avertissement"))
             if d.transfert and self._clip_courant is not None:
                 seq, clip = self._clip_courant
                 dessus = edition.clip_au_dessus(seq, clip)

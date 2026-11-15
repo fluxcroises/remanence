@@ -46,7 +46,7 @@ def actifs(effets: list[Effet], t: float = 0, decalages: dict | None = None) -> 
     des modulateurs à cet instant. Les effets codec passent en tête : leur pré-rendu part de la
     source, avant tout effet en temps réel."""
     allumes = [instantane(e, t, decalages) for e in effets
-               if e.actif and e.type in EFFETS and agit_a(e, t)]
+               if e.actif and e.type in EFFETS and agit_a(e, t) and not prerendu.en_direct(e)]
     return sorted(allumes, key=lambda e: not EFFETS[e.type].codec)
 
 

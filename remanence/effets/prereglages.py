@@ -25,6 +25,10 @@ class Prereglage:
     # [{"type": clé de l'effet, "params": {...}}, ...] ; plusieurs : une pile d'effets.
     effets: list[dict]
     fourni: bool = True
+    # Script importé : son dossier d'origine (« instant damage »), et s'il se lit en direct
+    # seulement.
+    groupe: str = ""
+    direct: bool = False
 
     @property
     def famille(self) -> str:
@@ -36,6 +40,9 @@ class Prereglage:
     def description(self) -> str:
         """« Effet · temps réel », « Effet · moteur codec », « Effet · son », ou la liste
         d'une pile."""
+        if self.groupe or self.direct:
+            return " · ".join(["Script", *([self.groupe] if self.groupe else []),
+                               *(["direct"] if self.direct else [])])
         connus = [EFFETS[e["type"]] for e in self.effets if e["type"] in EFFETS]
         moteurs = {d.moteur for d in connus}
         if "codec" in moteurs:
@@ -74,11 +81,12 @@ def fournis() -> list[Prereglage]:
                 p["script"] = e.script
             resultat.append(Prereglage(nom, [p]))
     if "script_ffglitch" in EFFETS:
-        for nom, (texte, fourni) in scripts.bibliotheque().items():
-            if not fourni:
-                e = catalogue.nouvel_effet("script_ffglitch", script=texte)
-                resultat.append(Prereglage(nom, [{"type": e.type, "params": e.params,
-                                                  "script": texte}]))
+        for s in scripts.scripts_de_la_bibliotheque():
+            if not s.fourni:
+                e = catalogue.nouvel_effet("script_ffglitch", script=s.texte)
+                resultat.append(Prereglage(s.nom, [{"type": e.type, "params": e.params,
+                                                    "script": s.texte}],
+                                           groupe=s.groupe, direct=s.direct))
     return resultat
 
 

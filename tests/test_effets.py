@@ -530,7 +530,7 @@ def test_scripts_de_la_bibliotheque(medias, tmp_path):
     source = tmp_path / "mes scripts" / "dd"
     source.mkdir(parents=True)
     (source / "Multiplier_X.js").write_text(SCRIPT_ANCIEN, encoding="utf-8")
-    assert scripts.importer(tmp_path / "mes scripts") == 1
+    assert scripts.importer(tmp_path / "mes scripts").importes == 1
     p = next(p for p in prereglages.fournis() if p.nom == "Multiplier X")
     assert p.famille == "Scripts"
     effet = p.nouveaux_effets()[0]

@@ -30,7 +30,7 @@ from remanence.rendu.couleur import depuis_rvba, vers_rvba
 from remanence.media.sonde import analyser
 from remanence.effets import modulateurs, valeur_modulee
 from remanence.moteurs import audio
-from remanence.moteurs.codec import bavure, ffglitch
+from remanence.moteurs.codec import bavure, ffglitch, scripts
 from remanence.projet import edition
 from remanence.projet.modele import Clip, Effet, Projet, Sequence
 
@@ -60,8 +60,15 @@ def dossier() -> Path:
     return d
 
 
+def en_direct(e: Effet) -> bool:
+    """Script FFglitch qui ne se lit qu'en direct (contrôleur, clavier) : sans action sur la
+    timeline, il n'est jamais calculé."""
+    return e.type == "script_ffglitch" and scripts.direct_seulement(e.script)
+
+
 def effets_codec(clip: Clip) -> list[Effet]:
-    return [e for e in clip.effets if e.actif and e.type in EFFETS and EFFETS[e.type].codec]
+    return [e for e in clip.effets if e.actif and e.type in EFFETS and EFFETS[e.type].codec
+            and not en_direct(e)]
 
 
 def _signature(projet: Projet, clip: Clip) -> list:

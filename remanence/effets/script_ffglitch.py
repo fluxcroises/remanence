@@ -22,6 +22,9 @@ def parametres_de(effet) -> list[Parametre]:
 def script(valeurs: list[dict], graine: int, effet=None) -> str:
     noms = scripts.reglages(effet.script)
     reglages = {nom: effet.params.get(nom, v) for nom, v in noms.items()}
+    if scripts.direct_seulement(effet.script):
+        # Il attendrait sans fin un contrôleur ou un clavier : jamais lancé pour la timeline.
+        raise RuntimeError("Script à lire en direct")
     return scripts.adapter(effet.script, reglages, graine)
 
 

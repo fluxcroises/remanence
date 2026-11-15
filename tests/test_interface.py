@@ -732,7 +732,8 @@ def test_effets_ffglitch_dans_l_inspecteur(fenetre, medias, monkeypatch):
     monkeypatch.setenv(ffglitch.VARIABLE, "")
     w.timeline.vue._choisir(set())
     w.timeline.vue._choisir({clip.id})
-    assert _attendre(lambda: "FFglitch absent : effet sans action" in textes(), 2)
+    # Espace insécable avant le deux-points (typographie du projet).
+    assert _attendre(lambda: "FFglitch absent : effet sans action" in textes(), 2)
 
 
 def test_l_inspecteur_ne_saute_pas_apres_un_reglage(fenetre, medias):
