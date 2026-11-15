@@ -5,7 +5,7 @@ from __future__ import annotations
 import random
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QGridLayout, QHBoxLayout, QListWidget, QListWidgetItem,
+from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox, QGridLayout, QHBoxLayout, QListWidget, QListWidgetItem,
                                QMenu, QPushButton, QScrollArea, QSizePolicy, QToolButton,
                                QVBoxLayout, QWidget)
 
@@ -36,9 +36,13 @@ def _effacer(layout):
 
 def nom_court_piste(seq, piste) -> str:
     """V1 est la piste vidéo du bas, comme dans Resolve ; A1 la première piste audio."""
+    # Les pistes FX sont comptées à part : FX, puis FX2 au-dessus.
     if piste.type == "video":
-        pistes = seq.pistes_video
-        return f"V{len(pistes) - pistes.index(piste)}"
+        pistes = [p for p in seq.pistes_video if p.fx == piste.fx]
+        rang = len(pistes) - pistes.index(piste)
+        if piste.fx:
+            return "FX" if rang == 1 else f"FX{rang}"
+        return f"V{rang}"
     return f"A{seq.pistes_audio.index(piste) + 1}"
 
 
@@ -247,6 +251,9 @@ class Inspecteur(PanneauFiche):
         # Clip affiché pendant la construction de ses effets (source du transfert).
         self._clip_courant = None
         self._projet_courant = None
+        # Onglet du clip choisi : « clip » (durée, transformation, niveau…) ou « effets ».
+        self.onglet = "clip"
+        self._affiche: tuple | None = None  # (projet, identifiant du clip) montré
         self.vide()
 
     def _vider(self):
@@ -334,9 +341,40 @@ class Inspecteur(PanneauFiche):
         b.customContextMenuRequested.connect(menu)
         return b
 
+    def choisir_onglet(self, onglet: str):
+        """Onglet Clip ou Effets ; refait le panneau si un clip est montré."""
+        if onglet == self.onglet:
+            return
+        self.onglet = onglet
+        if self._affiche is not None:
+            self.clip(*self._affiche)
+            # Autre onglet : on repart du haut.
+            self._defil_garde = None
+            self._defil.verticalScrollBar().setValue(0)
+
+    def _onglets(self, nb_effets: int):
+        """Clip | Effets, sous le titre : les réglages des effets à part de ceux du clip."""
+        rang = QHBoxLayout()
+        rang.setSpacing(0)
+        groupe = QButtonGroup(self)
+        groupe.setExclusive(True)
+        for cle, nom in (("clip", "Clip"),
+                         ("effets", f"Effets · {nb_effets}" if nb_effets else "Effets")):
+            b = QPushButton(nom)
+            b.setCheckable(True)
+            b.setChecked(self.onglet == cle)
+            b.setProperty("onglet", cle)
+            b.setAccessibleName(nom)
+            b.clicked.connect(lambda _v=False, cle=cle: self.choisir_onglet(cle))
+            groupe.addButton(b)
+            rang.addWidget(b, 1)
+        self._groupe_onglets = groupe
+        self._lay.addLayout(rang)
+
     def vide(self, projet: Projet | None = None, nombre: int = 0):
         """Sans clip unique choisi : la séquence, et le nombre de clips s'il y en a plusieurs."""
         self._vider()
+        self._affiche = None
         self.badge.emit("")
         if nombre > 1:
             self._titre(f"{nombre} clips sélectionnés",
@@ -373,6 +411,7 @@ class Inspecteur(PanneauFiche):
             self.vide(projet)
             return
         self._vider()
+        self._affiche = None
         self.badge.emit("Piste")
         self._titre(piste.nom, f"Piste {nom_court_piste(seq, piste)}")
         self._effets("piste", piste.id, piste.effets, "Effets de piste",
@@ -400,6 +439,11 @@ class Inspecteur(PanneauFiche):
             else (imbriquee.nom if imbriquee else "Séquence manquante") if c.sequence_id \
             else media.nom if media else "Média manquant"
         self._titre(titre, f"Piste {nom_court_piste(seq, piste)} · {debut} à {fin}")
+        self._affiche = (projet, clip_id)
+        self._onglets(len(c.effets))
+        if self.onglet == "effets":
+            self._effets_du_clip(projet, seq, c, video)
+            return
 
         self._section("Clip", "clip")
         calcule = c.titre is not None or c.sequence_id is not None
@@ -492,6 +536,8 @@ class Inspecteur(PanneauFiche):
             rang.addSpacing(RETRAIT_LOSANGE)
             rang.addWidget(bave, 1)
             self._cible.addLayout(rang)
+
+    def _effets_du_clip(self, projet, seq, c, video: bool):
         if video:
             self._clip_courant = (seq, c)
             self._projet_courant = projet

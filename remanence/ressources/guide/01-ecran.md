@@ -18,7 +18,7 @@ Pour monter vite : les médias à gauche, un grand moniteur, la timeline dessous
 
 ![Espace Montage](images/espace-montage.png)
 
-Deux moniteurs côte à côte : la source à gauche, le programme (la séquence montée) à droite. La timeline est dessous, l'inspecteur à droite : il montre les réglages de ce qui est choisi (clip, piste ou séquence).
+Deux moniteurs côte à côte : la source à gauche, le programme (la séquence montée) à droite. La timeline est dessous, l'inspecteur à droite : il montre les réglages de ce qui est choisi (clip, piste ou séquence). Pour un clip, ses onglets Clip et Effets séparent les réglages du clip de ceux de ses effets.
 
 ## Effets
 
@@ -34,4 +34,4 @@ Les réglages d'export à gauche, la file des exports à droite.
 
 ## Double écran
 
-Affichage > Double écran envoie des panneaux sur un second moniteur : Média, Métadonnées et Historique (comme dans DaVinci Resolve), ou toute la timeline. Ctrl+F montre le programme en plein écran.
+Affichage > Double écran envoie des panneaux sur un second moniteur : Média, Métadonnées et Historique (comme dans DaVinci Resolve), ou toute la timeline. Moniteur sur le second écran : le programme en plein écran sur l'autre moniteur, toute la fenêtre sur le premier. Ctrl+F montre le programme en plein écran.

@@ -68,7 +68,8 @@ def transformee(c: Clip, media: Media | None, seq: Sequence, t: float,
     if transformation.neutre(e.params):
         return []
     v = media.infos.video if media is not None else None
-    cadre = transformation.cadre(v.largeur, v.hauteur, seq.largeur, seq.hauteur) if v         else {"cadre_x": 0.0, "cadre_y": 0.0, "cadre_l": 1.0, "cadre_h": 1.0}
+    cadre = (transformation.cadre(v.largeur, v.hauteur, seq.largeur, seq.hauteur) if v
+             else {"cadre_x": 0.0, "cadre_y": 0.0, "cadre_l": 1.0, "cadre_h": 1.0})
     if e is base:
         e = copy.copy(e)
     e.params = {**e.params, **cadre}
@@ -429,14 +430,16 @@ class Compositeur:
             def bus(a: int, m: int, lecteurs=lecteurs) -> np.ndarray:
                 somme = np.zeros((m, 2), np.float32)
                 for c, lecteur in lecteurs:
-                    if lecteur is not None and round(c.fin * par_image) > a and                             round(c.debut * par_image) < a + m:
+                    if (lecteur is not None and round(c.fin * par_image) > a
+                            and round(c.debut * par_image) < a + m):
                         somme += lecteur(a, m)
                 return somme
             # Le son bave d'abord (sur le mélange : le grain vient du plan d'avant), puis les
             # effets de la piste.
             source = son.bave(bus, plages) if plages else bus
-            traite = son.chaine(source, lambda f, piste=piste: actifs(
-                piste.effets, f, modulateurs.decalages(seq, f, self.projet)), par_image)                 if effets else source
+            traite = (son.chaine(source, lambda f, piste=piste: actifs(
+                piste.effets, f, modulateurs.decalages(seq, f, self.projet)), par_image)
+                if effets else source)
             sortie += traite(debut, n)
         return sortie
 

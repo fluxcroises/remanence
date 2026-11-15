@@ -1,5 +1,29 @@
 # Notes de version
 
+## Remanence 1.1.0
+
+Novembre 2026. Retours des premiers testeurs.
+
+### Scripts de Live Mosher
+
+- Fichier > Importer les scripts de Live Mosher… : les exemples de Live Mosher (dont les scripts dd_GlitchAssist de Daz Disley) s'importent en un clic, avec leurs noms et leurs dossiers d'origine. 82 agissent sur la timeline ; ceux qui demandent un clavier ou un contrôleur se lisent en direct.
+- Aperçu en direct : le bouton Direct d'un effet à script montre le résultat en boucle, par-dessus le programme, et se relance à chaque réglage.
+- Quatre effets de mouvement en plus : Gravité, Échange des axes, Sens unique, Tourbillon. Nouveaux préréglages : Miroir horizontal et vertical, Double vitesse, Coup de zoom.
+- La recherche de la bibliothèque trouve un effet par le nom du script équivalent (dd_gravity, dd_swap, dd_slamZoom…).
+
+### Interface
+
+- Inspecteur en deux onglets, Clip et Effets : les réglages des effets ne sont plus mêlés à ceux du clip.
+- Piste FX : les clips d'effet ont leur piste, en haut de la timeline.
+- Double écran : Moniteur sur le second écran (l'image du programme en plein écran sur l'autre moniteur).
+
+### Corrections
+
+- La molette ne change plus un réglage survolé : le panneau défile.
+- Au retour de l'espace Export, la fenêtre ne dépasse plus l'écran (le bas de la timeline était caché).
+- Le moniteur garde son image quand il change de fenêtre (panneau détaché, second écran).
+- Après l'espace Cut, plus de barre « Programme | Source » par-dessus le moniteur.
+
 ## Remanence 1.0.0
 
 Novembre 2026. Première version publique, éditée par Flux Croisés, sous licence GPL 3.

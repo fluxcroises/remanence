@@ -252,6 +252,9 @@ class Piste:
     couleur: str | None = None
     clips: list[Clip] = field(default_factory=list)
     effets: list[Effet] = field(default_factory=list)
+    # Piste FX : piste vidéo réservée aux clips d'effet, posée en haut (retour des testeurs :
+    # les effets se repèrent mieux sur une piste à eux).
+    fx: bool = False
 
     def clips_a(self, f: int) -> list[Clip]:
         """Clips présents à l'image f, du plus ancien au plus récent (deux lors d'un fondu)."""

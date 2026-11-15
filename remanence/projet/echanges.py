@@ -51,7 +51,8 @@ def _trouver_media(projet: Projet, clip, source_tc: int, cadence: Fraction) -> M
     for nom in noms:
         for m in candidats:
             tc0 = m.infos.video.tc_debut
-            if Path(m.chemin).stem.lower().startswith(nom) and tc0 is not None                     and tc0 <= source_tc < tc0 + m.nb_images(cadence):
+            if (Path(m.chemin).stem.lower().startswith(nom) and tc0 is not None
+                    and tc0 <= source_tc < tc0 + m.nb_images(cadence)):
                 return m
     if noms:
         return None  # un nom est donné et aucun média ne le porte : plan manquant

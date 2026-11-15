@@ -380,7 +380,8 @@ class Graphe(QWidget):
 
     def event(self, e):
         # Suppr retire l'image clé choisie, pas les clips sélectionnés (raccourci de la fenêtre).
-        if e.type() == QEvent.ShortcutOverride and self.choisie is not None                 and e.key() in (Qt.Key_Delete, Qt.Key_Backspace):
+        if (e.type() == QEvent.ShortcutOverride and self.choisie is not None
+                and e.key() in (Qt.Key_Delete, Qt.Key_Backspace)):
             e.accept()
             return True
         return super().event(e)

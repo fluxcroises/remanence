@@ -12,7 +12,7 @@ from PySide6.QtCore import QEvent, QPoint, Qt, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QGuiApplication, QImage, QKeySequence
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QDockWidget,
                                QFileDialog, QHBoxLayout, QInputDialog, QMainWindow, QMenu,
-                               QMessageBox, QPushButton, QSizePolicy, QToolBar, QToolButton,
+                               QMessageBox, QPushButton, QSizePolicy, QTabBar, QToolBar, QToolButton,
                                QVBoxLayout, QWidget)
 
 from remanence import journal
@@ -281,7 +281,7 @@ class FenetrePrincipale(QMainWindow):
         self._restaurer_disposition()
         # Double écran retrouvé au lancement, si le second écran est toujours branché.
         mode = reglages_interface().value("double_ecran/mode", "")
-        if mode in ("panneaux", "timeline") and len(QGuiApplication.screens()) > 1:
+        if mode in ("panneaux", "timeline", "moniteur") and len(QGuiApplication.screens()) > 1:
             QTimer.singleShot(0, lambda: self.choisir_double_ecran(mode))
 
         self._minuterie_auto = QTimer(self)
@@ -476,6 +476,9 @@ class FenetrePrincipale(QMainWindow):
         self.onglets_gauche.masquer_onglet(cache, not self._est_externe("medias"))
         if espace == "effets":
             self.onglets_droite.choisir(0)  # on y règle les effets : l'inspecteur
+            self.inspecteur.choisir_onglet("effets")
+        elif espace == "montage":
+            self.inspecteur.choisir_onglet("clip")
         self._barre_poses.setVisible(espace == "cut")
         self.timeline.mode_cut(espace == "cut")
         if espace != "cut" and self._bande is not None:
@@ -487,12 +490,29 @@ class FenetrePrincipale(QMainWindow):
             self.activer_moniteur("source" if self.media_source is not None else "programme")
         self._actualiser_datamosh()
         QTimer.singleShot(0, self._verifier_hauteur)
+        QTimer.singleShot(0, self._ranger_onglets)
         self.barre_espaces.activer(espace)
         if self._barre_espaces_2 is not None:
             self._barre_espaces_2.activer(espace)
         if self.inspecteur.effet_direct:
             # Le programme a bougé : la fenêtre du direct le suit.
             self._relance_direct.start()
+
+    def _ranger_onglets(self):
+        """Qt laisse à l'écran la barre d'onglets d'un groupe de panneaux défait : après Cut,
+        « Programme | Source » restait par-dessus le bas du moniteur des autres espaces (et un
+        clic dessus y montrait la source). Une barre dont les panneaux ne sont plus deux, visibles
+        et en onglets l'un avec l'autre, se cache ; Qt la remontre s'il refait le groupe."""
+        par_titre = {d.windowTitle(): d for d in self._docks.values() if d.isVisible()}
+        for barre in self.findChildren(QTabBar):
+            if barre.parent() is not self or not barre.isVisible():
+                continue
+            docks = [par_titre[t] for t in (barre.tabText(i) for i in range(barre.count()))
+                     if t in par_titre]
+            groupe = any(b in self.tabifiedDockWidgets(a) for a in docks for b in docks
+                         if a is not b)
+            if not groupe:
+                barre.hide()
 
     def _verifier_hauteur(self):
         """Des panneaux qui demandent plus de hauteur que l'écran n'en a écrasent la timeline
@@ -757,6 +777,8 @@ class FenetrePrincipale(QMainWindow):
                 ("panneaux", "Panneaux sur le second écran",
                  ""),
                 ("timeline", "Timeline sur le second écran",
+                 ""),
+                ("moniteur", "Moniteur sur le second écran",
                  "")):
             act = self._action(double, texte, lambda _=False, mode=mode:
                                self.choisir_double_ecran(mode), aide=aide)
@@ -833,6 +855,15 @@ class FenetrePrincipale(QMainWindow):
         self._ecrans_changes()
 
     def _entrer_double_ecran(self, mode: str):
+        if mode == "moniteur":
+            # Retour des testeurs : toute la fenêtre sur l'écran 1, l'image du programme en
+            # plein écran sur l'écran 2. Le programme reste aussi dans la fenêtre (masques et
+            # poignées se règlent sur lui).
+            self._mode_double = mode
+            if self._programme_externe is not None:
+                self._programme_externe.close()
+            self._ouvrir_programme_externe(persistant=True)
+            return
         reglages_interface().setValue(self._cle_disposition(self._espace),
                                       self.saveState(VERSION_DISPOSITION))
         # Fenêtre sans parent : sinon restoreState() de la fenêtre principale retrouverait ses
@@ -900,6 +931,11 @@ class FenetrePrincipale(QMainWindow):
         self._appliquer_espace(self._espace)
 
     def _quitter_double_ecran(self):
+        if self._mode_double == "moniteur":
+            self._mode_double = None
+            if self._programme_externe is not None:
+                self._programme_externe.close()
+            return
         fenetre, self._double_ecran = self._double_ecran, None
         mode, self._mode_double = self._mode_double, None
         if mode == "timeline":
@@ -934,10 +970,20 @@ class FenetrePrincipale(QMainWindow):
             fenetre.showMaximized()
 
     def basculer_programme_externe(self):
+        if self._mode_double == "moniteur":
+            return  # le programme est déjà sur le second écran
         if self._programme_externe is not None:
             self._programme_externe.close()
             return
-        fenetre = QWidget(None, Qt.Window | Qt.FramelessWindowHint)
+        self._ouvrir_programme_externe(persistant=False)
+
+    def _ouvrir_programme_externe(self, persistant: bool):
+        """L'image du programme en plein écran, sur l'autre écran s'il y en a un. Persistant
+        (mode « Moniteur sur le second écran ») : Échap ne la ferme pas, elle va à la fenêtre."""
+        # Fenêtre à part, mais enfant de la fenêtre principale : sans parent, Python la
+        # détruisait au hasard du ramasse-miettes, parfois pendant que Qt s'en servait encore
+        # (plantage).
+        fenetre = QWidget(self, Qt.Window | Qt.FramelessWindowHint)
         fenetre.setWindowTitle("Remanence · Programme")
         lay = QVBoxLayout(fenetre)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -949,9 +995,14 @@ class FenetrePrincipale(QMainWindow):
             self.lecture.image_prete.disconnect(relais)
             self._programme_externe = None
             e.accept()
+            fenetre.deleteLater()
+            if persistant and self._mode_double == "moniteur":
+                # Fermée autrement que par le menu (Alt+F4) : on revient à un seul écran.
+                QTimer.singleShot(0, lambda: self.choisir_double_ecran(None))
 
         def touche(e):
-            if e.key() in (Qt.Key_Escape, Qt.Key_F) or e.matches(QKeySequence.Cancel):
+            if not persistant and (e.key() in (Qt.Key_Escape, Qt.Key_F)
+                                   or e.matches(QKeySequence.Cancel)):
                 fenetre.close()
             else:
                 self.keyPressEvent(e)
@@ -962,6 +1013,9 @@ class FenetrePrincipale(QMainWindow):
         fenetre.showFullScreen()
         self._programme_externe = fenetre
         self.lecture.rafraichir()
+        if persistant:
+            # Le clavier reste à la fenêtre principale : raccourcis et lecture y sont.
+            self.activateWindow()
 
     def _plein_ecran(self):
         if self.isFullScreen():
@@ -1393,7 +1447,8 @@ class FenetrePrincipale(QMainWindow):
         if not hasattr(self, "panneau_datamosh"):
             return
         seq = self.projet.sequence
-        clip = self._clip_datamosh()             if self._espace == "effets" and self._docks["analyse"].isVisible() else None
+        clip = (self._clip_datamosh()
+                if self._espace == "effets" and self._docks["analyse"].isVisible() else None)
         if clip is None:
             self._analyse_courante = None
             self.panneau_datamosh.afficher(None, None)
@@ -1500,6 +1555,7 @@ class FenetrePrincipale(QMainWindow):
             for c in clips:
                 for e in p.nouveaux_effets():
                     edition.ajouter_effet(c, e)
+        self.inspecteur.onglet = "effets"  # les réglages de ce qu'on vient de poser
         self._tenter(f"Préréglage {p.nom}", poser)
 
     @staticmethod
@@ -1530,6 +1586,7 @@ class FenetrePrincipale(QMainWindow):
             seq = self.projet.sequence
             clip = edition.ajouter_clip_effet(seq, f, 5 * self._cadence(), p.nouveaux_effets(),
                                               piste_id=cible_id)
+            self.inspecteur.onglet = "effets"
             self.valider("Clip d'effet")
             self.timeline.vue._choisir({clip.id})
         else:
@@ -1590,6 +1647,8 @@ class FenetrePrincipale(QMainWindow):
         def poser():
             for e in effets:
                 edition.ajouter_effet(porteur, e)
+        if genre == "clip":
+            self.inspecteur.onglet = "effets"  # les réglages de ce qu'on vient de poser
         self._tenter(f"Effet {', '.join(EFFETS[e.type].nom for e in effets)}", poser)
 
     def ajouter_clip_effet(self, effets: list, debut: int | None = None):
@@ -1597,6 +1656,7 @@ class FenetrePrincipale(QMainWindow):
         seq = self.projet.sequence
         debut = self.lecture.position if debut is None else debut
         clip = edition.ajouter_clip_effet(seq, debut, 5 * self._cadence(), effets)
+        self.inspecteur.onglet = "effets"
         self.valider("Clip d'effet")
         self.timeline.vue._choisir({clip.id})
 
@@ -1607,7 +1667,8 @@ class FenetrePrincipale(QMainWindow):
         if e is None:
             return
         nom = EFFETS[e.type].nom if e.type in EFFETS else e.type
-        if isinstance(porteur, Clip) and e is porteur.transformation and                 champ == "reinitialiser":
+        if (isinstance(porteur, Clip) and e is porteur.transformation
+                and champ == "reinitialiser"):
             porteur.transformation = None
             QTimer.singleShot(0, lambda: self.valider("Transformation réinitialisée"))
             return
@@ -2016,7 +2077,8 @@ class FenetrePrincipale(QMainWindow):
         media = self.projet.medias.get(c.media_id)
         base = c.transformation or transformation.nouvelle(c.id)
         v = media.infos.video if media is not None else None
-        cadre = transformation.cadre(v.largeur, v.hauteur, seq.largeur, seq.hauteur) if v             else {"cadre_x": 0.0, "cadre_y": 0.0, "cadre_l": 1.0, "cadre_h": 1.0}
+        cadre = (transformation.cadre(v.largeur, v.hauteur, seq.largeur, seq.hauteur) if v
+                 else {"cadre_x": 0.0, "cadre_y": 0.0, "cadre_l": 1.0, "cadre_h": 1.0})
         decalages = modulateurs.decalages(seq, f, self.projet)
         e = instantane(base, max(0, min(f - c.debut, c.duree - 1)), decalages)
         return {**transformation.DEFAUTS, **e.params,

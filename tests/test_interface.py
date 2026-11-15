@@ -323,7 +323,8 @@ def test_ecran_d_accueil(fenetre, medias, tmp_path):
     w.importer_chemins([str(medias["prores_hq"])])
     assert _attendre(lambda: len(w.projet.medias) == 1)
     w.poser_medias(list(w.projet.medias), 0, "")
-    assert (w.projet.sequence.largeur, w.projet.sequence.cadence) == (1080, "25"),         "le premier média ne change plus la séquence"
+    assert (w.projet.sequence.largeur, w.projet.sequence.cadence) == (1080, "25"), \
+        "le premier média ne change plus la séquence"
     projet = tmp_path / "essai.remanence"
     w.chemin = projet
     assert w.enregistrer()
@@ -719,10 +720,11 @@ def test_effets_ffglitch_dans_l_inspecteur(fenetre, medias, monkeypatch):
     textes = lambda: [l.text() for l in w.inspecteur.findChildren(QLabel)
                       if l.isVisibleTo(w.inspecteur)]
     assert _attendre(lambda: "aucun clip au-dessus" in textes(), 2)
-    # Vecteurs : 7 réglages et l'opacité ; transfert : 2 réglages et l'opacité ; et les 12
-    # réglages de la transformation du clip.
+    # Onglet Effets (ouvert par l'ajout) : Vecteurs, 7 réglages et l'opacité ; transfert,
+    # 2 réglages et l'opacité. La transformation du clip est dans l'onglet Clip.
+    assert w.inspecteur.onglet == "effets"
     assert _attendre(lambda: len([b for b in w.inspecteur.findChildren(BoutonCle)
-                                  if b.isVisibleTo(w.inspecteur)]) == 23, 2)
+                                  if b.isVisibleTo(w.inspecteur)]) == 11, 2)
     effet_id = w.projet.sequence.pistes_video[0].clips[0].effets[0].id
     w.aller_a(4)
     w.reglage_effet(effet_id, "cle:horizontal", None)
@@ -749,7 +751,8 @@ def test_l_inspecteur_ne_saute_pas_apres_un_reglage(fenetre, medias):
     w.poser_medias(list(w.projet.medias), 0, "")
     clip = w.projet.sequence.pistes_video[0].clips[0]
     w.timeline.vue._choisir({clip.id})
-    w.ajouter_effet("clip", clip.id, [nouvel_effet("blocs_deplaces")])
+    w.ajouter_effet("clip", clip.id, [nouvel_effet("blocs_deplaces"), nouvel_effet("vhs"),
+                                      nouvel_effet("decalage_rvb")])
     barre = w.inspecteur._defil.verticalScrollBar()
     assert _attendre(lambda: barre.maximum() > 40, 2)
     for depart in (0, 40):
@@ -884,7 +887,8 @@ def test_panneau_courbes_et_masques_animes(fenetre, medias):
     assert _attendre(lambda: [k[0] for k in effet().masques[0].cles["points"]] == [2, 12], 2)
     w.aller_a(7)
     assert _attendre(lambda: w.visionneuse.zone.calque.masques
-                     and w.visionneuse.zone.calque.masques[0].points[1][0] != 0.9, 2),         "le calque montre le masque à la tête de lecture"
+                     and w.visionneuse.zone.calque.masques[0].points[1][0] != 0.9, 2), \
+        "le calque montre le masque à la tête de lecture"
     w.timeline.b_courbes.setChecked(False)
     assert _attendre(lambda: not w._docks["courbes"].isVisible(), 2)
 
@@ -1147,6 +1151,7 @@ def test_transition_du_fondu_depuis_l_interface(fenetre, medias):
     w.poser_medias(list(w.projet.medias), 0, "")
     clip = w.projet.sequence.pistes_video[0].clips[0]
     w.timeline.vue._choisir({clip.id})
+    w.inspecteur.choisir_onglet("clip")
     assert _attendre(lambda: any(l.accessibleName() == "Transition"
                                  for l in w.inspecteur.findChildren(QComboBox)), 3)
     liste = next(l for l in w.inspecteur.findChildren(QComboBox)
@@ -1207,6 +1212,7 @@ def test_titre_imbrication_vitesse_et_rendu_sur_place(fenetre, medias):
     w._reglage_clip(clip.id, "vitesse", 2.0)
     assert w.projet.sequence.pistes_video[0].clips[0].duree == nb // 2
     w.timeline.vue._choisir({w.projet.sequence.pistes_video[0].clips[0].id})
+    w.inspecteur.choisir_onglet("clip")
     assert _attendre(lambda: any(c.text() == "À rebours"
                                  for c in w.inspecteur.findChildren(QCheckBox)), 3)
     w.annuler()
@@ -1768,7 +1774,8 @@ def test_bibliotheque_son_et_son_bave(fenetre, medias):
     second = seq().pistes_video[0].clips[1]
     w.basculer_cle("raccord", second.id, 0)
     w.timeline.vue._choisir({second.id})
-    case = lambda: next((c for c in w.inspecteur.findChildren(QCheckBox)
+    w.inspecteur.choisir_onglet("clip")  # le préréglage posé avant a ouvert l'onglet Effets
+    case =lambda: next((c for c in w.inspecteur.findChildren(QCheckBox)
                          if c.text() == "Le son bave" and c.isVisibleTo(w.inspecteur)), None)
     assert _attendre(lambda: case() is not None, 2)
     case().setChecked(True)
@@ -1882,6 +1889,79 @@ def test_moniteur_change_de_fenetre(app):
     zone._a_envoyer = zone._lut_a_envoyer = False
     zone._texture = zone._texture_avant = zone._texture_lut = object()  # ancien contexte
     zone.lut = object()
+    # Sans contexte OpenGL courant, moderngl n'en crée pas un sain (mémoire abîmée, plantage
+    # d'un test suivant) : la remise à zéro se vérifie sans créer de contexte.
+    zone._echec_gl = True
     zone.initializeGL()
     assert zone._texture is None and zone._texture_avant is None and zone._texture_lut is None
     assert zone._a_envoyer and zone._lut_a_envoyer, "image et LUT renvoyées au nouveau contexte"
+
+
+def test_moniteur_sur_le_second_ecran(fenetre):
+    """Retour des testeurs : fenêtre principale sur l'écran 1, moniteur sur l'écran 2 (plein
+    écran, gardé jusqu'à ce qu'on change de mode ; Échap ne le ferme pas)."""
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QKeyEvent
+    w = fenetre
+    w.choisir_double_ecran("moniteur")
+    externe = w._programme_externe
+    assert w._mode_double == "moniteur" and externe is not None and externe.isVisible()
+    assert w._docks["visionneuse"].isVisible(), "le programme reste aussi dans la fenêtre"
+    QApplication.sendEvent(externe, QKeyEvent(QEvent.KeyPress, Qt.Key_Escape, Qt.NoModifier))
+    assert w._programme_externe is externe and externe.isVisible()
+    w.basculer_programme_externe()  # Ctrl+F : déjà sur le second écran
+    assert w._programme_externe is externe
+    w.choisir_double_ecran(None)
+    assert w._mode_double is None and w._programme_externe is None
+    # Fermée autrement (Alt+F4) : retour à un seul écran.
+    w.choisir_double_ecran("moniteur")
+    w._programme_externe.close()
+    assert _attendre(lambda: w._mode_double is None, 2)
+    assert w.a_doubles[None].isChecked()
+
+
+def test_inspecteur_en_onglets(fenetre, medias):
+    """Retour des testeurs : les réglages des effets étaient mêlés à ceux du clip. Onglets Clip
+    et Effets ; un effet posé ouvre l'onglet Effets ; l'espace Effets aussi."""
+    from PySide6.QtWidgets import QPushButton
+    from remanence.effets import nouvel_effet
+    from remanence.ui.composants import SectionRepliable
+    w = fenetre
+    w.choisir_espace("montage")
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    w.timeline.vue._choisir({clip.id})
+    titres = lambda: {s.titre.text() for s in w.inspecteur.findChildren(SectionRepliable)
+                      if s.isVisibleTo(w.inspecteur)}
+    assert w.inspecteur.onglet == "clip"
+    assert _attendre(lambda: {"Clip", "Transformation"} <= titres(), 2)
+    w.ajouter_effet("clip", clip.id, [nouvel_effet("vhs")])
+    assert _attendre(lambda: w.inspecteur.onglet == "effets" and "Cassette VHS" in titres(), 2)
+    assert "Transformation" not in titres(), "les réglages du clip sont dans l'autre onglet"
+    onglets = [b for b in w.inspecteur.findChildren(QPushButton) if b.property("onglet")]
+    assert [b.text() for b in onglets] == ["Clip", "Effets · 1"]
+    onglets[0].click()
+    assert _attendre(lambda: "Transformation" in titres(), 2)
+    w.choisir_espace("effets")
+    assert _attendre(lambda: w.inspecteur.onglet == "effets" and "Cassette VHS" in titres(), 2)
+
+
+def test_pas_d_onglets_fantomes_apres_cut(fenetre):
+    """Après l'espace Cut (source et programme en onglets), la barre « Programme | Source »
+    restait affichée par-dessus le bas du moniteur des autres espaces."""
+    from PySide6.QtWidgets import QTabBar
+    w = fenetre
+
+    def barres_source():
+        return [b for b in w.findChildren(QTabBar)
+                if b.parent() is w and b.isVisible() and b.x() >= 0 and b.y() >= 0
+                and "Source" in [b.tabText(i) for i in range(b.count())]]
+    for espace in ["montage", "cut", "effets", "cut", "montage", "cut", "export"]:
+        w.choisir_espace(espace)
+        _attendre(lambda: False, 0.2)
+        if espace == "cut":
+            assert barres_source(), "dans Cut, les onglets servent"
+        else:
+            assert not barres_source(), espace

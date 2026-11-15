@@ -8,4 +8,6 @@
 - **Changer l'ordre** : glissez l'en-tête d'une piste sur une autre piste du même type.
 - **Renommer** : double-cliquez sur le nom de la piste.
 
+La **piste FX** (son nom en mauve) reçoit les clips d'effet : elle se crée en haut au premier clip d'effet, et les plans n'y vont pas. Les nouvelles pistes vidéo se placent dessous.
+
 La piste vidéo du haut passe devant les autres. L'œil masque une piste vidéo, le cadenas la verrouille ; M et S coupent le son ou isolent une piste audio.

@@ -457,7 +457,8 @@ def test_vecteurs_animes(medias, monkeypatch):
     assert "glitch_frame" in js and "let graine = 7" in js
     anime = prerendu.calculer(projet, seq, clip)
     assert anime != neutre, "une image clé change le pré-rendu"
-    assert ecart(_image(projet, 3), source) < ecart(_image(projet, clip.duree - 1), source),         "l'effet grandit avec l'animation"
+    assert ecart(_image(projet, 3), source) < ecart(_image(projet, clip.duree - 1), source), \
+        "l'effet grandit avec l'animation"
     monkeypatch.setenv(ffglitch.VARIABLE, "")
     assert prerendu.cle(projet, seq, clip) != anime.stem.split("_")[1], "autre moteur"
     prerendu.calculer(projet, seq, clip)

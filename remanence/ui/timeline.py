@@ -741,9 +741,9 @@ class VueTimeline(QWidget):
                     and self.au_dessus_des_pistes(pos.y()):
                 # Glissé au-dessus des pistes : une nouvelle piste vidéo, tout en haut (l'état
                 # est rétabli à chaque mouvement, elle n'existe qu'une fois lâchée là).
-                edition.ajouter_piste(seq, "video")
+                nouvelle = edition.ajouter_piste(seq, "video")  # sous les pistes FX
                 meme = [q for q in seq.pistes if q.type == "video"]
-                delta_piste = -meme.index(ligne0[0])
+                delta_piste = meme.index(nouvelle) - meme.index(ligne0[0])
                 g.nouvelle_piste = True
             elif ligne and ligne0 and ligne[0].type == ligne0[0].type:
                 meme = [q for q in seq.pistes if q.type == ligne0[0].type]
@@ -1228,7 +1228,8 @@ class EntetePiste(QWidget):
             filet.setFixedWidth(5)
             filet.setStyleSheet(f"background: {charte.actuelle().couleurs[piste.couleur]};")
         lay.addWidget(filet)
-        badge = etiquette(court, "badge")
+        # Piste FX : son nom court en couleur d'action, pour la repérer d'un coup d'œil.
+        badge = etiquette(court, "badge-accent" if piste.fx else "badge")
         badge.setFixedWidth(30)
         badge.setAlignment(Qt.AlignCenter)
         lay.addWidget(badge)

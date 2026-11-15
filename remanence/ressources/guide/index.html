@@ -48,7 +48,7 @@ td { padding: 6px 16px 6px 0; border-bottom: 1px solid var(--ligne); vertical-al
 </style>
 </head>
 <body>
-<nav><h1>Remanence</h1><p>Guide · version 1.0.0</p><ol>
+<nav><h1>Remanence</h1><p>Guide · version 1.1.0</p><ol>
 <li><a href="#00-bienvenue">Bienvenue</a></li>
 <li><a href="#01-ecran">L&#x27;écran</a></li>
 <li><a href="#aide-01-monter">Monter des clips</a></li>
@@ -87,7 +87,7 @@ td { padding: 6px 16px 6px 0; border-bottom: 1px solid var(--ligne); vertical-al
 <p>Pour monter vite : les médias à gauche, un grand moniteur, la timeline dessous. Pas d'inspecteur : les réglages se font dans les espaces Montage et Effets.</p>
 <h3>Montage</h3>
 <figure><img alt="Espace Montage" src="images/espace-montage.png"></figure>
-<p>Deux moniteurs côte à côte : la source à gauche, le programme (la séquence montée) à droite. La timeline est dessous, l'inspecteur à droite : il montre les réglages de ce qui est choisi (clip, piste ou séquence).</p>
+<p>Deux moniteurs côte à côte : la source à gauche, le programme (la séquence montée) à droite. La timeline est dessous, l'inspecteur à droite : il montre les réglages de ce qui est choisi (clip, piste ou séquence). Pour un clip, ses onglets Clip et Effets séparent les réglages du clip de ceux de ses effets.</p>
 <h3>Effets</h3>
 <figure><img alt="Espace Effets" src="images/espace-effets.png"></figure>
 <p>La bibliothèque d'effets prend la gauche : glissez une tuile sur un clip. Le programme est plus grand, et l'inspecteur montre les effets du clip choisi. Fenêtre &gt; Compression ouvre l'analyse du codec d'un clip (images clés, poids des images, vecteurs de mouvement).</p>
@@ -95,7 +95,7 @@ td { padding: 6px 16px 6px 0; border-bottom: 1px solid var(--ligne); vertical-al
 <figure><img alt="Espace Export" src="images/espace-export.png"></figure>
 <p>Les réglages d'export à gauche, la file des exports à droite.</p>
 <h3>Double écran</h3>
-<p>Affichage &gt; Double écran envoie des panneaux sur un second moniteur : Média, Métadonnées et Historique (comme dans DaVinci Resolve), ou toute la timeline. Ctrl+F montre le programme en plein écran.</p></section>
+<p>Affichage &gt; Double écran envoie des panneaux sur un second moniteur : Média, Métadonnées et Historique (comme dans DaVinci Resolve), ou toute la timeline. Moniteur sur le second écran : le programme en plein écran sur l'autre moniteur, toute la fenêtre sur le premier. Ctrl+F montre le programme en plein écran.</p></section>
 <section><h2 id="aide-01-monter">Monter des clips</h2>
 <figure><img alt="Timeline avec deux clips" src="../aide/montage.png"></figure>
 <ol>
@@ -128,6 +128,7 @@ td { padding: 6px 16px 6px 0; border-bottom: 1px solid var(--ligne); vertical-al
 <li><strong>Changer l'ordre</strong> : glissez l'en-tête d'une piste sur une autre piste du même type.</li>
 <li><strong>Renommer</strong> : double-cliquez sur le nom de la piste.</li>
 </ul>
+<p>La <strong>piste FX</strong> (son nom en mauve) reçoit les clips d'effet : elle se crée en haut au premier clip d'effet, et les plans n'y vont pas. Les nouvelles pistes vidéo se placent dessous.</p>
 <p>La piste vidéo du haut passe devant les autres. L'œil masque une piste vidéo, le cadenas la verrouille ; M et S coupent le son ou isolent une piste audio.</p></section>
 <section><h2 id="aide-03-effet">Poser un effet</h2>
 <figure><img alt="Bibliothèque d'effets" src="../aide/bibliotheque.png"></figure>
@@ -135,9 +136,9 @@ td { padding: 6px 16px 6px 0; border-bottom: 1px solid var(--ligne); vertical-al
 <li>Ouvrez l'onglet <strong>Effets</strong>, à côté de Média, ou passez dans l'espace <strong>Effets</strong> (Maj+4).</li>
 <li>Survolez une tuile pour voir l'effet en mouvement.</li>
 <li>Glissez la tuile sur un clip. Ou sélectionnez le clip et double-cliquez la tuile.</li>
-<li>Réglez l'effet dans l'<strong>inspecteur</strong>, à droite.</li>
+<li>Réglez l'effet dans l'<strong>inspecteur</strong>, à droite : onglet <strong>Effets</strong>, qui s'ouvre quand vous posez un effet. L'onglet <strong>Clip</strong> garde la durée, la transformation et le niveau.</li>
 </ol>
-<p>Glissée sur l'en-tête d'une piste, la tuile pose l'effet sur toute la piste. Glissée dans le vide d'une piste vidéo, elle crée un clip d'effet de 5 secondes qui agit sur tout ce qui est dessous.</p>
+<p>Glissée sur l'en-tête d'une piste, la tuile pose l'effet sur toute la piste. Glissée dans le vide d'une piste vidéo, elle crée un clip d'effet de 5 secondes sur la <strong>piste FX</strong>, en haut de la timeline : il agit sur tout ce qui est dessous. Si la piste FX est occupée à cet endroit, une seconde piste FX se crée au-dessus.</p>
 <p>Le bouton signet d'un effet l'enregistre comme préréglage personnel, dans Mes préréglages.</p></section>
 <section><h2 id="aide-04-images-cles">Animer un effet</h2>
 <figure><img alt="Effet dans l'inspecteur" src="../aide/inspecteur.png"></figure>

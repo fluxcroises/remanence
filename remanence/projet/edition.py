@@ -41,7 +41,7 @@ def longueur_source(projet: Projet, seq: Sequence, c: Clip) -> int:
 
 
 def _piste_type(seq: Sequence, type_: str, apres: Piste | None = None) -> Piste:
-    pistes = [p for p in seq.pistes if p.type == type_]
+    pistes = [p for p in seq.pistes if p.type == type_ and not p.fx]
     if apres is not None and apres.type == type_:
         return apres
     if pistes:
@@ -79,6 +79,8 @@ def ajouter_media(projet: Projet, seq: Sequence, media: Media, debut: int,
     for p, c in crees:
         if p.verrouillee:
             raise EditionImpossible(f"La piste « {p.nom} » est verrouillée.")
+        if p.fx:
+            raise EditionImpossible("Piste FX : clips d'effet seulement.")
     for p, c in crees:
         liberer(p, c.debut, c.fin, set())
         p.clips.append(c)
@@ -208,7 +210,8 @@ def placer_au_dessus(projet: Projet, seq: Sequence, media: Media, debut: int, en
         return not p.verrouillee and all(c.fin <= debut or c.debut >= fin for c in p.clips)
     videos = seq.pistes_video
     v1 = _piste_type(seq, "video")
-    dessus = [p for p in reversed(videos[:videos.index(v1)])] if v1 in videos else []
+    dessus = ([p for p in reversed(videos[:videos.index(v1)]) if not p.fx]
+              if v1 in videos else [])
     pv = next((p for p in dessus if libre(p)), None) or ajouter_piste(seq, "video")
     pa = None
     if media.infos.audio:
@@ -323,7 +326,9 @@ def deplacer(seq: Sequence, ids: set[str], delta: int, delta_piste: int = 0,
         if delta_piste:
             meme_type = [q for q in seq.pistes if q.type == p.type]
             i = meme_type.index(p) + delta_piste
-            if 0 <= i < len(meme_type) and not meme_type[i].verrouillee:
+            # Une piste FX ne reçoit que des clips d'effet : un autre clip reste sur sa piste.
+            if 0 <= i < len(meme_type) and not meme_type[i].verrouillee \
+                    and (c.est_effet or not meme_type[i].fx):
                 cible = meme_type[i]
         p.clips.remove(c)
         c.debut += delta
@@ -633,14 +638,18 @@ def retirer_point(seq: Sequence, clip_id: str, rang: int):
 def ajouter_piste(seq: Sequence, type_: str, voisine_id: str | None = None,
                   dessous: bool = False) -> Piste:
     """Nouvelle piste : au-dessus (ou en dessous) de la piste voisine du même type ; sans
-    voisine, tout en haut des pistes vidéo ou tout en bas des pistes audio."""
-    n = len([p for p in seq.pistes if p.type == type_]) + 1
+    voisine, tout en haut des pistes vidéo (sous les pistes FX) ou tout en bas des pistes
+    audio."""
+    n = len([p for p in seq.pistes if p.type == type_ and not p.fx]) + 1
     p = Piste(nouvel_id(), type_, f"{'Vidéo' if type_ == 'video' else 'Audio'} {n}")
     voisine = next((q for q in seq.pistes if q.id == voisine_id and q.type == type_), None)
     if voisine is not None:
         seq.pistes.insert(seq.pistes.index(voisine) + (1 if dessous else 0), p)
     elif type_ == "video":
-        seq.pistes.insert(0, p)
+        i = 0
+        while i < len(seq.pistes) and seq.pistes[i].fx:
+            i += 1
+        seq.pistes.insert(i, p)
     else:
         seq.pistes.append(p)
     return p
@@ -760,18 +769,33 @@ def deplacer_effet(seq: Sequence, effet_id: str, sens: int):
     porteur.effets.insert(j, porteur.effets.pop(i))
 
 
+def _libre(piste: Piste, debut: int, duree: int) -> bool:
+    return not piste.verrouillee and not any(c.fin > debut and c.debut < debut + duree
+                                             for c in piste.clips)
+
+
+def piste_fx(seq: Sequence, debut: int, duree: int, piste_id: str | None = None) -> Piste:
+    """Piste FX libre à cet endroit : celle demandée si c'en est une, sinon la plus haute qui a
+    la place ; sinon une nouvelle piste FX tout en haut."""
+    demandee = next((p for p in seq.pistes if p.id == piste_id and p.fx), None)
+    if demandee is not None and _libre(demandee, debut, duree):
+        return demandee
+    for p in seq.pistes_video:
+        if p.fx and _libre(p, debut, duree):
+            return p
+    n = sum(1 for q in seq.pistes if q.fx) + 1
+    p = Piste(nouvel_id(), "video", "FX" if n == 1 else f"FX {n}", fx=True)
+    seq.pistes.insert(0, p)
+    return p
+
+
 def ajouter_clip_effet(seq: Sequence, debut: int, duree: int, effets: list[Effet],
                        piste_id: str | None = None) -> Clip:
-    """Clip d'effet sur la piste vidéo demandée, ou celle du haut ; si elle est occupée à cet
-    endroit, sur une nouvelle piste au-dessus, pour ne rien écraser."""
-    haut = next((p for p in seq.pistes if p.id == piste_id and p.type == "video"), None) \
-        or (seq.pistes_video[0] if seq.pistes_video else None)
-    if haut is None or haut.verrouillee or any(c.fin > debut and c.debut < debut + duree
-                                               for c in haut.clips):
-        haut = ajouter_piste(seq, "video")
+    """Clip d'effet sur une piste FX (celle demandée si c'en est une)."""
+    piste = piste_fx(seq, max(0, debut), max(1, duree), piste_id)
     c = Clip(nouvel_id(), "", max(0, debut), ENTREE_CLIP_EFFET, max(1, duree), effets=effets)
-    haut.clips.append(c)
-    haut.trier()
+    piste.clips.append(c)
+    piste.trier()
     return c
 
 
@@ -873,10 +897,17 @@ def regler_vitesse(projet: Projet, seq: Sequence, clip_id: str, vitesse: float, 
 
 def ajouter_titre(seq: Sequence, debut: int, duree: int, titre: dict,
                   piste_id: str | None = None) -> Clip:
-    """Titre sur la piste vidéo demandée, ou celle du haut ; si elle est occupée à cet
-    endroit, sur une nouvelle piste au-dessus."""
-    c = ajouter_clip_effet(seq, debut, duree, [], piste_id)
+    """Titre sur la piste vidéo demandée, ou la plus haute qui n'est pas une piste FX ; si elle
+    est occupée à cet endroit, sur une nouvelle piste au-dessus."""
+    ordinaires = [p for p in seq.pistes_video if not p.fx]
+    haut = next((p for p in ordinaires if p.id == piste_id),
+                ordinaires[0] if ordinaires else None)
+    if haut is None or not _libre(haut, max(0, debut), max(1, duree)):
+        haut = ajouter_piste(seq, "video", haut.id if haut is not None else None)
+    c = Clip(nouvel_id(), "", max(0, debut), ENTREE_CLIP_EFFET, max(1, duree))
     c.titre = titre
+    haut.clips.append(c)
+    haut.trier()
     return c
 
 
