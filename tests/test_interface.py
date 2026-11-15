@@ -1809,3 +1809,79 @@ def test_apercu_en_direct(fenetre, medias):
         assert w.inspecteur.effet_direct == ""
     finally:
         w._arreter_direct()
+
+
+def test_molette_fait_defiler_sans_changer_les_reglages(fenetre):
+    """Retour des testeurs : la molette sur un réglage survolé le changeait au lieu de faire
+    défiler le panneau. Elle ne le change qu'après un clic dessus."""
+    from PySide6.QtCore import QPoint, QPointF, Qt
+    from PySide6.QtGui import QWheelEvent
+    from PySide6.QtWidgets import QScrollArea, QSpinBox, QVBoxLayout, QWidget
+    zone = QScrollArea()
+    contenu = QWidget()
+    lignes = QVBoxLayout(contenu)
+    champs = [QSpinBox() for _ in range(40)]
+    for c in champs:
+        c.setRange(0, 100)
+        c.setValue(50)
+        lignes.addWidget(c)
+    zone.setWidget(contenu)
+    zone.resize(200, 200)
+    zone.show()
+    QApplication.processEvents()
+    champ = champs[2]
+
+    def tourner():
+        centre = QPointF(champ.width() / 2, champ.height() / 2)
+        e = QWheelEvent(centre, champ.mapToGlobal(centre), QPoint(0, 0), QPoint(0, -120),
+                        Qt.NoButton, Qt.NoModifier, Qt.NoScrollPhase, False)
+        QApplication.sendEvent(champ, e)
+        QApplication.processEvents()
+
+    tourner()
+    assert champ.value() == 50, "survolé : le réglage ne bouge pas"
+    assert zone.verticalScrollBar().value() > 0, "le panneau défile"
+    assert champ.focusPolicy() == Qt.StrongFocus
+    champ.setFocus()
+    tourner()
+    assert champ.value() != 50, "après un clic, la molette règle"
+    zone.close()
+
+
+def test_timeline_reste_a_l_ecran(fenetre):
+    """Retour des testeurs : la timeline ne se réduisait plus ou disparaissait. Au retour de
+    l'espace Export, la fenêtre agrandie devenait plus haute que l'écran (le bas de la timeline
+    et la barre des espaces hors de vue) ; une timeline cachée le restait."""
+    w = fenetre
+    w.showMaximized()
+    _attendre(lambda: w.isMaximized(), 5)
+    ecran = w.screen().availableGeometry().height()
+    timeline = w._docks["timeline"]
+    for espace in ["export", "montage", "effets", "export", "cut", "export", "montage"]:
+        w.choisir_espace(espace)
+        for _ in range(20):
+            QApplication.processEvents()
+        assert w.height() <= ecran, f"{espace} : {w.height()} px pour {ecran}"
+        assert timeline.isVisible(), espace
+        assert timeline.y() + timeline.height() <= w.height(), espace
+    timeline.hide()
+    w.choisir_espace("effets")
+    w.choisir_espace("montage")
+    assert timeline.isVisible(), "la timeline cachée revient"
+
+
+def test_moniteur_change_de_fenetre(app):
+    """Retour des testeurs (image dans l'image) : un moniteur qui change de fenêtre (panneau
+    détaché, second écran) reçoit un nouveau contexte OpenGL ; il gardait les textures de
+    l'ancien et montrait du noir ou une ancienne image. Les tests tournent sans écran (pas
+    d'OpenGL) : on vérifie qu'un nouveau contexte repart de textures neuves avec l'image."""
+    import numpy as np
+    from remanence.ui.visionneuse import ZoneImage
+    zone = ZoneImage()
+    zone.montrer(np.zeros((90, 160, 3), np.float16))
+    zone._a_envoyer = zone._lut_a_envoyer = False
+    zone._texture = zone._texture_avant = zone._texture_lut = object()  # ancien contexte
+    zone.lut = object()
+    zone.initializeGL()
+    assert zone._texture is None and zone._texture_avant is None and zone._texture_lut is None
+    assert zone._a_envoyer and zone._lut_a_envoyer, "image et LUT renvoyées au nouveau contexte"

@@ -49,7 +49,7 @@ from remanence.ui.menu_effets import remplir_menu_effets
 from remanence.ui.panneau_export import FileExport, FormulaireExport
 from remanence.ui.taches import GestionnaireTaches, Tache
 from remanence.ui.timeline import Timeline
-from remanence.ui import accueil, dialogue_scripts, focus
+from remanence.ui import accueil, dialogue_scripts, focus, molette
 from remanence.ui.aide import FenetreAide
 from remanence.ui.midi import EnregistreurMidi
 from remanence.ui.panneau_courbes import PanneauCourbes
@@ -442,12 +442,25 @@ class FenetrePrincipale(QMainWindow):
     def _appliquer_espace(self, espace: str, par_defaut: bool = False):
         reglages = reglages_interface()
         etat = None if par_defaut else reglages.value(self._cle_disposition(espace))
+        # Les panneaux de l'espace qu'on quitte se cachent d'abord : pendant restoreState, ils
+        # s'ajoutaient un instant à ceux du nouvel espace, la fenêtre devenait plus haute que
+        # l'écran et le restait (retour de l'espace Export : bas de la timeline hors de l'écran).
+        for nom, dock in self._docks.items():
+            if nom not in PANNEAUX_ESPACE[espace] and not self._est_externe(nom):
+                dock.hide()
         if etat is None or not self.restoreState(etat, VERSION_DISPOSITION):
             self._disposition(espace)
         # Une disposition mémorisée ne doit jamais faire apparaître un panneau d'un autre espace.
         for nom, dock in self._docks.items():
             if nom not in PANNEAUX_ESPACE[espace] and not self._est_externe(nom):
                 dock.hide()
+        # La timeline ne reste pas cachée par une disposition mémorisée : elle n'a pas de barre
+        # de titre, et cachée ou flottante derrière la fenêtre, rien ne la faisait revenir.
+        timeline = self._docks["timeline"]
+        if "timeline" in PANNEAUX_ESPACE[espace] and not self._est_externe("timeline"):
+            if timeline.isHidden():
+                timeline.setFloating(False)
+                timeline.show()
         if self._un_seul and espace == "montage":
             self.basculer_un_seul_moniteur()
         if espace == "media":
@@ -488,6 +501,13 @@ class FenetrePrincipale(QMainWindow):
         ecran = self.screen()
         if ecran is None or not self.isVisible():
             return
+        dispo = ecran.availableGeometry()
+        if self.isMaximized() and self.height() > dispo.height():
+            # Fenêtre agrandie devenue plus haute que l'écran : le bas (timeline, barre des
+            # espaces) serait hors de vue. Elle reprend la taille de l'écran.
+            journal.avertissement(f"Fenêtre plus haute que l'écran ({self.height()} px)")
+            self.showNormal()
+            self.showMaximized()
         demande = self.minimumSizeHint().height()
         if demande <= ecran.availableGeometry().height():
             return
@@ -1025,6 +1045,7 @@ class FenetrePrincipale(QMainWindow):
         self.timeline.vue.installEventFilter(self)
         self._entete_clavier = None
         focus.installer(QApplication.instance())
+        molette.installer(QApplication.instance())
         QApplication.instance().focusChanged.connect(self._clavier_change)
 
     def eventFilter(self, objet, e):

@@ -165,6 +165,12 @@ class ZoneImage(QOpenGLWidget):
             calque.update()
 
     def initializeGL(self):
+        # Qt refait le contexte quand le moniteur change de fenêtre (panneau détaché, second
+        # écran) : les textures de l'ancien n'y valent plus rien. Gardées, elles donnaient un
+        # moniteur noir ou une ancienne image dans la nouvelle (retour des testeurs).
+        self._texture = self._texture_avant = self._texture_lut = None
+        self._a_envoyer = self._image is not None
+        self._lut_a_envoyer = self.lut is not None
         if self._echec_gl:
             return
         try:
