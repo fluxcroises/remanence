@@ -219,6 +219,8 @@ class Inspecteur(PanneauFiche):
     edition_masques = Signal(str)
     # Identifiant du clip dont la transformation se règle sur l'image, ou "" pour arrêter.
     edition_transformation = Signal(str)
+    # Aperçu en direct d'un effet à script (identifiant de l'effet, marche ou arrêt).
+    direct_demande = Signal(str, bool)
     # Effets à enregistrer comme préréglage personnel (un seul, ou toute la pile).
     enregistrer_prereglage = Signal(object)
     # Texte du badge de l'en-tête (« Clip vidéo », « Clip audio »), vide sans sélection.
@@ -239,6 +241,8 @@ class Inspecteur(PanneauFiche):
         self.masques_edites = ""
         # Clip dont la transformation se règle sur l'image du programme.
         self.transformation_editee = ""
+        # Effet montré en direct (fflive), ou "".
+        self.effet_direct = ""
         self._animes: list[tuple] = []
         # Clip affiché pendant la construction de ses effets (source du transfert).
         self._clip_courant = None
@@ -759,6 +763,17 @@ class Inspecteur(PanneauFiche):
                                                 "avertissement"))
             elif e.type == "script_ffglitch" and scripts.direct_seulement(e.script):
                 self._cible.addWidget(etiquette("Script à lire en direct", "avertissement"))
+            if d.script is not None and genre == "clip" and ffglitch.disponible():
+                b_direct = QPushButton("Direct")
+                b_direct.setCheckable(True)
+                b_direct.setToolTip("Aperçu en direct")
+                b_direct.setChecked(self.effet_direct == e.id)
+                b_direct.toggled.connect(lambda v, e=e: self.direct_demande.emit(e.id, v))
+                rang = QHBoxLayout()
+                rang.addSpacing(RETRAIT_LOSANGE)
+                rang.addWidget(b_direct)
+                rang.addStretch(1)
+                self._cible.addLayout(rang)
             if d.transfert and self._clip_courant is not None:
                 seq, clip = self._clip_courant
                 dessus = edition.clip_au_dessus(seq, clip)

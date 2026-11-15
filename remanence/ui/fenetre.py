@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QEvent, Qt, QTimer
+from PySide6.QtCore import QEvent, QPoint, Qt, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QGuiApplication, QImage, QKeySequence
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QDockWidget,
                                QFileDialog, QHBoxLayout, QInputDialog, QMainWindow, QMenu,
@@ -21,7 +21,7 @@ from remanence.effets import (EFFETS, courbes, instantane, masque_a, modulateurs
                               retirer_cle, transformation, valeur_a)
 from remanence.effets.masques import nouveau_masque
 from remanence.moteurs import suivi
-from remanence.moteurs.codec import analyse, bavure, ffglitch, prerendu, scripts
+from remanence.moteurs.codec import analyse, bavure, direct, ffglitch, prerendu, scripts
 from remanence.effets import prereglages
 from remanence.media import intermediaire
 from remanence.media.lecteur import LecteurVideo, generer_cache_audio
@@ -477,6 +477,9 @@ class FenetrePrincipale(QMainWindow):
         self.barre_espaces.activer(espace)
         if self._barre_espaces_2 is not None:
             self._barre_espaces_2.activer(espace)
+        if self.inspecteur.effet_direct:
+            # Le programme a bougé : la fenêtre du direct le suit.
+            self._relance_direct.start()
 
     def _verifier_hauteur(self):
         """Des panneaux qui demandent plus de hauteur que l'écran n'en a écrasent la timeline
@@ -969,6 +972,17 @@ class FenetrePrincipale(QMainWindow):
         self.inspecteur.reglage_masque.connect(self.reglage_masque)
         self.inspecteur.edition_masques.connect(self.modifier_masques)
         self.inspecteur.edition_transformation.connect(self.modifier_transformation)
+        self.inspecteur.direct_demande.connect(self.basculer_direct)
+        # Aperçu en direct par fflive : une fenêtre posée sur le programme.
+        self._direct = direct.Direct()
+        self._direct_attente = False
+        self._minuterie_direct = QTimer(self)
+        self._minuterie_direct.setInterval(500)
+        self._minuterie_direct.timeout.connect(self._surveiller_direct)
+        self._relance_direct = QTimer(self)
+        self._relance_direct.setSingleShot(True)
+        self._relance_direct.setInterval(350)
+        self._relance_direct.timeout.connect(self._lancer_direct)
         self.visionneuse.zone.calque = CalqueMasques(self.visionneuse.zone)
         self.visionneuse.zone.vecteurs = CalqueVecteurs(self.visionneuse.zone)
         self.visionneuse.zone.transformation = CalqueTransformation(self.visionneuse.zone)
@@ -1155,6 +1169,9 @@ class FenetrePrincipale(QMainWindow):
         self._actualiser_calque()
         self._lancer_prerendus()
         self._analyser_coupes()
+        if self.inspecteur.effet_direct:
+            # Un réglage a changé : le direct repart avec lui.
+            self._relance_direct.start()
 
     def _remplacer_projet(self, projet: Projet):
         hors_ligne = {m.id: m.hors_ligne for m in self.projet.medias.values()}
@@ -1798,6 +1815,95 @@ class FenetrePrincipale(QMainWindow):
             self.inspecteur.transformation_editee = ""
             self.activer_moniteur("programme")
         self._actualiser_calque()
+
+    # Aperçu en direct (fflive)
+
+    def basculer_direct(self, effet_id: str, actif: bool):
+        """Le direct de l'effet : marche ou arrêt. Un seul à la fois."""
+        if not actif:
+            if self._direct.effet_id == effet_id or not effet_id:
+                self._arreter_direct()
+            return
+        self.inspecteur.effet_direct = effet_id
+        self._direct.effet_id = effet_id
+        self.activer_moniteur("programme")
+        self._lancer_direct()
+
+    def _arreter_direct(self):
+        self._minuterie_direct.stop()
+        self._relance_direct.stop()
+        self._direct.arreter()
+        self.inspecteur.effet_direct = ""
+
+    def _rect_direct(self) -> tuple[int, int, int, int]:
+        """L'image du programme à l'écran, en pixels physiques : la fenêtre du direct s'y pose."""
+        zone = self.visionneuse.zone
+        seq = self.projet.sequence
+        s = min(zone.width() / seq.largeur, zone.height() / seq.hauteur)
+        l, h = seq.largeur * s, seq.hauteur * s
+        coin = zone.mapToGlobal(QPoint(round((zone.width() - l) / 2),
+                                       round((zone.height() - h) / 2)))
+        ratio = zone.devicePixelRatioF()
+        return (round(coin.x() * ratio), round(coin.y() * ratio), round(l * ratio),
+                round(h * ratio))
+
+    def _lancer_direct(self):
+        """Prépare le clip et le script en arrière-plan (sur une copie du projet), puis lance
+        ou relance la fenêtre du direct."""
+        effet_id = self._direct.effet_id or self.inspecteur.effet_direct
+        if not effet_id:
+            return
+        seq = self.projet.sequence
+        porteur, e = edition.trouver_effet(seq, effet_id)
+        if e is None or not isinstance(porteur, Clip) or not porteur.est_media \
+                or not direct.accepte(e):
+            self._arreter_direct()
+            return
+        if self._direct_attente:
+            self._relance_direct.start()
+            return
+        projet = Projet.depuis_dict(self.projet.vers_dict())
+        for m in projet.medias.values():
+            m.hors_ligne = self.projet.medias[m.id].hors_ligne
+        copie_seq = projet.sequence
+        copie_clip, copie_effet = copie_seq.trouver(porteur.id)[1], None
+        copie_effet = next(x for x in copie_clip.effets if x.id == effet_id)
+
+        def travail(progression, annule):
+            fichier = direct.flux(projet, copie_seq, copie_clip, copie_effet, annule)
+            return fichier, direct.script(projet, copie_seq, copie_clip, copie_effet)
+
+        def fini(resultat):
+            self._direct_attente = False
+            if self.inspecteur.effet_direct != effet_id:
+                return  # arrêté entre-temps
+            fichier, texte = resultat
+            try:
+                self._direct.lancer(fichier, texte, self._rect_direct(), effet_id)
+            except (OSError, RuntimeError) as err:
+                self.message(f"Direct impossible : {err}")
+                self._arreter_direct()
+                return
+            self._minuterie_direct.start()
+
+        def echec(message, detail):
+            self._direct_attente = False
+            self._arreter_direct()
+            afficher_erreur(self, "Direct impossible", message, detail)
+        self._direct_attente = True
+        self.taches.lancer(Tache("Direct", travail), fini, echec)
+
+    def _surveiller_direct(self):
+        """La fenêtre du direct s'est fermée (Échap, ou une erreur du script) : le bouton se
+        relâche."""
+        if self._direct.actif():
+            return
+        erreur = self._direct.erreur()
+        self._arreter_direct()
+        if erreur:
+            journal.avertissement(f"Direct : {erreur}")
+            self.message("Le script s'est arrêté")
+        self._selection(self.timeline.vue.selection)
 
     def modifier_transformation(self, clip_id: str):
         """Poignées de la transformation du clip sur le programme ("" : les cacher)."""
@@ -3332,6 +3438,7 @@ class FenetrePrincipale(QMainWindow):
         if not self._confirmer_abandon():
             e.ignore()
             return
+        self._arreter_direct()
         reglages = reglages_interface()
         reglages.setValue(self._cle_disposition(self._espace), self.saveState(VERSION_DISPOSITION))
         reglages.setValue("espace_actif", self._espace)

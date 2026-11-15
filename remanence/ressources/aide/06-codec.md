@@ -10,3 +10,5 @@ Les effets marqués « moteur codec » abîment la vidéo compressée elle-mê
 - **Script FFglitch** (famille Scripts) : un script de la bibliothèque. Les nombres déclarés en haut du script deviennent des réglages. « Modifier… » ouvre le script pour le changer.
 
 Vos propres scripts, par exemple ceux de dd_GlitchAssist : Fichier > Importer des scripts FFglitch, puis choisissez leur dossier. Ceux de Live Mosher : Fichier > Importer les scripts de Live Mosher. Les scripts gardent leur nom et leur dossier d'origine ; ceux qui se pilotent au clavier ou au MIDI se lisent en direct seulement.
+
+Direct : le bouton Direct d'un effet à script montre le clip en boucle, avec le script, sur l'image du programme. Changez un réglage : le direct repart avec lui. Échap ou le bouton à nouveau l'arrête.

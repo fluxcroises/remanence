@@ -1773,3 +1773,39 @@ def test_bibliotheque_son_et_son_bave(fenetre, medias):
     assert _attendre(lambda: case() is not None, 2)
     case().setChecked(True)
     assert _attendre(lambda: seq().pistes_video[0].clips[1].son_bave, 2)
+
+
+def test_apercu_en_direct(fenetre, medias):
+    """Étape 13, lot 2 : bouton Direct d'un effet à script ; fflive lit le clip en boucle avec
+    le script, sur l'image du programme ; un réglage le relance ; recoupé, il s'arrête."""
+    from PySide6.QtWidgets import QPushButton
+    from remanence.effets import nouvel_effet
+    from remanence.moteurs.codec import ffglitch
+    if not ffglitch.disponible():
+        pytest.skip("FFglitch absent")
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    w.poser_medias(list(w.projet.medias), 0, "")
+    clip = w.projet.sequence.pistes_video[0].clips[0]
+    w.timeline.vue._choisir({clip.id})
+    w.ajouter_effet("clip", clip.id, [nouvel_effet("vecteurs")])
+    bouton = lambda: next((b for b in w.inspecteur.findChildren(QPushButton)
+                           if b.text() == "Direct" and b.isVisibleTo(w.inspecteur)), None)
+    assert _attendre(lambda: bouton() is not None, 2)
+    try:
+        bouton().setChecked(True)
+        assert _attendre(lambda: w._direct.actif(), 20), "fflive lancé"
+        x, y, l, h = w._rect_direct()
+        assert l > 0 and h > 0
+        premier = w._direct._processus
+        effet_id = w.projet.sequence.pistes_video[0].clips[0].effets[0].id
+        w.reglage_effet(effet_id, "horizontal", 300.0)
+        assert _attendre(lambda: w._direct.actif() and w._direct._processus is not premier,
+                         20), "relancé avec le nouveau réglage"
+        assert _attendre(lambda: bouton() is not None and bouton().isChecked(), 2)
+        bouton().setChecked(False)
+        assert _attendre(lambda: not w._direct.actif(), 5)
+        assert w.inspecteur.effet_direct == ""
+    finally:
+        w._arreter_direct()
