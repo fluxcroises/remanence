@@ -18,7 +18,7 @@ sys.path.insert(0, str(RACINE))
 os.environ["REMANENCE_DONNEES"] = tempfile.mkdtemp(prefix="remanence_aide_")
 os.environ["REMANENCE_CACHE"] = tempfile.mkdtemp(prefix="remanence_aide_")
 
-from PySide6.QtCore import QSettings  # noqa: E402
+from PySide6.QtCore import QPoint, QSettings  # noqa: E402
 
 QSettings.setDefaultFormat(QSettings.IniFormat)
 QSettings.setPath(QSettings.IniFormat, QSettings.UserScope, tempfile.mkdtemp())
@@ -78,7 +78,10 @@ def main():
     # Transition datamosh au raccord.
     w.basculer_cle("raccord", second.id, 0)
     attendre(app, delai=1.0)
-    photo(w._docks["timeline"], "transition.png", 820, 215)
+    # Jusqu'à un peu après le raccord : la zone hachurée et son fondu.
+    vue = w.timeline.vue
+    raccord = vue.mapTo(w._docks["timeline"], QPoint(round(vue.x_de(second.debut)), 0)).x()
+    photo(w._docks["timeline"], "transition.png", max(820, raccord + 320), 215)
 
     # Effet animé : deux images clés, l'effet n'agit qu'entre elles.
     w.timeline.vue._choisir({premier.id})

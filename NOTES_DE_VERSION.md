@@ -1,5 +1,15 @@
 # Notes de version
 
+## Remanence 1.2.0
+
+Novembre 2026. Façonner le glitch de la transition datamosh.
+
+- Préréglages de transition : Douce, Brutale, Explosion, Cassée.
+- Intensité (de −400 à 800 %), Évolution (constante, coup d'abord, montée) et Direction (les deux axes, horizontale, verticale) de la bavure, avec FFglitch.
+- Bloom (le mouvement du raccord se répète) et Corruption (blocs cassés, éclats), avec les deux moteurs.
+- Sur la timeline, hachures croisées pour une transition violente, et nom de son préréglage.
+- Correction : deux calculs d'une même transition, ou du Databending audio, ne donnaient pas toujours exactement les mêmes images ou le même son.
+
 ## Remanence 1.1.2
 
 Novembre 2026.

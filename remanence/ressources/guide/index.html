@@ -48,7 +48,7 @@ td { padding: 6px 16px 6px 0; border-bottom: 1px solid var(--ligne); vertical-al
 </style>
 </head>
 <body>
-<nav><h1>Remanence</h1><p>Guide · version 1.1.2</p><ol>
+<nav><h1>Remanence</h1><p>Guide · version 1.2.0</p><ol>
 <li><a href="#00-bienvenue">Bienvenue</a></li>
 <li><a href="#01-ecran">L&#x27;écran</a></li>
 <li><a href="#aide-01-monter">Monter des clips</a></li>
@@ -207,7 +207,19 @@ td { padding: 6px 16px 6px 0; border-bottom: 1px solid var(--ligne); vertical-al
 <li>Attendez que « Calcul… » disparaisse du clip, puis lisez le passage.</li>
 </ol>
 <p>La zone hachurée au début du second clip montre la durée de la bavure. Tirez son bord droit pour l'allonger. Dans l'inspecteur, la section Transition datamosh règle aussi la taille des blocs et le <strong>Fondu</strong>, en images : sur la fin de la transition, la bavure s'efface peu à peu au lieu de laisser place à l'image nette d'un coup (0 : retour au net d'un coup). Sur la timeline, les hachures s'éclaircissent sur cette partie.</p>
-<p>Les autres rectangles de la bande Coupes marquent les changements de plan à l'intérieur d'une vidéo. Un clic fait baver le plan d'avant dans le suivant, au même endroit.</p></section>
+<p>Les autres rectangles de la bande Coupes marquent les changements de plan à l'intérieur d'une vidéo. Un clic fait baver le plan d'avant dans le suivant, au même endroit.</p>
+<h3>Façonner le glitch</h3>
+<p>Toujours dans la section Transition datamosh :</p>
+<ul>
+<li><strong>Préréglage</strong> : Douce, Brutale (un coup violent au raccord, sans fondu), Explosion (les pixels gonflent puis éclatent), Cassée (blocs cassés et éclats). Changer un réglage la rend « Personnalisée ».</li>
+<li><strong>Intensité</strong> : la force de la bavure. Au-delà de 100 %, l'image est arrachée plus fort ; en dessous de 0, elle part à rebours.</li>
+<li><strong>Évolution</strong> : Constante, Coup d'abord (tout au raccord, puis de plus en plus calme) ou Montée.</li>
+<li><strong>Direction</strong> : la bavure file sur les deux axes, ou seulement à l'horizontale ou à la verticale.</li>
+<li><strong>Bloom</strong> : le mouvement du raccord se répète sur quelques images, l'image gonfle et traîne.</li>
+<li><strong>Corruption</strong> : une part des données est abîmée pendant la bavure. Le tirage reste le même d'un export à l'autre.</li>
+</ul>
+<p>Intensité, Évolution et Direction demandent FFglitch. Sur la timeline, une transition violente a des hachures croisées, et le nom de son préréglage s'y écrit.</p>
+<p>La bavure part de l'image du premier plan telle qu'on la voit : ses effets passent dans le second plan.</p></section>
 <section><h2 id="aide-06-codec">Effets codec et scripts FFglitch</h2>
 <figure><img alt="Script FFglitch dans l'inspecteur" src="../aide/codec.png"></figure>
 <p>Les effets marqués « moteur codec » abîment la vidéo compressée elle-même : bavure, fonte des pixels, vecteurs de mouvement déformés. Ils se calculent en arrière-plan ; le badge « Calcul… » reste sur le clip le temps du calcul.</p>
