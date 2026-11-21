@@ -451,6 +451,36 @@ def test_retour_progressif_du_datamosh(medias, moteur):
     assert Projet.depuis_dict(donnees).sequence.trouver(b.id)[1].transition.fondu == 0
 
 
+def test_la_bavure_garde_les_effets_du_plan_precedent(medias, tmp_path, moteur):
+    """Retour de Lewis (21 novembre 2026) : la bavure partait de l'image propre du premier
+    plan ; au raccord, ses effets disparaissaient (on croyait voir sa dernière image sans
+    effet). Elle part maintenant de l'image telle qu'on la voit, effets compris."""
+    from remanence.moteurs.codec import prerendu
+    from remanence.rendu.composition import sans_effets
+    projet, seq, a, b = _deux_plans(medias)
+    e = nouvel_effet("decalage_rvb")
+    e.params["force"] = 100
+    a.effets = [e]
+    avec = _image(projet, a.fin - 1)
+    brute = _image(sans_effets(projet), a.fin - 1)
+    edition.basculer_transition(seq, b.id, 8)
+    ecart = lambda x, y: float(np.abs(x[..., :3] - y[..., :3]).mean())
+    cle = prerendu.cle_source(projet, seq, b)
+    # Export d'abord : la transition s'y calcule en cours de route (un second contexte de la
+    # carte graphique dans le fil de l'export le rendait inutilisable).
+    rapport = exporter(projet, seq, tmp_path / "raccord.mov", debut=a.fin - 2, fin=b.debut + 4)
+    assert rapport.conforme, [(v.critere, v.obtenu) for v in rapport.verifications if not v.ok]
+    debut_b = _image(projet, b.debut)
+    assert ecart(debut_b, avec) < 0.5 * ecart(debut_b, brute), "la bavure garde l'effet"
+    e.params["force"] = 50
+    assert prerendu.cle_source(projet, seq, b) != cle, "l'effet du plan précédent compte"
+    a.effets = []
+    sans = prerendu.cle_source(projet, seq, b)
+    a.effets = [e]
+    e.actif = False
+    assert prerendu.cle_source(projet, seq, b) == sans, "sans effet actif : comme avant"
+
+
 def test_transition_et_coupes_au_montage(medias):
     projet, seq, a, b = _deux_plans(medias)
     with pytest.raises(edition.EditionImpossible):

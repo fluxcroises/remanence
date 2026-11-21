@@ -134,8 +134,10 @@ def cle_source(projet: Projet, seq: Sequence, clip: Clip) -> str | None:
                "cles": clip.cles_supprimees, "ffglitch": ffglitch.disponible(),
                "transition": None if a is None else [clip.transition.duree, clip.transition.blocs,
                                                      _signature(projet, a)]
-               # Le fondu n'entre dans l'empreinte que s'il existe : les caches d'avant valent.
-               + ([_fondu(clip)] if _fondu(clip) else [])}
+               # Le fondu et l'habillage du clip précédent n'entrent dans l'empreinte que s'ils
+               # existent : les caches d'avant restent valables.
+               + ([_fondu(clip)] if _fondu(clip) else [])
+               + ([_habillage(projet, seq, a)] if _habille(a) else [])}
     return _empreinte(donnees)
 
 
@@ -219,7 +221,10 @@ def _calculer_source(projet: Projet, seq: Sequence, clip: Clip, progression=None
 
     def images():
         if a is not None:
-            yield from _images(projet, a, a.duree - queue, queue)
+            # L'image qui bave est celle qu'on voit à la fin du clip précédent, avec ses effets
+            # (sinon la bavure partait de l'image propre : l'effet disparaissait au raccord).
+            yield from (_rendu_seul(projet, seq, a, a.duree - queue, queue) if _habille(a)
+                        else _images(projet, a, a.duree - queue, queue))
         yield from _images(projet, clip, 0, clip.duree)
 
     total = queue + clip.duree
@@ -239,6 +244,56 @@ def _calculer_source(projet: Projet, seq: Sequence, clip: Clip, progression=None
     _ecrire(final, decodees, clip.duree, largeur, hauteur, cadence, v.couleur, progression,
             annule, 0.5)
     return final
+
+
+def _habille(clip: Clip) -> bool:
+    """Le clip a des effets ou une transformation : son image n'est plus celle du média."""
+    return clip.transformation is not None or any(e.actif for e in clip.effets)
+
+
+def _habillage(projet: Projet, seq: Sequence, clip: Clip) -> list:
+    """Ce qui fait l'image d'un clip habillé, pour l'empreinte : effets, transformation,
+    modulateurs, niveau et fondus."""
+    return [[asdict(e) for e in clip.effets],
+            asdict(clip.transformation) if clip.transformation is not None else None,
+            [asdict(m) for m in seq.modulateurs], clip.gain, clip.fondu_entree, clip.fondu_sortie,
+            clip.enveloppe, clip.fusion, clip.debut]
+
+
+def _rendu_seul(projet: Projet, seq: Sequence, clip: Clip, debut: int, nombre: int):
+    """Images du clip telles qu'il apparaît, seul sur sa piste : ses effets et sa
+    transformation, sans les autres pistes ni les effets de piste et de séquence (ils
+    s'appliquent déjà par-dessus le clip qui suit). Converties comme les images du média."""
+    from remanence.rendu.composition import Compositeur
+    copie = Projet.depuis_dict(projet.vers_dict())
+    s = next(q for q in copie.sequences if q.id == seq.id)
+    piste, c = s.trouver(clip.id)
+    piste.clips, piste.effets = [c], []
+    s.pistes = [piste]
+    s.effets = []
+    couleur = projet.medias[clip.media_id].infos.video.couleur
+    images, erreur = [], []
+
+    def calcul():
+        compositeur = Compositeur(copie, synchrone=True)
+        try:
+            for k in range(nombre):
+                rvba = compositeur.image(s, c.debut + debut + k)
+                rvba[..., 3] = 1.0  # posée sur du noir, comme à l'écran
+                images.append(depuis_rvba(rvba, FORMAT_FLUX, couleur))
+        except BaseException as e:
+            erreur.append(e)
+        finally:
+            compositeur.fermer()
+    # Dans un fil à part : son contexte de carte graphique est le sien. Ouvert dans ce fil, il
+    # prenait la place de celui du compositeur qui demande ce calcul (export, aperçu), qui ne
+    # pouvait plus rien créer ensuite (« cannot create texture »).
+    fil = threading.Thread(target=calcul, name="rendu du clip précédent")
+    fil.start()
+    fil.join()
+    if erreur:
+        raise erreur[0]
+    yield from images
 
 
 def _fondu(clip: Clip) -> int:
