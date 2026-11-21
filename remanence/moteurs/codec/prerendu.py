@@ -30,7 +30,7 @@ from remanence.rendu.couleur import depuis_rvba, vers_rvba
 from remanence.media.sonde import analyser
 from remanence.effets import modulateurs, valeur_modulee
 from remanence.moteurs import audio
-from remanence.moteurs.codec import bavure, ffglitch, scripts
+from remanence.moteurs.codec import bavure, ffglitch, scripts, transition
 from remanence.projet import edition
 from remanence.projet.modele import Clip, Effet, Projet, Sequence
 
@@ -137,7 +137,8 @@ def cle_source(projet: Projet, seq: Sequence, clip: Clip) -> str | None:
                # Le fondu et l'habillage du clip précédent n'entrent dans l'empreinte que s'ils
                # existent : les caches d'avant restent valables.
                + ([_fondu(clip)] if _fondu(clip) else [])
-               + ([_habillage(projet, seq, a)] if _habille(a) else [])}
+               + ([_habillage(projet, seq, a)] if _habille(a) else [])
+               + ([clip.transition.faconnage()] if clip.transition.faconnage() else [])}
     return _empreinte(donnees)
 
 
@@ -228,14 +229,20 @@ def _calculer_source(projet: Projet, seq: Sequence, clip: Clip, progression=None
         yield from _images(projet, clip, 0, clip.duree)
 
     total = queue + clip.duree
+    t = clip.transition if a is not None else None
+    # Intensité, évolution, direction : FFglitch réécrit les vecteurs de la bavure.
+    script = (transition.script(t, queue, total)
+              if t is not None and transition.agit_sur_le_mouvement(t) else None)
     with ffglitch.dossier_travail(dossier()) as travail:
         paquets = encoder(images(), total, largeur, hauteur, cadence,
-                          clip.transition.blocs if a is not None else 4, cles, Path(travail),
-                          _etape(progression, 0, 0.5), annule)
-    supprimees = {queue + t for t in clip.cles_supprimees}
+                          t.blocs if t is not None else 4, cles, Path(travail),
+                          _etape(progression, 0, 0.5), annule, script=script)
+    supprimees = {queue + k for k in clip.cles_supprimees}
     if a is not None:
         supprimees.add(queue)
     paquets = bavure.supprimer_cles_aux(paquets, supprimees)
+    if t is not None:
+        paquets = transition.faconner(paquets, t, queue, clip.id)
     decodees = bavure.decoder(paquets, total)
     for _ in range(queue):
         next(decodees)
@@ -387,10 +394,12 @@ def _etape(progression, debut: float, part: float):
 def encoder(images, n: int, largeur: int, hauteur: int, cadence: Fraction, blocs: int,
             cles: set[int], travail: Path, progression=None, annule=None,
             effet: Effet | None = None, mouvement=None, seq: Sequence | None = None,
-            debut: int = 0, projet: Projet | None = None) -> list[bytes]:
+            debut: int = 0, projet: Projet | None = None,
+            script: str | None = None) -> list[bytes]:
     """Les images en paquets MPEG-4, images clés au début et aux indices de `cles`. Avec
     FFglitch, un effet à script réécrit ensuite les vecteurs de mouvement ; `mouvement`
-    (images) donne les vecteurs du transfert de mouvement."""
+    (images) donne les vecteurs du transfert de mouvement ; `script` : un script tout fait
+    (façonnage d'une transition)."""
     outils = ffglitch.dossier()
     if outils is None:
         e = bavure.Encodeur(largeur, hauteur, cadence, blocs)
@@ -405,6 +414,9 @@ def encoder(images, n: int, largeur: int, hauteur: int, cadence: Fraction, blocs
     flux = ffglitch.encoder(images, largeur, hauteur, cadence, blocs, cles, travail / "flux.avi",
                             progression, n, annule, outils)
     d = EFFETS[effet.type] if effet is not None else None
+    if script is not None:
+        flux = ffglitch.appliquer_script(flux, script, travail / "transition.avi", annule,
+                                         outils)
     if d is not None and d.script is not None:
         valeurs = valeurs_images(effet, n, seq, debut, projet)
         flux = ffglitch.appliquer_script(flux, d.script(valeurs, effet.graine, effet),

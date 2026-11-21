@@ -481,6 +481,65 @@ def test_la_bavure_garde_les_effets_du_plan_precedent(medias, tmp_path, moteur):
     assert prerendu.cle_source(projet, seq, b) == sans, "sans effet actif : comme avant"
 
 
+@pytest.mark.parametrize("reglages", [
+    {"intensite": 300.0},
+    {"intensite": 300.0, "evolution": "coup"},
+    {"direction": "horizontal"},
+    {"bloom": 5},
+    {"corruption": 60.0},
+])
+def test_faconnage_de_la_transition(medias, moteur, reglages):
+    """Façonnage du glitch de la transition (plan accepté par Lewis le 21 novembre 2026) :
+    chaque réglage change la bavure, seulement pendant la transition ; neutre, rien ne bouge ;
+    deux calculs donnent les mêmes images ; sans FFglitch, intensité et direction sont sans
+    action."""
+    from remanence.moteurs.codec import prerendu, transition
+    projet, seq, a, b = _deux_plans(medias)
+    edition.basculer_transition(seq, b.id, 10)
+    b.transition.fondu = 0
+    t = b.transition
+    neutre_cle = prerendu.cle_source(projet, seq, b)
+    assert t.faconnage() == {}
+
+    def images():
+        prerendu.calculer_source(projet, seq, b)
+        return [_image(projet, b.debut + k) for k in range(12)]
+    neutre = images()
+    for k, v in reglages.items():
+        setattr(t, k, v)
+    assert prerendu.cle_source(projet, seq, b) != neutre_cle, "le réglage entre dans l'empreinte"
+    faconnee = images()
+    ecart = lambda x, y: float(np.abs(x[..., :3] - y[..., :3]).mean())
+    mouvement = transition.agit_sur_le_mouvement(t)
+    if mouvement and moteur == "bavure":
+        assert all(np.array_equal(x, y) for x, y in zip(neutre, faconnee)), \
+            "sans FFglitch, le mouvement n'est pas réécrit"
+        return
+    assert max(ecart(x, y) for x, y in zip(neutre[1:10], faconnee[1:10])) > 0.01, \
+        "la bavure change"
+    assert all(np.array_equal(neutre[k], faconnee[k]) for k in (10, 11)), \
+        "après la transition, la source intacte"
+    # Même calcul, même résultat (le cache est effacé pour recalculer).
+    for f in prerendu.dossier().glob("raccord_*.mkv"):
+        f.unlink()
+    assert all(np.array_equal(x, y) for x, y in zip(faconnee, images()))
+
+
+def test_gains_de_la_transition():
+    """Coup d'abord : toute l'intensité au raccord, le mouvement normal à la fin ; montée :
+    l'inverse ; une direction coupe l'autre axe."""
+    from remanence.moteurs.codec import transition
+    from remanence.projet.modele import Transition
+    coup = transition.gains(Transition(duree=5, intensite=300.0, evolution="coup"))
+    assert coup[0] == (3.0, 3.0) and coup[-1] == (1.0, 1.0)
+    assert [g for g, _ in coup] == sorted((g for g, _ in coup), reverse=True)
+    montee = transition.gains(Transition(duree=5, intensite=300.0, evolution="montee"))
+    assert montee[0] == (1.0, 1.0) and montee[-1] == (3.0, 3.0)
+    assert transition.gains(Transition(duree=3, intensite=-100.0, direction="vertical")) == \
+        [(0.0, -1.0)] * 3
+    assert Transition(evolution="coup").faconnage() == {}, "sans intensité, rien ne change"
+
+
 def test_transition_et_coupes_au_montage(medias):
     projet, seq, a, b = _deux_plans(medias)
     with pytest.raises(edition.EditionImpossible):

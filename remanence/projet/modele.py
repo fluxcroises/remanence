@@ -140,6 +140,29 @@ class Transition:
     duree: int = 24
     blocs: int = 4
     fondu: int = 0
+    # Façonnage du glitch (valeurs neutres : la transition d'avant, au pixel près).
+    # intensite : % du mouvement du second plan pendant la bavure (négatif : à rebours) ;
+    # evolution : "constante", "coup" (fort au raccord puis de plus en plus calme) ou "montee" ;
+    # direction : "deux", "horizontal" ou "vertical" (axes gardés). Ces trois-là passent par
+    # FFglitch. bloom : images où le mouvement du raccord se répète ; corruption : % d'octets
+    # abîmés pendant la bavure.
+    intensite: float = 100.0
+    evolution: str = "constante"
+    direction: str = "deux"
+    bloom: int = 0
+    corruption: float = 0.0
+
+    EVOLUTIONS = {"constante": "Constante", "coup": "Coup d'abord", "montee": "Montée"}
+    DIRECTIONS = {"deux": "Les deux axes", "horizontal": "Horizontale", "vertical": "Verticale"}
+
+    def faconnage(self) -> dict:
+        """Les réglages du glitch qui ne sont pas neutres (empreinte du calcul)."""
+        neutres = {"intensite": 100.0, "evolution": "constante", "direction": "deux",
+                   "bloom": 0, "corruption": 0.0}
+        reglages = {k: getattr(self, k) for k in neutres if getattr(self, k) != neutres[k]}
+        if self.intensite == 100.0 and self.direction == "deux":
+            reglages.pop("evolution", None)  # sans intensité, l'évolution ne change rien
+        return reglages
 
 
 # Un clip d'effet n'a pas de média : il transforme tout ce qui est sous lui. Son entrée est

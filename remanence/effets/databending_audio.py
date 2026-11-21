@@ -19,6 +19,7 @@ import av
 import numpy as np
 
 from remanence.effets import DescriptionEffet, Parametre
+from remanence.moteurs.codec.bavure import paquet
 
 TRAME = 1152          # échantillons d'une trame MP2
 TRANCHE = 2 * TRAME
@@ -53,7 +54,8 @@ def _decoder(paquets: list[bytes]) -> np.ndarray:
     morceaux = []
     for octets in paquets:
         try:
-            for trame in dec.decode(av.Packet(octets)):
+            # Octets de garde après les données abîmées : voir bavure.paquet.
+            for trame in dec.decode(paquet(octets)):
                 x = trame.to_ndarray()
                 morceaux.append(x.T if x.shape[0] == 2 else x.reshape(-1, 2))
         except (av.error.FFmpegError, ValueError):

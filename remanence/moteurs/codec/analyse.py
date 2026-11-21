@@ -85,7 +85,7 @@ def analyser(projet: Projet, seq: Sequence, clip: Clip, progression=None,
     t = 0
     for p in paquets + [None]:
         try:
-            trames = d.decode(av.Packet(p) if p is not None else None)
+            trames = d.decode(bavure.paquet(p) if p is not None else None)
         except av.error.FFmpegError:
             trames = []
         for trame in trames:

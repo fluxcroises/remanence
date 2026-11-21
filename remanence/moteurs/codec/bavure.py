@@ -96,14 +96,27 @@ def encoder(images: Iterable[av.VideoFrame], largeur: int, hauteur: int, cadence
     return paquets + e.finir()
 
 
+def paquet(donnees: bytes) -> av.Packet:
+    """Paquet alloué par FFmpeg, avec ses octets de garde à zéro après les données. Un flux
+    abîmé fait lire le décodeur au-delà de la fin du paquet : sans cette garde, il lisait ce
+    qui traînait en mémoire, et deux calculs ne donnaient pas toujours les mêmes images."""
+    p = av.Packet(len(donnees))
+    memoryview(p)[:] = donnees
+    return p
+
+
 def decoder(paquets: list[bytes], n: int) -> Iterator[av.VideoFrame]:
     """Décode exactement n images : un flux abîmé peut en perdre, on répète alors la dernière."""
     d = av.CodecContext.create("mpeg4", "r")
+    # Un seul fil : en tranches parallèles (réglage par défaut), le masquage des erreurs d'un
+    # flux abîmé dépendait de l'ordre des fils, et deux calculs ne donnaient pas toujours les
+    # mêmes images (vu le 21 novembre 2026).
+    d.thread_count = 1
     rendues = 0
     derniere = None
     for b in paquets:
         try:
-            images = d.decode(av.Packet(b))
+            images = d.decode(paquet(b))
         except av.error.FFmpegError:
             images = []  # paquet illisible : l'image d'avant tient sa place
             if derniere is not None:
