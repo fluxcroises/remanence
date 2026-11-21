@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox,
 
 from remanence.effets import EFFETS, courbes, masque_a, transformation, transitions, valeur_a
 from remanence.moteurs.codec import ffglitch, scripts
+from remanence.moteurs.codec import transition as datamosh
 from remanence.projet import edition
 from remanence.media.timecode import images_vers_tc
 from remanence.effets.masques import NOMS_FORMES
@@ -517,15 +518,32 @@ class Inspecteur(PanneauFiche):
             retirer = bouton_icone("x", "Retirer la transition", taille=14)
             retirer.clicked.connect(lambda: self.reglage.emit(c.id, "transition_retirer", None))
             section.ajouter_outil(retirer)
-            for champ, nom, mini, maxi, unite, defaut in (
-                    ("duree", "Durée", 1, c.duree, "images", 24),
-                    ("fondu", "Fondu", 0, c.transition.duree, "images", 8),
-                    ("blocs", "Blocs", 1, 31, "", 4)):
-                ligne = LigneParametre(nom, mini, maxi, getattr(c.transition, champ), unite,
-                                       defaut, 0)
-                ligne.valeur_finale.connect(lambda v, champ=champ: self.reglage.emit(
+            t = c.transition
+            self._ligne_liste(
+                "Préréglage",
+                [(nom, nom) for nom in datamosh.PREREGLAGES] + [("", "Personnalisée")],
+                datamosh.prereglage_de(t),
+                lambda nom: nom and self.reglage.emit(c.id, "transition_prereglage", nom))
+
+            def nombre(champ, nom, mini, maxi, unite, defaut):
+                ligne = LigneParametre(nom, mini, maxi, getattr(t, champ), unite, defaut, 0)
+                ligne.valeur_finale.connect(lambda v: self.reglage.emit(
                     c.id, "transition_" + champ, v))
                 self._cible.addWidget(ligne)
+
+            def liste(champ, nom, choix):
+                self._ligne_liste(nom, list(choix.items()), getattr(t, champ),
+                                  lambda v: self.reglage.emit(c.id, "transition_" + champ, v))
+            nombre("duree", "Durée", 1, c.duree, "images", 24)
+            nombre("fondu", "Fondu", 0, t.duree, "images", 8)
+            nombre("intensite", "Intensité", -400, 800, "%", 100)
+            liste("evolution", "Évolution", t.EVOLUTIONS)
+            liste("direction", "Direction", t.DIRECTIONS)
+            nombre("bloom", "Bloom", 0, max(0, t.duree - 1), "images", 0)
+            nombre("corruption", "Corruption", 0, 100, "%", 0)
+            nombre("blocs", "Blocs", 1, 31, "", 4)
+            if datamosh.agit_sur_le_mouvement(t) and not ffglitch.disponible():
+                self._note("FFglitch absent : intensité et direction sans action")
         if video and (c.transition is not None or c.cles_supprimees) and c.lien:
             # Le son lié bave avec l'image (dans la section de la transition s'il y en a une).
             if c.transition is None:
@@ -732,26 +750,27 @@ class Inspecteur(PanneauFiche):
             self._cible.addWidget(ligne)
             self._animes.append((e, cle, c.debut, ligne, bouton, 1.0))
 
+    def _ligne_liste(self, nom: str, elements, actuel, choisir):
+        """Libellé et liste déroulante ; `choisir` reçoit la clé de l'élément choisi."""
+        rang = QHBoxLayout()
+        rang.setSpacing(8)
+        libelle = etiquette(nom, "libelle")
+        libelle.setFixedWidth(100)
+        liste = QComboBox()
+        liste.setAccessibleName(nom)
+        for cle, texte in elements:
+            liste.addItem(texte, cle)
+        liste.setCurrentIndex(max(0, liste.findData(actuel)))
+        liste.activated.connect(lambda i: choisir(liste.itemData(i)))
+        rang.addWidget(libelle)
+        rang.addWidget(liste, 1)
+        self._cible.addLayout(rang)
+
     def _choix_transition(self, c):
         """Lignes « Transition » (l'allure du fondu d'entrée) et, pour un volet, « Direction »."""
         style = c.style_fondu or {}
         choix = [(None, "Fondu"), *transitions.TYPES.items()]
-
-        def ligne(nom: str, elements, actuel, choisir):
-            rang = QHBoxLayout()
-            rang.setSpacing(8)
-            libelle = etiquette(nom, "libelle")
-            libelle.setFixedWidth(100)
-            liste = QComboBox()
-            liste.setAccessibleName(nom)
-            for cle, texte in elements:
-                liste.addItem(texte, cle)
-            liste.setCurrentIndex(max(0, liste.findData(actuel)))
-            liste.activated.connect(lambda i: choisir(liste.itemData(i)))
-            rang.addWidget(libelle)
-            rang.addWidget(liste, 1)
-            self._cible.addLayout(rang)
-
+        ligne = self._ligne_liste
         ligne("Transition", choix, style.get("type"), lambda cle: self.reglage.emit(
             c.id, "style_fondu", transitions.nouveau_style(cle) if cle else None))
         if style.get("type") == "volet":

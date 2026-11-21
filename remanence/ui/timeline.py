@@ -26,6 +26,7 @@ from remanence.media.proxy import chemin_audio
 from remanence.media.timecode import images_vers_tc
 from remanence.effets import EFFETS, plage_cles, transformation, transitions
 from remanence.effets.prereglages import MIME_PREREGLAGE, depuis_mime
+from remanence.moteurs.codec import transition as datamosh
 from remanence.projet import edition
 from remanence.projet.modele import Clip, Marqueur, Piste, Projet, valeur_enveloppe
 from remanence.ui import charte
@@ -372,8 +373,11 @@ class VueTimeline(QWidget):
             zone = QRectF(r.left(), r.top() + BANDEAU, largeur, r.height() - BANDEAU)
             # Vignettes assombries sous les hachures : sinon elles s'y perdaient.
             pleine = QRectF(zone.left(), zone.top(), plein, zone.height())
+            # Transition violente (intensité, bloom, corruption) : hachures croisées.
+            motif = Qt.DiagCrossPattern if datamosh.violence(clip.transition) >= 0.5 \
+                else Qt.BDiagPattern
             p.fillRect(pleine, c.c("bg-app", 0.6))
-            p.fillRect(pleine, QBrush(c.c("accent"), Qt.BDiagPattern))
+            p.fillRect(pleine, QBrush(c.c("accent"), motif))
             # Retour progressif au net : les hachures s'effacent par paliers.
             paliers = max(1, min(8, round((largeur - plein) / 4)))
             pas = (largeur - plein) / paliers
@@ -381,8 +385,15 @@ class VueTimeline(QWidget):
                 force = 1 - (k + 1) / (paliers + 1)
                 bande = QRectF(zone.left() + plein + k * pas, zone.top(), pas, zone.height())
                 p.fillRect(bande, c.c("bg-app", 0.6 * force))
-                p.fillRect(bande, QBrush(c.c("accent", force), Qt.BDiagPattern))
+                p.fillRect(bande, QBrush(c.c("accent", force), motif))
             p.fillRect(QRectF(zone.right() - 2, zone.top(), 2, zone.height()), c.c("accent"))
+            nom_style = datamosh.prereglage_de(clip.transition)
+            if nom_style and largeur >= 56:
+                p.setPen(c.c("ink"))
+                p.setFont(c.police("label"))
+                p.drawText(zone.adjusted(6, 0, -6, 0), Qt.AlignLeft | Qt.AlignBottom,
+                           p.fontMetrics().elidedText(nom_style, Qt.ElideRight,
+                                                      int(zone.width()) - 12))
         # Bandeau du nom, sur la couleur du clip : lisible même par-dessus les vignettes. Clip
         # choisi : bandeau mauve plein, visible de loin (le contour seul se perdait).
         choisi = clip.id in self.selection

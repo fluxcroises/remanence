@@ -22,6 +22,7 @@ from remanence.effets import (EFFETS, courbes, instantane, masque_a, modulateurs
 from remanence.effets.masques import nouveau_masque
 from remanence.moteurs import suivi
 from remanence.moteurs.codec import analyse, bavure, direct, ffglitch, prerendu, scripts
+from remanence.moteurs.codec import transition as datamosh
 from remanence.effets import prereglages
 from remanence.media import intermediaire
 from remanence.media.lecteur import LecteurVideo, generer_cache_audio
@@ -3080,10 +3081,19 @@ class FenetrePrincipale(QMainWindow):
         if champ.startswith("transition_"):
             if c is None or c.transition is None:
                 return
+            t = c.transition
+            nom = champ[len("transition_"):]
             if champ == "transition_retirer":
                 c.transition = None
+            elif nom == "prereglage":
+                datamosh.appliquer_prereglage(t, valeur)
+            elif isinstance(valeur, str):
+                setattr(t, nom, valeur)  # évolution, direction
             else:
-                setattr(c.transition, champ[len("transition_"):], round(valeur))
+                # Garde le type du réglage (entier ou réel), au pour cent ou à l'image près.
+                setattr(t, nom, type(getattr(t, nom))(round(valeur)))
+                t.fondu = min(t.fondu, t.duree)
+                t.bloom = min(t.bloom, max(0, t.duree - 1))
             QTimer.singleShot(0, lambda: self.valider("Transition datamosh"))
             return
         if champ == "reinitialiser":

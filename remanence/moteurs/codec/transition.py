@@ -31,6 +31,46 @@ export function glitch_frame(frame) {
 """
 
 
+# Préréglages : l'allure du glitch, la durée de la transition gardée. Le fondu et le bloom
+# sont ramenés à la durée.
+PREREGLAGES = {
+    "Douce": {"intensite": 100.0, "evolution": "constante", "direction": "deux", "bloom": 0,
+              "corruption": 0.0, "fondu": 12},
+    "Brutale": {"intensite": 400.0, "evolution": "coup", "direction": "deux", "bloom": 0,
+                "corruption": 0.0, "fondu": 0},
+    "Explosion": {"intensite": 250.0, "evolution": "coup", "direction": "deux", "bloom": 8,
+                  "corruption": 0.0, "fondu": 6},
+    "Cassée": {"intensite": 150.0, "evolution": "constante", "direction": "deux", "bloom": 3,
+               "corruption": 50.0, "fondu": 4},
+}
+
+
+def appliquer_prereglage(t: Transition, nom: str):
+    for cle, valeur in PREREGLAGES[nom].items():
+        setattr(t, cle, valeur)
+    t.fondu = min(t.fondu, t.duree)
+    t.bloom = min(t.bloom, max(0, t.duree - 1))
+
+
+def prereglage_de(t: Transition) -> str:
+    """Le préréglage que la transition suit exactement (fondu et bloom ramenés à la
+    durée), sinon ""."""
+    for nom, valeurs in PREREGLAGES.items():
+        attendu = dict(valeurs, fondu=min(valeurs["fondu"], t.duree),
+                       bloom=min(valeurs["bloom"], max(0, t.duree - 1)))
+        if all(getattr(t, cle) == v for cle, v in attendu.items()):
+            return nom
+    return ""
+
+
+def violence(t: Transition) -> float:
+    """De 0 (transition d'avant) à 1 : sert à resserrer les hachures sur la timeline."""
+    mouvement = min(1.0, abs(t.intensite / 100.0 - 1.0) / 3.0)
+    if t.direction != "deux":
+        mouvement = max(mouvement, 0.3)
+    return min(1.0, max(mouvement, t.bloom / 8.0, t.corruption / 60.0))
+
+
 def gains(t: Transition) -> list[tuple[float, float]]:
     """(horizontal, vertical) de chaque image de la transition. Coup d'abord : l'intensité
     entière au raccord, puis de plus en plus proche du mouvement normal ; montée : l'inverse."""

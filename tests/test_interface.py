@@ -1965,3 +1965,45 @@ def test_pas_d_onglets_fantomes_apres_cut(fenetre):
             assert barres_source(), "dans Cut, les onglets servent"
         else:
             assert not barres_source(), espace
+
+
+def test_faconnage_de_la_transition_dans_l_inspecteur(fenetre, medias, monkeypatch):
+    """Étape 14, lot 2 : préréglages et réglages du glitch de la transition dans la section
+    Transition datamosh ; « Personnalisée » dès qu'on s'écarte d'un préréglage ; sans FFglitch,
+    un avertissement pour l'intensité et la direction."""
+    from PySide6.QtWidgets import QComboBox, QLabel
+    from remanence.moteurs.codec import ffglitch
+    w = fenetre
+    w.importer_chemins([str(medias["prores_hq"])])
+    assert _attendre(lambda: len(w.projet.medias) == 1)
+    mid = next(iter(w.projet.medias))
+    w.poser_medias([mid], 0, "")
+    w.poser_medias([mid], w.projet.sequence.duree(), "")
+    second = lambda: w.projet.sequence.pistes_video[0].clips[1]
+    w.basculer_cle("raccord", second().id, 0)
+    w.timeline.vue._choisir({second().id})
+    w.inspecteur.choisir_onglet("clip")
+    def liste(nom):
+        return next((l for l in w.inspecteur.findChildren(QComboBox)
+                     if l.accessibleName() == nom and l.isVisibleTo(w.inspecteur)), None)
+    # Une nouvelle transition (fondu de 8 images) ne suit aucun préréglage.
+    assert _attendre(lambda: liste("Préréglage") is not None, 2)
+    assert liste("Préréglage").currentText() == "Personnalisée"
+    choix = liste("Préréglage")
+    choix.activated.emit(choix.findText("Brutale"))
+    assert _attendre(lambda: second().transition.intensite == 400.0, 2)
+    t = second().transition
+    assert (t.evolution, t.fondu, t.bloom) == ("coup", 0, 0)
+    assert _attendre(lambda: liste("Préréglage").currentText() == "Brutale", 2)
+    evolution = liste("Évolution")
+    evolution.activated.emit(evolution.findData("montee"))
+    assert _attendre(lambda: second().transition.evolution == "montee", 2)
+    assert _attendre(lambda: liste("Préréglage").currentText() == "Personnalisée", 2)
+    w._reglage_clip(second().id, "transition_corruption", 37.6)
+    assert _attendre(lambda: second().transition.corruption == 38.0, 2)
+    assert isinstance(second().transition.corruption, float)
+    monkeypatch.setenv(ffglitch.VARIABLE, "")
+    w.inspecteur.clip(w.projet, second().id)
+    assert _attendre(lambda: any("FFglitch absent" in l.text()
+                                 for l in w.inspecteur.findChildren(QLabel)
+                                 if l.isVisibleTo(w.inspecteur)), 2)

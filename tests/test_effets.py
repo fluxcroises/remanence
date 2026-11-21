@@ -540,6 +540,25 @@ def test_gains_de_la_transition():
     assert Transition(evolution="coup").faconnage() == {}, "sans intensité, rien ne change"
 
 
+def test_prereglages_de_la_transition():
+    """Préréglages Douce, Brutale, Explosion, Cassée : appliqués, reconnus, fondu et bloom
+    ramenés à la durée ; la violence resserre les hachures de la timeline."""
+    from remanence.moteurs.codec import transition
+    from remanence.projet.modele import Transition
+    t = Transition(duree=24, fondu=8)
+    assert transition.prereglage_de(t) == "" and transition.violence(t) == 0.0
+    for nom in transition.PREREGLAGES:
+        transition.appliquer_prereglage(t, nom)
+        assert transition.prereglage_de(t) == nom
+    courte = Transition(duree=4)
+    transition.appliquer_prereglage(courte, "Explosion")
+    assert (courte.bloom, courte.fondu) == (3, 4)
+    assert transition.prereglage_de(courte) == "Explosion"
+    assert transition.violence(courte) >= 0.5 and transition.violence(Transition()) == 0.0
+    transition.appliquer_prereglage(t, "Douce")
+    assert transition.violence(t) < 0.5 and t.faconnage() == {}
+
+
 def test_transition_et_coupes_au_montage(medias):
     projet, seq, a, b = _deux_plans(medias)
     with pytest.raises(edition.EditionImpossible):
