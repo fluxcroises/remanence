@@ -1,5 +1,11 @@
 # Notes de version
 
+## Remanence 1.1.2
+
+Novembre 2026.
+
+- Transition datamosh : la bavure part de l'image du premier plan avec ses effets. Avant, elle partait de l'image sans effet, et les effets semblaient disparaître sur la dernière image du premier plan.
+
 ## Remanence 1.1.1
 
 Novembre 2026.
