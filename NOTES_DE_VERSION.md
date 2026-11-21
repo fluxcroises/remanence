@@ -1,5 +1,11 @@
 # Notes de version
 
+## Remanence 1.1.1
+
+Novembre 2026.
+
+- Transition datamosh : réglage **Fondu**. Sur la fin de la transition, la bavure s'efface peu à peu au lieu de revenir au net d'un coup (8 images pour une nouvelle transition). Sur la timeline, les hachures s'éclaircissent sur cette partie.
+
 ## Remanence 1.1.0
 
 Novembre 2026. Retours des premiers testeurs.
