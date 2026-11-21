@@ -517,10 +517,12 @@ class Inspecteur(PanneauFiche):
             retirer = bouton_icone("x", "Retirer la transition", taille=14)
             retirer.clicked.connect(lambda: self.reglage.emit(c.id, "transition_retirer", None))
             section.ajouter_outil(retirer)
-            for champ, nom, mini, maxi, unite in (("duree", "Durée", 1, c.duree, "images"),
-                                                  ("blocs", "Blocs", 1, 31, "")):
+            for champ, nom, mini, maxi, unite, defaut in (
+                    ("duree", "Durée", 1, c.duree, "images", 24),
+                    ("fondu", "Fondu", 0, c.transition.duree, "images", 8),
+                    ("blocs", "Blocs", 1, 31, "", 4)):
                 ligne = LigneParametre(nom, mini, maxi, getattr(c.transition, champ), unite,
-                                       24 if champ == "duree" else 4, 0)
+                                       defaut, 0)
                 ligne.valeur_finale.connect(lambda v, champ=champ: self.reglage.emit(
                     c.id, "transition_" + champ, v))
                 self._cible.addWidget(ligne)

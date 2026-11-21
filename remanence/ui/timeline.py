@@ -367,10 +367,21 @@ class VueTimeline(QWidget):
         self._dessiner_cles(p, clip, r)
         if clip.transition is not None and edition.precedent(piste, clip) is not None:
             largeur = min(clip.transition.duree, clip.duree) * self.px_par_image
+            fondu = min(clip.transition.fondu, clip.transition.duree, clip.duree)
+            plein = largeur - fondu * self.px_par_image
             zone = QRectF(r.left(), r.top() + BANDEAU, largeur, r.height() - BANDEAU)
             # Vignettes assombries sous les hachures : sinon elles s'y perdaient.
-            p.fillRect(zone, c.c("bg-app", 0.6))
-            p.fillRect(zone, QBrush(c.c("accent"), Qt.BDiagPattern))
+            pleine = QRectF(zone.left(), zone.top(), plein, zone.height())
+            p.fillRect(pleine, c.c("bg-app", 0.6))
+            p.fillRect(pleine, QBrush(c.c("accent"), Qt.BDiagPattern))
+            # Retour progressif au net : les hachures s'effacent par paliers.
+            paliers = max(1, min(8, round((largeur - plein) / 4)))
+            pas = (largeur - plein) / paliers
+            for k in range(paliers):
+                force = 1 - (k + 1) / (paliers + 1)
+                bande = QRectF(zone.left() + plein + k * pas, zone.top(), pas, zone.height())
+                p.fillRect(bande, c.c("bg-app", 0.6 * force))
+                p.fillRect(bande, QBrush(c.c("accent", force), Qt.BDiagPattern))
             p.fillRect(QRectF(zone.right() - 2, zone.top(), 2, zone.height()), c.c("accent"))
         # Bandeau du nom, sur la couleur du clip : lisible même par-dessus les vignettes. Clip
         # choisi : bandeau mauve plein, visible de loin (le contour seul se perdait).

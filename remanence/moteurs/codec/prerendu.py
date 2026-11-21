@@ -133,7 +133,9 @@ def cle_source(projet: Projet, seq: Sequence, clip: Clip) -> str | None:
     donnees = {"source": _signature(projet, clip), "cadence": seq.cadence,
                "cles": clip.cles_supprimees, "ffglitch": ffglitch.disponible(),
                "transition": None if a is None else [clip.transition.duree, clip.transition.blocs,
-                                                     _signature(projet, a)]}
+                                                     _signature(projet, a)]
+               # Le fondu n'entre dans l'empreinte que s'il existe : les caches d'avant valent.
+               + ([_fondu(clip)] if _fondu(clip) else [])}
     return _empreinte(donnees)
 
 
@@ -232,9 +234,40 @@ def _calculer_source(projet: Projet, seq: Sequence, clip: Clip, progression=None
     decodees = bavure.decoder(paquets, total)
     for _ in range(queue):
         next(decodees)
+    if a is not None and _fondu(clip):
+        decodees = _retour_progressif(decodees, projet, clip, largeur, hauteur)
     _ecrire(final, decodees, clip.duree, largeur, hauteur, cadence, v.couleur, progression,
             annule, 0.5)
     return final
+
+
+def _fondu(clip: Clip) -> int:
+    """Images du retour progressif au net, bornées à la durée de la transition."""
+    t = clip.transition
+    return max(0, min(t.fondu, t.duree)) if t is not None else 0
+
+
+def _retour_progressif(moshees, projet: Projet, clip: Clip, largeur: int, hauteur: int):
+    """Fin de la transition datamosh : sur ses `fondu` dernières images, l'image qui bave se
+    mêle à l'image du clip, de plus en plus nette, comme un fondu enchaîné ((k + 1) / (n + 1)).
+    La transition garde sa durée ; l'image clé qui la termine reste à sa place."""
+    duree, n = clip.transition.duree, _fondu(clip)
+    debut = duree - n
+    nettes = _images(projet, clip, debut, n)
+
+    def plans(image):
+        return image.reformat(width=largeur, height=hauteur,
+                              format="yuv420p").to_ndarray().astype(np.float32)
+    try:
+        for t, image in enumerate(moshees):
+            if debut <= t < duree:
+                poids = (t - debut + 1) / (n + 1)
+                bave, nette = plans(image), plans(next(nettes))
+                melange = np.rint(bave + (nette - bave) * poids).astype(np.uint8)
+                image = av.VideoFrame.from_ndarray(melange, format="yuv420p")
+            yield image
+    finally:
+        nettes.close()
 
 
 def _ecrire(final: Path, images, n: int, largeur: int, hauteur: int, cadence: Fraction,

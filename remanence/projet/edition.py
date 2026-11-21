@@ -807,6 +807,9 @@ def precedent(piste: Piste, clip: Clip) -> Clip | None:
                  and o.est_media), None)
 
 
+FONDU_DATAMOSH = 8  # images du retour progressif au net d'une nouvelle transition
+
+
 def basculer_transition(seq: Sequence, clip_id: str, duree: int | None = None):
     """Pose ou retire la transition datamosh à l'entrée du clip."""
     piste, c = seq.trouver(clip_id)
@@ -819,7 +822,9 @@ def basculer_transition(seq: Sequence, clip_id: str, duree: int | None = None):
         return
     if precedent(piste, c) is None:
         raise EditionImpossible("Une transition datamosh se pose entre deux clips qui se suivent.")
-    c.transition = Transition("datamosh", max(1, min(duree or 24, c.duree)))
+    d = max(1, min(duree or 24, c.duree))
+    # Retour au net progressif par défaut (demande de Lewis, 21 novembre 2026).
+    c.transition = Transition("datamosh", d, fondu=min(FONDU_DATAMOSH, d // 2))
 
 
 def basculer_cle(seq: Sequence, clip_id: str, t: int):

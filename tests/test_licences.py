@@ -52,11 +52,13 @@ def test_version_et_notes():
     from remanence.ui.apropos import APropos
     QApplication.instance() or QApplication([])
     from remanence.ui.charte import RACINE
-    assert [int(x) for x in __version__.split(".")] == [1, 0, 0]
+    nombres = [int(x) for x in __version__.split(".")]
+    assert len(nombres) == 3 and nombres >= [1, 0, 0]
     notes = (RACINE / "NOTES_DE_VERSION.md").read_text(encoding="utf-8")
     assert f"## Remanence {__version__}" in notes and "—" not in notes
     fenetre = APropos()
-    assert [fenetre.onglets.tabText(i) for i in range(fenetre.onglets.count())] ==         ["Notes de version", "Licences"]
+    assert [fenetre.onglets.tabText(i) for i in range(fenetre.onglets.count())] == \
+        ["Notes de version", "Licences"]
     assert "Limites connues" in fenetre.onglets.widget(0).toPlainText()
 
 

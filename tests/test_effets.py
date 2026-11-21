@@ -417,6 +417,40 @@ def test_transition_datamosh(medias, tmp_path, moteur):
     assert infos.video.tc_debut == seq.tc_debut + b.debut, "même timecode que dans le montage"
 
 
+def test_retour_progressif_du_datamosh(medias, moteur):
+    """Fondu à la fin de la transition (demande de Lewis, 21 novembre 2026) : sur ses
+    dernières images, la bavure se mêle peu à peu à l'image nette, au lieu d'y revenir d'un
+    coup ; avant, la même bavure ; après, la source intacte."""
+    from remanence.moteurs.codec import prerendu
+    projet, seq, a, b = _deux_plans(medias)
+    propre = [_image(projet, b.debut + t) for t in range(14)]
+    edition.basculer_transition(seq, b.id, 12)
+    assert b.transition.fondu == 6, "fondu par défaut d'une nouvelle transition"
+
+    def images(fondu):
+        b.transition.fondu = fondu
+        prerendu.calculer_source(projet, seq, b)
+        return [_image(projet, b.debut + t) for t in range(14)]
+    franc, doux = images(0), images(6)
+    ecart = lambda x, y: float(np.abs(x[..., :3] - y[..., :3]).mean())
+    assert all(np.array_equal(doux[t], franc[t]) for t in range(6)), \
+        "avant le fondu, la même bavure"
+    restes = [ecart(doux[t], propre[t]) for t in range(6, 12)]
+    francs = [ecart(franc[t], propre[t]) for t in range(6, 12)]
+    assert all(r < f for r, f in zip(restes, francs)), "le fondu rapproche de l'image nette"
+    assert restes[-1] < restes[0] and restes[-1] < 0.35 * francs[-1], "de plus en plus net"
+    assert all(np.array_equal(doux[t], propre[t]) for t in range(12, 14)), \
+        "après la transition, la source intacte"
+    # Les projets d'avant (sans fondu) gardent leur retour au net d'un coup.
+    donnees = projet.vers_dict()
+    for s in donnees["sequences"]:
+        for p in s["pistes"]:
+            for c in p["clips"]:
+                if c.get("transition"):
+                    c["transition"].pop("fondu")
+    assert Projet.depuis_dict(donnees).sequence.trouver(b.id)[1].transition.fondu == 0
+
+
 def test_transition_et_coupes_au_montage(medias):
     projet, seq, a, b = _deux_plans(medias)
     with pytest.raises(edition.EditionImpossible):

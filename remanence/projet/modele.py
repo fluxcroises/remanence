@@ -133,10 +133,13 @@ MODES_FUSION = {"normal": "Normal", "addition": "Addition", "ecran": "Écran",
 class Transition:
     """Transition à l'entrée d'un clip, depuis le clip qui le précède sur sa piste. Datamosh :
     l'image clé du raccord est supprimée, le clip précédent bave avec le mouvement de celui-ci
-    pendant `duree` images, puis une image clé le rend net."""
+    pendant `duree` images, puis une image clé le rend net. `fondu` : sur ses dernières images,
+    l'image qui bave se mêle peu à peu à l'image nette (0 : retour au net d'un coup, comme
+    dans les projets d'avant)."""
     type: str = "datamosh"
     duree: int = 24
     blocs: int = 4
+    fondu: int = 0
 
 
 # Un clip d'effet n'a pas de média : il transforme tout ce qui est sous lui. Son entrée est
